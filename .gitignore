@@ -9,6 +9,20 @@ __pycache__/
 # Environment
 .env
 
+# Local reference documents
+/README.md
+/AGENTS.md
+/SPEC.md
+/ARCHITECTURE.md
+/PLAN.md
+/STATUS.md
+/PROGRESS.md
+/BACKEND_DEVELOPMENT_FLOW.md
+/docs/
+/frontend/README.md
+/导友-*.md
+/应用赛道初赛作品策划*.pdf
+
 # Local uploads
 backend/uploads/images/*
 backend/uploads/docs/*
@@ -26,4 +40,3 @@ unpackage/
 .DS_Store
 .idea/
 .vscode/
-
