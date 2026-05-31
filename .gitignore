@@ -10,7 +10,6 @@ __pycache__/
 .env
 
 # Local reference documents
-/README.md
 /AGENTS.md
 /SPEC.md
 /ARCHITECTURE.md
