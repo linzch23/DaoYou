@@ -2,7 +2,7 @@
 name = "daoyou-backend"
 version = "0.1.0"
 description = "FastAPI backend for DaoYou MVP"
-readme = "../README.md"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "alembic>=1.13.0",
@@ -31,4 +31,3 @@ target-version = "py310"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
-
