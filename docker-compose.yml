@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: daoyou-postgres
+    environment:
+      POSTGRES_DB: daoyou
+      POSTGRES_USER: daoyou
+      POSTGRES_PASSWORD: daoyou
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U daoyou -d daoyou"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+    container_name: daoyou-backend
+    env_file:
+      - .env.example
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend/uploads:/app/uploads
+
+volumes:
+  postgres_data:
+

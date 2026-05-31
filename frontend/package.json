@@ -1,0 +1,11 @@
+{
+  "name": "daoyou-frontend",
+  "version": "0.1.0",
+  "private": true,
+  "description": "UniApp + Vue3 frontend skeleton for DaoYou MVP",
+  "scripts": {
+    "dev": "echo \"TODO: initialize UniApp dev command\"",
+    "build": "echo \"TODO: initialize UniApp build command\""
+  }
+}
+

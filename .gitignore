@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+
+# Environment
+.env
+
+# Local uploads
+backend/uploads/images/*
+backend/uploads/docs/*
+backend/uploads/audio/*
+!backend/uploads/images/.gitkeep
+!backend/uploads/docs/.gitkeep
+!backend/uploads/audio/.gitkeep
+
+# Frontend
+node_modules/
+dist/
+unpackage/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+

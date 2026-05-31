@@ -1,0 +1,2 @@
+"""DaoYou backend application package."""
+
