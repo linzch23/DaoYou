@@ -34,8 +34,13 @@ backend/uploads/audio/*
 node_modules/
 dist/
 unpackage/
+UI风格定义.md
+UI设计说明.md
 
 # OS / editor
 .DS_Store
 .idea/
 .vscode/
+
+# AI
+CLAUDE.md
