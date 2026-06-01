@@ -1,4 +1,18 @@
-export const photoExplainMock = {
+// frontend/api/mock/photos.ts
+// POST /api/photos/explain (multipart/form-data)
+// 响应字段严格匹配 docs/API接口文档.md §8.1
+
+import type { ApiResponse } from '../types'
+
+interface PhotoExplainData {
+  photo_id: number
+  image_path: string
+  recognition_result: string
+  explanation: string
+  follow_up_questions: string[]
+}
+
+export const photoExplainMock: ApiResponse<PhotoExplainData> = {
   code: 0,
   message: 'success',
   data: {
@@ -9,4 +23,3 @@ export const photoExplainMock = {
     follow_up_questions: [],
   },
 }
-
