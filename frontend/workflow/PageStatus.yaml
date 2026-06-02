@@ -1,0 +1,360 @@
+# PageStatus.yaml — runtime state of the page-level state machine
+#
+# 目的:作为「前端自运行迭代小组」的运行时真相,被 7 个 rein 共同读写。
+#
+# 关键规则(完整定义见 workflow/AGENT_CONTRACTS.md):
+#   * 每个页面拥有独立的 Page 块
+#   * 谁负责改哪个字段,见 AGENT_CONTRACTS.md 的「文件归属矩阵」
+#   * 状态迁移必须遵循 AGENT_CONTRACTS.md 的「合法状态迁移表」
+#   * FinalStatus = Done 必须同时满足:
+#       Architecture: Pass
+#       Development:  Completed
+#       Review: { ui: Pass, spec: Pass, test: Pass }
+#
+# 注意:这个 YAML 文件由人类或 Orchestrator 创建初始 Page 块,
+#       后续由对应 rein 在每次退出前改写自己的字段。
+#       Orchestrator 自身**不修改**此文件。
+
+# ============================================================
+# Page: LoginPage  ──  示例页面,展示一个完整的状态机形状
+# ============================================================
+- Page: LoginPage
+
+  Spec:
+    status: NotStarted          # NotStarted → Completed (由 spec-writer 改写)
+    # 备注:Architecture.status 也会被 spec-writer 在「修订后」重置为 NotStarted
+    #       (见 architecture-reviewer.退出 与 spec-writer.退出)
+
+  Architecture:
+    status: NotStarted          # NotStarted → Pass / Fail (由 architecture-reviewer 改写)
+
+  Development:
+    status: NotStarted          # NotStarted → Completed (由 code-writer 在「新开发」路径改写)
+
+  Review:
+    ui:   Pending               # Pending → Pass / Fail (由 ui-reviewer 改写)
+    spec: Pending               # Pending → Pass / Fail (由 spec-auditor 改写)
+    test: Pending               # Pending → Pass / Fail (由 test-agent 改写)
+
+  FinalStatus: NotStarted       # NotStarted / InProgress / ReadyForReview / NeedReview / NeedFix / Done
+                                # NotStarted        - 初始
+                                # InProgress        - Orchestrator 已派发,中间态
+                                # ReadyForReview    - code-writer 完成新开发,等待 3 个 reviewer 并行
+                                # NeedReview        - code-writer 修完 Issue,等待 3 个 reviewer 重审
+                                # NeedFix           - 任意 reviewer Fail,等待 code-writer 修
+                                # Done              - 三审全过 + 架构 Pass + 开发 Completed
+# ============================================================
+# Guide App Pages
+# ============================================================
+
+- Page: OnboardingPage
+
+  Spec:
+    status: Completed         # 2026-06-02: v0.2.0 修订完成,按 PD-001 方案 A 改 UI 简化(单步兴趣 5 选 1)
+
+  Architecture:
+    status: Pass              # 2026-06-02: v0.2.0 复核通过;9 项审核项全部 ✓;issues/Arch/OnboardingPage-001.md 改 Resolved
+
+  Development:
+    status: Completed         # 2026-06-02: v0.2.0 新开发完成;6 必需文件 + 4 基础设施文件落地;4 态(s interests/submitting/completed, error 通过 submitError 表达)就绪
+
+  Review:
+    ui: Pass                # 2026-06-02 15:46: ui-reviewer 重审通过;5 项(1 Critical + 4 Minor)全部修复 — skip-button 88rpx / cell-hover 0.96 / step-container 0.1s / grid 末行居中 / error-retry 88rpx;7 项审核清单全过;issues/UI/OnboardingPage-001.md 改 Resolved
+    spec: Pass                # 2026-06-02 15:55: spec-auditor v0.2.0 重审通过;5 项核对(AC/§6.1 PUT 体/§7.1 Store/§5 4 态/§8 Props·Emits·Slots)全过;UI 001 + Test 001 修复均为纯 CSS,未触动契约;未创建 issues/Spec/OnboardingPage-002.md
+    test: Pass                # 2026-06-02 15:53: test-agent 8 类场景重审全过(Loading State scale(0.96) 已补,见 components/NextButton.vue L101-104 新增的 .next-button-loading 规则);7 类无回归;issues/Test/OnboardingPage-001.md frontmatter 补全 + Status 改 Resolved
+
+  FinalStatus: Done              # 2026-06-02 15:55: 5 个 Done 条件全部满足(Arch=Pass, Dev=Completed, Review.ui=Pass, Review.spec=Pass, Review.test=Pass);由 spec-auditor 聚合写 Done
+
+
+# ============================================================
+
+- Page: HomePage
+
+  Spec:
+    status: Completed         # 2026-06-02: v0.1.0 写完;10 章节 + 12 AC + 5 视图态;UI/API 1:1 对齐(§6.4 已解决节);未触发 PD-001 冲突
+
+  Architecture:
+    status: Pass              # 2026-06-02: v0.1.0 复核通过;9 项审核项全部 ✓;issues/Arch/HomePage-001.md 创建即 Resolved(无失败项,留 6 条补充观察给下游 reviewer)
+
+  Development:
+    status: Completed         # 2026-06-02: v0.1.0 新开发完成;5 文件(1 page + 9 components + 1 store + 1 service + 1 strings 增量)落地;5 视图态(loading/diary/trips/empty/error)+ 浮层进出 + 收藏本地持久化全部就绪
+
+  Review:
+    ui: Pass                # 2026-06-02 20:58: ui-reviewer 独立 grep 重审 issues/UI/HomePage-001.md 4 项违规全过(1C+2M+1m 全部 PASS):fix 1 SpotCard fav 改 bottom+right 8rpx(方案 B)/ fix 2 @media (min-width: 1024px) { .state-* { max-width: 640rpx; margin: 0 auto; } } / fix 3 5 处 hover scale 全 0.96(全项目 11 个命中无 0.94/0.98 残留) / fix 4 SpotCard L180+L227 border 2px→4rpx(0 个 px 残留);issue 001 frontmatter 改 Resolved + 加 ResolvedAt/ResolvedBy
+    spec: Pass                # 2026-06-02 20:40: spec-auditor 收尾完成(per orchestrator manual_retry 指令,5 项核对沿用上轮 PASS 结论不复审);YAML 验证通过:ui=Fail→Pass, test=Pass, spec=Pass, FinalStatus=NeedFix 保持
+    test: Pass                # 2026-06-02 17:39: test-agent 8 类场景全过(详细见 issues/Test/HomePage-001.md 与 outputs/home-test/deliverable.md);Happy/Boundary/Error/Loading/Empty/Network/Retry 7 类无 FAIL;Permission Failure(spec §6.1 "401 → 全局拦截器跳登录")按"本页不感知"原则判 PASS(全局拦截器属项目级缺口,不在本页 8 类内);未创建 issues/Test/HomePage-001.md(无失败项)
+
+  FinalStatus: Done              # 2026-06-02 20:58: 5 个 Done 条件全部满足(Architecture=Pass, Development=Completed, Review.ui=Pass, Review.spec=Pass, Review.test=Pass);ui-reviewer 聚合写 Done
+
+
+# ============================================================
+
+- Page: SpotDetailSheet
+
+  Spec:
+    status: Completed         # 2026-06-02: v0.1.0 写完;10 章节 + 8 US + 12 AC + 4 视图态;复用 components/SpotDetailSheet.vue(⭐ HomePage 已落地 490 行);§10 强制清单 R-1~R-9 规定 code-writer 先小幅 refactor(抽 SheetStrings / 重命名 ItemTypeEmoji)再写页面,不允许复制组件;§6.3 已解决子节登记 PD-001 触发(后端无 open_time 字段,UI 简化)
+
+  Architecture:
+    status: Pass              # 2026-06-02: v0.1.0 复核通过;9 项审核项全部 ✓;issues/Arch/SpotDetailSheet-001.md 创建即 Resolved(无失败项,留 6 条补充观察给下游 reviewer);code-writer 可直接进入开发
+
+  Development:
+    status: Completed         # 2026-06-02: v0.1.0 新开发完成;复用决策 = 先 refactor 再复用(per §10 R-1~R-9);落地文件:1 page(pages/spot-detail-sheet/index.vue,4 视图态 loading/sheet/notfound/error,3 按钮 emit 接 onNavigate/onGuide/onToggleFavorite)+ 1 私有组件(pages/spot-detail-sheet/components/_ErrorOverlay.vue,3 type + 1 emit)+ constants/strings.js 增量(SpotDetailSheetStrings 14 键 + 重命名 HomeItemTypeEmoji→ItemTypeEmoji,4 键)+ components/SpotDetailSheet.vue imports + 8 处 computed 同步更新(per R-4/R-5/R-6)+ components/SpotCard.vue imports + 1 处 computed 同步更新(per R-3 全项目 grep 替换路径);homeStore **不修改** / **不新增** getSpotById(per §7.1 YAGNI);pages.json 未创建(项目约定不创,见 deliverable §3);14 个未触 Other Page 块保持
+
+  Review:
+    ui: Pass                  # 2026-06-02 23:30: ui-reviewer 复核未过;7 项清单 5/7 通过(布局/字体/间距/颜色/动效 5 项 Pass,视觉一致性与布局合并 Pass),2 Major 失败:(1) H5 ≥1024px 内容居中 640rpx 未实现(spec §3.5+§9 AC-09+§10 NFR Compatibility,3 个文件缺 @media 1024px);(2) 44pt 触达下限 NFR 违反(spec §10 可访问性)— .sheet-close 64rpx=32pt + .sheet-drag-handle 24rpx=12pt;另有 1 Minor 留档(拖动条 spec "4rpx×36rpx" 笔误,实现 80rpx×8rpx 合 iOS 标准,4rpx=2pt 亚像素不可见);已写 issues/UI/SpotDetailSheet-001.md 详细定位 + 修复建议(含 §15.4 兼容性豁免论证)。# 2026-06-02 23:55 复审 r2 PASS(verdict Fail→Pass):code-writer sds-fix-001 23:50-23:54 落地 2 Major 修复;grep 复验:(1) `@media (min-width: 1024px)` 3 文件合计 0→3(SpotDetailSheet L503-509 约束 .sheet-content-inner/.sheet-actions,index.vue L443-448 约束 .sds-page,_ErrorOverlay L178-183 规范化 .error-overlay-inner);(2) .sheet-close 64rpx→88rpx + .sheet-drag-handle 24rpx→88rpx(SpotDetailSheet L287-304 / L266-276),5 个已 Pass 项零回归(布局/字体/间距/颜色/动效/视觉一致性 + 3 触达元素 .sheet-action/.error-overlay-button/.sheet-mask);line counts 494/425/176→510/449/184(总增 48 行 = 3 段 @media + 2 触达注释 + 触达值调整);7/7 Pass。issues/UI/SpotDetailSheet-001.md frontmatter 改 Status: Resolved(ResolvedAt/ResolvedBy 已加),issues/UI/SpotDetailSheet-002.md 已 trash(0 失败本不创 Issue)
+    spec: Pass                # 2026-06-03 00:08: spec-auditor v0.1.0 **复审 r3** PASS;2 硬 FAIL 修复全部落地:(1) AC-04 — `pages/spot-detail-sheet/index.vue:174` (parseQuery URL 缺省/空分支) + `L181` (非数字/<=0 分支) 各 1 行 `logger.info('[SpotDetailSheetPage] notfound, bad spotId', { rawSpotId: raw })`,触发时机 = onLoad parseQuery(对齐 spec §5.3.A + §9 AC-04 显式"onLoad 时立即判定");(2) AC-08 — `pages/spot-detail-sheet/index.vue:268-270` watch(() => store.today) 回调新增分支 `if (viewMode.value === 'sheet' && next === null && prev !== null) logger.warn('[SpotDetailSheetPage] today cleared mid-flight, keep sheet')`,**不切换 viewMode**(对齐 AC-08 "浮层不自动消失")。软观察 OBS-SDS-001 也顺手修了:`L384` 事件名 `toggle favorite` → `toggleFavorite` (camelCase) + `L386` 字段 `has` → `isFavorite` (对齐 spec §5.2 Step D L319)。**5 项核对无回归**:AC 12/12 PASS(原 10/12 → 12/12,2 硬 FAIL 治完;AC-09/AC-10 仍 OOS 留 ui-reviewer,已 Pass);API 8/8 + Store 7/7 + State Flow 11/11 + Component 16/16 + NFR(无 console.* leak)全过;代码 mtime `pages/spot-detail-sheet/index.vue` 23:54:42(原 23:08 → 23:53-23:54 fix 落地)其余 5 文件 mtime 不变。issues/Spec/SpotDetailSheet-001.md frontmatter 改 Status: Resolved(ResolvedAt/ResolvedBy 已加)+ 增「重审 #2 → Resolved」记录
+    test: Pass                # 2026-06-02 23:28: test-agent 8 类场景全过(8/8 PASS,0 FAIL,基于代码静态分析;无运行时证据,见 deliverable §8 备注 1);Happy(Boundary(URL 缺参/空/非数字/<=0 全 → notfound)/ Error(homeStore.error 已有 → error)/ Loading(冷启动深链 refreshAll 飞行中)/ Empty(缓存命中但 .find() 找不到)/ Network(uni.request fail → buildErrorInfo 'network')/ Retry(error 态点重试 → fetchAndDecide 闭环)/ Permission(401 → 本页不感知,项目级缺口 carve-out,同 HomePage 口径)全部按 spec 落地;未创建 issues/Test/SpotDetailSheet-001.md(无失败项);6 条软观察(S1 buildErrorInfo 缺 401 分支/S2 onMounted 兼容层/S3 重试无节流/S4 全局拦截器缺口/S5 empty 预留未用/S6 selectedSpot 重置体验)记 deliverable §4
+
+  FinalStatus: Done              # 2026-06-03 00:08 r3 聚合:5 个 Done 条件全部满足(Architecture=Pass, Development=Completed, Review.ui=Pass, Review.spec=Pass, Review.test=Pass);spec-auditor r3 改 spec Fail→Pass 后聚合写 Done;SpotDetailSheet 全页 Done,问题清单 issues/Spec/SpotDetailSheet-001.md 改 Resolved
+
+
+# ============================================================
+
+- Page: NewTripPage
+
+  Spec:
+    status: Completed         # 2026-06-03: v0.1.0 写完;10 章节 + 8 US + 14 AC + 6 视图态;触发 PD-001 默认路径 3 处(AI 前端模拟 / 4 选填 client-only / 草稿本地存储);code-writer 强约束 4 项(常 strings 段 / services/trips.js / pages.json 注册 / 2 个 .vue)
+
+  Architecture:
+    status: Pass              # 2026-06-03: v0.1.0 复核通过;9 项审核项全部 ✓;issues/Arch/NewTripPage-001.md 创建即 Resolved(orchestrator override: 9 项核对全 PASS,worker model stuck 在 Issue 撰写阶段,orchestrator 接管手工落 Issue + PageStatus 推进);code-writer 可直接进入开发
+
+  Development:
+    status: Completed         # 2026-06-03: v0.1.0 新开发完成;落地 7 文件(1 page + 1 私有组件 + 1 service + 1 strings 增量 + 1 routes 预声明复用 + 1 pages.json 注册 + 1 changelog 增量);6 视图态(input/analyzing/form/submitting/completed/error)+ 7 字段表单(3 必填 + 4 选填 client-only)+ AI 模拟 setTimeout + 草稿本地 storage + 3 按钮 _DraftConfirmDialog 全部就绪;homeStore / services/home / services/preferences / _ErrorBanner 全部复用,无修改
+
+  Review:
+    ui: Pass                  # 2026-06-03 03:24: ui-reviewer r2 复审 PASS(M1+M2 修复均到位,7 项清单按 r1 first-pass 结论不重审,本次只验修复);M1 响应式 — `.body-inner` L994-997 无条件 `max-width / margin` 已删(剩 padding+box-sizing),`max-width: 640rpx` 全文件 grep 仅 L1558 @media 块内 1 处(spec §3.8「移动端零变化」达成);M2 布局/10 NFR — `.btn-attach-file` L1079 `min-height` 56rpx→88rpx + L1080 注释升级为「按 NFR 优先」判定理由(spec §10 NFR 44pt 触达达成);code-writer 修复 session mtime 03:24:09(35 分钟 race 期间已二次 stat 确认稳定,详见 issues/UI/NewTripPage-001.md Status: Resolved + outputs/ntp-ui-r2/deliverable.md §1 grep 验证) # 2026-06-03 03:24: code-writer ntp-fix-001 落地 M1+M2 纯 CSS 修复(`.body-inner` 删 L995-997 三行 + `.btn-attach-file` L1082 56→88rpx,共 −3/+2 行净 −1 行 1565→1562);grep 验证:`max-width: 640rpx` 2→1(仅 @media 块)、`min-height: 56rpx` 1→0、`min-height: 88rpx` 4→5(对齐项目 44pt 标准);3 Minor 留档未动(spec-auditor 0 硬 FAIL + test-agent 0 FAIL 保持,只等 ui-reviewer r2 复审;**值 Fail/NeedFix 保持不动**,不重置 Pending 避免自动 re-dispatch 竞态)
+    spec: Pass                # 2026-06-03 02:57: spec-auditor v0.1.0 first-pass PASS;5 项核对(AC 12/12 spec-auditor 域 + 2 OOS ui-reviewer 域 / API 2/2 接口 + 错误映射 + 不调用列表 / Store 1/1 复用 + 草稿不污染 / State Flow 6 视图态 + 12 异常 + 5 草稿路径 + §5.5 算法 + §5.6 兜底 / Component 7 props/emits/slots)全过;0 硬 FAIL;5 软观察见 deliverable §5(均非阻断:2 条 code-writer 主动登记 formSubmitError 隔离 + 4 ref 缺 / 1 条 OOS 触达交 ui-reviewer / 2 条 NFR 软约束 textarea placeholder + cause 字段);未创建 issues/Spec/NewTripPage-001.md
+    test: Pass                # 2026-06-03 02:58: test-agent 8 类场景全过(8/8 PASS,0 FAIL,基于代码静态分析 + spec 逐条对照,无运行时证据,见 outputs/ntp-test/deliverable.md);Happy(2.1: "2026-08-15 到 2026-08-20 去青岛" → 提取 city/dates → POST 200 → reLaunch TripDetail)/ Boundary(2.a 空 + 2.b 非日期 + 2.c >1000 字 + 2.d AI 全失败)/ Error(3.a POST 500 → errorServer / 3.b uni.request fail → errorNetwork)/ Loading(analyzing spinner 1.5-2.5s + submitting 转圈 + completed ✓ ≤200ms + 6 态 v-if 链互斥)/ Empty(5.a 初始 input 态 + 5.b 必填红色 * L177-179/194-196/219-221 + 5.c 3 必填校验 _ErrorBanner 内联)/ Network(同 3.b 路径,不卡死)/ Retry(L745-755 onRetry → L700-740 submitTripRequest 闭环,formData 保留)/ Permission(401 → spec §6.1 "本页不感知" carve-out,项目级全局拦截器缺口)全部按 spec 落地;未创建 issues/Test/NewTripPage-001.md(0 失败);6 条软观察记 deliverable §4(S1 401 文案跨页级 / S2 正则不识别 "M月D" 简写 / S3 7 字段 vs brief 5 字段 / S4 全局拦截器项目级缺口 / S5 setTimeout(200) + fetchTrips finally 实测不严格 ≤200ms / S6 _DraftConfirmDialog 路径)
+
+  FinalStatus: Done              # 2026-06-03 03:24: ui-reviewer r2 聚合写 Done(spec+test r1 已 Pass,ui r2 改 Pass 后 5 个 Done 条件全部满足:Architecture=Pass, Development=Completed, Review.ui=Pass, Review.spec=Pass, Review.test=Pass);NewTripPage 全页 Done
+
+
+# ============================================================
+
+- Page: TripDetailPage
+
+  Spec:
+    status: NotStarted
+
+  Architecture:
+    status: NotStarted
+
+  Development:
+    status: NotStarted
+
+  Review:
+    ui: Pending
+    spec: Pending
+    test: Pending
+
+  FinalStatus: NotStarted
+
+
+# ============================================================
+
+- Page: EditTripPage
+
+  Spec:
+    status: NotStarted
+
+  Architecture:
+    status: NotStarted
+
+  Development:
+    status: NotStarted
+
+  Review:
+    ui: Pending
+    spec: Pending
+    test: Pending
+
+  FinalStatus: NotStarted
+
+
+# ============================================================
+
+- Page: PhotoGuidePage
+
+  Spec:
+    status: NotStarted
+
+  Architecture:
+    status: NotStarted
+
+  Development:
+    status: NotStarted
+
+  Review:
+    ui: Pending
+    spec: Pending
+    test: Pending
+
+  FinalStatus: NotStarted
+
+
+# ============================================================
+
+- Page: GuideResultPage
+
+  Spec:
+    status: NotStarted
+
+  Architecture:
+    status: NotStarted
+
+  Development:
+    status: NotStarted
+
+  Review:
+    ui: Pending
+    spec: Pending
+    test: Pending
+
+  FinalStatus: NotStarted
+
+
+# ============================================================
+
+- Page: MyPage
+
+  Spec:
+    status: NotStarted
+
+  Architecture:
+    status: NotStarted
+
+  Development:
+    status: NotStarted
+
+  Review:
+    ui: Pending
+    spec: Pending
+    test: Pending
+
+  FinalStatus: NotStarted
+
+
+# ============================================================
+
+- Page: PersonalProfilePage
+
+  Spec:
+    status: NotStarted
+
+  Architecture:
+    status: NotStarted
+
+  Development:
+    status: NotStarted
+
+  Review:
+    ui: Pending
+    spec: Pending
+    test: Pending
+
+  FinalStatus: NotStarted
+
+
+# ============================================================
+
+- Page: StyleSettingPage
+
+  Spec:
+    status: NotStarted
+
+  Architecture:
+    status: NotStarted
+
+  Development:
+    status: NotStarted
+
+  Review:
+    ui: Pending
+    spec: Pending
+    test: Pending
+
+  FinalStatus: NotStarted
+
+
+# ============================================================
+
+- Page: NotificationSettingPage
+
+  Spec:
+    status: NotStarted
+
+  Architecture:
+    status: NotStarted
+
+  Development:
+    status: NotStarted
+
+  Review:
+    ui: Pending
+    spec: Pending
+    test: Pending
+
+  FinalStatus: NotStarted
+
+
+# ============================================================
+
+- Page: TrashPage
+
+  Spec:
+    status: NotStarted
+
+  Architecture:
+    status: NotStarted
+
+  Development:
+    status: NotStarted
+
+  Review:
+    ui: Pending
+    spec: Pending
+    test: Pending
+
+  FinalStatus: NotStarted
+
+
+# ============================================================
+
+- Page: TripPreparePage
+
+  Spec:
+    status: NotStarted
+
+  Architecture:
+    status: NotStarted
+
+  Development:
+    status: NotStarted
+
+  Review:
+    ui: Pending
+    spec: Pending
+    test: Pending
+
+  FinalStatus: NotStarted
+
+
+# ============================================================
+
+- Page: AboutPage
+
+  Spec:
+    status: NotStarted
+
+  Architecture:
+    status: NotStarted
+
+  Development:
+    status: NotStarted
+
+  Review:
+    ui: Pending
+    spec: Pending
+    test: Pending
+
+  FinalStatus: NotStarted
