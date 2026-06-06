@@ -1,0 +1,21 @@
+node_modules/
+dist/
+unpackage/
+.DS_Store
+*.log
+.vscode/
+.idea/
+.hbuilderx/
+node_modules/
+dist/
+unpackage/
+docs/
+outputs/                                # plan-engine 交付物缓存
+.mavis/plans/                           # plan-engine 状态文件
+回收站功能API接口文档.md                 # 顶层临时文档(后续可改正式 spec 名)
+回收站功能前端实施Checklist.md           # 同上
+workflow
+issues/
+specs
+.harness/
+.opencode
