@@ -213,7 +213,30 @@ const seedTrip3: Trip = {
   days: [],
 }
 
-export const seedTrips: Trip[] = [seedTrip, seedTrip2, seedTrip3]
+// 两条「已删除」trip(specs/TrashPage.md §6.4.4 触发新增,演示 TrashPage 4 视图态中的 `loaded`)
+// 后端无 deleted_at 字段,按 id 降序近似 deleted_at 降序(per spec §6.4.3)
+const seedTrip4: Trip = {
+  id: 4,
+  user_id: SEED_USER_ID,
+  title: '西藏自驾游',
+  city: '拉萨',
+  start_date: '2026-06-01',
+  end_date: '2026-06-03',
+  status: 'deleted',
+  days: [],
+}
+const seedTrip5: Trip = {
+  id: 5,
+  user_id: SEED_USER_ID,
+  title: '上海周末',
+  city: '上海',
+  start_date: '2026-04-15',
+  end_date: '2026-04-16',
+  status: 'deleted',
+  days: [],
+}
+
+export const seedTrips: Trip[] = [seedTrip, seedTrip2, seedTrip3, seedTrip4, seedTrip5]
 
 // §6.2 列表响应用 —— 投影掉 user_id 与 days
 export const seedTripSummaries: TripSummary[] = seedTrips.map((t) => ({

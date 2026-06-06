@@ -1,0 +1,30 @@
+# stores/
+
+> **本目录由 `code-writer` 独占**。
+>
+> 存放 Pinia store。一个 feature / 业务域一个 store 文件,文件名 kebab-case。
+>
+> 推荐结构:
+
+```
+stores/
+├── user.ts              # UserStore(token / userInfo / login action)
+├── order.ts
+└── index.ts             # 统一入口(可选)
+```
+
+约束(来自 `docs/Frontend Code Style Guide.md`):
+
+- state 用 `ref` / `reactive`
+- getter 用 `computed`
+- action 用普通函数返回 `Promise`,不直接耦合 axios
+- HTTP 细节放 `services/`,store 只调 `services/<name>.<method>`
+
+**禁止**:
+
+- store 内直接 `axios.get(...)`(那是 service 的活)
+- store 直接读 / 写 `localStorage`(通过 service / util 抽象)
+- 在本目录写规格或 Issue
+- 其他 6 个 rein 修改本目录
+
+**关联契约**:`workflow/AGENT_CONTRACTS.md` §2.4 `code-writer`

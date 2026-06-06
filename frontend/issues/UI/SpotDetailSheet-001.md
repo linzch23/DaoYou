@@ -2,8 +2,10 @@
 Page: SpotDetailSheet
 IssueType: UI
 Priority: Major
-Status: InProgress
+Status: Resolved
 CreatedAt: 2026-06-02T23:30:00+08:00
+ResolvedAt: 2026-06-02T23:55:00+08:00
+ResolvedBy: users-andrew-desktop-vivo-daoyou-frontend--ui-reviewer (sds-ui-review-r2)
 IssueFile: issues/UI/SpotDetailSheet-001.md
 ---
 
@@ -179,3 +181,46 @@ spec 写"4rpx × 36rpx",4rpx = 2pt,**亚像素不可见**,显然是 spec 笔误;
 
 ## 期望修复时间
 code-writer 收到本 Issue 后,预计 1 个 commit 完成 Major #1 + Major #2 修复(均为纯 CSS 增量,改动面小,无 JS / props / emits 变更);spec-writer 在 spec-auditor 拍板后可顺手修 Minor(改 1 行)。
+
+---
+
+## 复审决议(Resolved — 2026-06-02 23:55,sds-ui-review-r2)
+
+### 修复证据(sds-ui-review-r2 复审,2026-06-02 23:55 grep 复验)
+
+| 项 | 修复前(23:30) | 修复后(23:55) | 证据 |
+|---|---|---|---|
+| `components/SpotDetailSheet.vue` line count | 494 | 510(+16) | `wc -l` |
+| `pages/spot-detail-sheet/index.vue` line count | 425 | 449(+24) | `wc -l` |
+| `pages/spot-detail-sheet/components/_ErrorOverlay.vue` line count | 176 | 184(+8) | `wc -l` |
+| `.sheet-close` 尺寸 | L289-290: 64rpx × 64rpx | L291-292: **88rpx × 88rpx** | `grep -nA 5 ".sheet-close {"` |
+| `.sheet-drag-handle` 高度 | L268: 24rpx | L268: **88rpx** | `grep -nA 5 ".sheet-drag-handle {"` |
+| `.sheet-close` `top/right` | top: 16rpx / right: 16rpx | top: **8rpx** / right: **8rpx** | 居中 88rpx 在原 64rpx 区域,视觉零变化 |
+| `@media (min-width: 1024px)` 3 文件合计 | 0 | **3 个块** | `grep -n "@media (min-width: 1024px)"` |
+| `components/SpotDetailSheet.vue` @media 约束 | (无) | **`.sheet-content-inner, .sheet-actions`** L503-509 | 内容内部居中,保留浮层全宽 |
+| `pages/spot-detail-sheet/index.vue` @media 约束 | (无) | **`.sds-page`** L443-448 | 整页居中 |
+| `_ErrorOverlay.vue` @media 约束 | (无) | **`.error-overlay-inner`** L178-183 | 写法规范化(从无条件 max-width 移入 @media) |
+| 7 项 UI 审核清单 | 5/7 Pass | **7/7 Pass** | 7 项全过,无回归 |
+
+### 修复落点对比(行号变化)
+
+| 元素 | 修复前行号 | 修复后行号 | 备注 |
+|---|---|---|---|
+| `.sheet-drag-handle { ... height: 88rpx; ... }` | L266-274(24rpx) | L266-276(88rpx,加注释) | 容器扩大,可视 ::after 80rpx×8rpx 胶囊不变 |
+| `.sheet-close { ... width/height: 88rpx; ... }` | L285-299(64rpx) | L287-304(88rpx,top/right 16→8,加注释) | 容器从 32pt 提到 44pt,✕ 字符/圆角/背景色全不变 |
+| `@media (min-width: 1024px) { .sheet-content-inner, .sheet-actions }` | (无) | L503-509 | 内容内部居中 640rpx |
+| `@media (min-width: 1024px) { .sds-page }` | (无) | L443-448 | 整页居中 640rpx |
+| `@media (min-width: 1024px) { .error-overlay-inner }` | (无,`max-width: 640rpx` 在 L108 无条件) | L178-183(规范化,移动端零变化) | 写法合规化 |
+
+### 视觉回归核对
+- 移动端(< 1024px)所有变化仅在 `>= 1024px` 媒体查询内,**移动端零变化** ✓
+- `.sheet-close` 88rpx 居中在原 64rpx 区域(注释 L293-295 明确说明),**✕ 字符 28rpx + 圆角 50% + 背景色 0.08 透明度**全部保留,无视觉变化
+- `.sheet-drag-handle` 24rpx → 88rpx,**可视 ::after 80rpx × 8rpx 胶囊零变化**,周围透明触达区扩大(注释 L269-270 明确说明)
+- 5 个已 Pass 项(布局/字体/间距/颜色/动效/视觉一致性)零回归(`.sheet-action` min-height 88rpx / `.error-overlay-button` min-height 88rpx / `.sheet-mask` 全屏 / 4 处动画 / 6 色 Shanshui 调色板 全部沿用)
+
+### 同步改善
+- HomePage v0.1.0 中同 `components/SpotDetailSheet.vue` 3 处调用点(`state-diary` / `state-trips` / `state-error` 中的 `<SpotDetailSheet>`)获得**正向 accessibility 改进**(close 32pt→44pt / drag-handle 12pt→44pt),符合 §15.4 "正向改进"豁免精神(详见 issue body 上文 §15.4 兼容性说明)
+
+### 结论
+**Status: Resolved** — 2 Major 全部修复,无回归,7/7 Pass。issues/UI/SpotDetailSheet-002.md 已 trash(0 失败本不创 Issue;初版 r2 文件创建时 mtime 早于 code-writer 落盘,见 r2 deliverable §1 时间线)。
+
