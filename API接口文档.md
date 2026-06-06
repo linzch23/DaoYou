@@ -73,29 +73,32 @@ MVP 暂不实现完整登录注册，默认使用：
 + 涉及数据库字段的 API 变化必须同步数据库负责人。
 
 ## 2. 接口总览
-| 模块 | 方法 | 路径 | 说明 | 前端直接调用 | 调用 Agent |
-| --- | --- | --- | --- | --- | --- |
-| 健康检查 | GET | `/health` | 检查后端服务 | 是 | 否 |
-| 首页 | GET | `/api/home/today` | 今日行程和未读提醒 | 是 | 否 |
-| 行程 | POST | `/api/trips` | 创建旅行 | 是 | 否 |
-| 行程 | GET | `/api/trips` | 获取旅行列表 | 是 | 否 |
-| 行程 | GET | `/api/trips/{trip_id}` | 获取旅行详情 | 是 | 否 |
-| 行程 | PUT | `/api/trips/{trip_id}` | 更新旅行 | 是 | 否 |
-| 行程 | DELETE | `/api/trips/{trip_id}` | 删除旅行 | 是 | 否 |
-| 行程日 | POST | `/api/trips/{trip_id}/days` | 创建行程日 | 是 | 否 |
-| 行程节点 | POST | `/api/trip-items` | 创建行程节点 | 是 | 否 |
-| 行程节点 | PUT | `/api/trip-items/{item_id}` | 更新行程节点 | 是 | 否 |
-| 行程节点 | DELETE | `/api/trip-items/{item_id}` | 删除行程节点 | 是 | 否 |
-| 对话 | POST | `/api/chat` | 发送消息并获取回复 | 是 | 是 |
-| 对话 | GET | `/api/chat/history` | 查询聊天历史 | 是 | 否 |
-| 拍照讲解 | POST | `/api/photos/explain` | 上传图片并生成讲解 | 是 | 是 |
-| 提醒 | POST | `/api/reminders/check` | 检查行程风险 | 是 | 是 |
-| 提醒 | GET | `/api/reminders` | 查询提醒列表 | 是 | 否 |
-| 改线 | POST | `/api/trips/{trip_id}/replan` | 生成改线草案 | 是 | 是 |
-| 改线 | POST | `/api/trips/{trip_id}/apply-plan` | 应用改线方案 | 是 | 否 |
-| 偏好 | GET | `/api/preferences` | 查询用户偏好 | 是 | 否 |
-| 偏好 | PUT | `/api/preferences` | 更新用户偏好 | 是 | 否 |
-| 记忆 | POST | `/api/memory/summary` | 总结用户记忆 | 可选 | 是 |
+| 模块   | 方法     | 路径                                   | 说明            | 前端直接调用 | 调用 Agent |
+| ---- | ------ | ------------------------------------ | ------------- | ------ | -------- |
+| 健康检查 | GET    | `/health`                            | 检查后端服务        | 是      | 否        |
+| 首页   | GET    | `/api/home/today`                    | 今日行程和未读提醒     | 是      | 否        |
+| 行程   | POST   | `/api/trips`                         | 创建旅行          | 是      | 否        |
+| 行程   | GET    | `/api/trips`                         | 获取旅行列表        | 是      | 否        |
+| 行程   | GET    | `/api/trips/{trip_id}`               | 获取旅行详情        | 是      | 否        |
+| 行程   | PUT    | `/api/trips/{trip_id}`               | 更新旅行          | 是      | 否        |
+| 行程   | DELETE | `/api/trips/{trip_id}`               | 将旅行移入回收站（软删除） | 是      | 否        |
+| 回收站  | GET    | `/api/trash/trips`                   | 查询回收站旅行列表     | 是      | 否        |
+| 回收站  | POST   | `/api/trash/trips/{trip_id}/restore` | 从回收站恢复旅行      | 是      | 否        |
+| 回收站  | DELETE | `/api/trash/trips/{trip_id}`         | 手动永久删除旅行      | 是      | 否        |
+| 行程日  | POST   | `/api/trips/{trip_id}/days`          | 创建行程日         | 是      | 否        |
+| 行程节点 | POST   | `/api/trip-items`                    | 创建行程节点        | 是      | 否        |
+| 行程节点 | PUT    | `/api/trip-items/{item_id}`          | 更新行程节点        | 是      | 否        |
+| 行程节点 | DELETE | `/api/trip-items/{item_id}`          | 删除行程节点        | 是      | 否        |
+| 对话   | POST   | `/api/chat`                          | 发送消息并获取回复     | 是      | 是        |
+| 对话   | GET    | `/api/chat/history`                  | 查询聊天历史        | 是      | 否        |
+| 拍照讲解 | POST   | `/api/photos/explain`                | 上传图片并生成讲解     | 是      | 是        |
+| 提醒   | POST   | `/api/reminders/check`               | 检查行程风险        | 是      | 是        |
+| 提醒   | GET    | `/api/reminders`                     | 查询提醒列表        | 是      | 否        |
+| 改线   | POST   | `/api/trips/{trip_id}/replan`        | 生成改线草案        | 是      | 是        |
+| 改线   | POST   | `/api/trips/{trip_id}/apply-plan`    | 应用改线方案        | 是      | 否        |
+| 偏好   | GET    | `/api/preferences`                   | 查询用户偏好        | 是      | 否        |
+| 偏好   | PUT    | `/api/preferences`                   | 更新用户偏好        | 是      | 否        |
+| 记忆   | POST   | `/api/memory/summary`                | 总结用户记忆        | 可选     | 是        |
 
 
 ## 3. 通用数据结构
@@ -108,21 +111,23 @@ MVP 暂不实现完整登录注册，默认使用：
   "city": "大连",
   "start_date": "2026-07-01",
   "end_date": "2026-07-03",
-  "status": "active"
+  "status": "active",
+  "deleted_at": null
 }
 ```
 
 字段说明：
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| id | int | 旅行 ID |
-| user_id | int | 用户 ID |
-| title | string | 旅行标题 |
-| city | string | 城市 |
-| start_date | string | 开始日期 |
-| end_date | string | 结束日期 |
-| status | string | `draft` / `active` / `finished`/ `deleted` |
+| 字段         | 类型             | 说明                                                      |
+| ---------- | -------------- | ------------------------------------------------------- |
+| id         | int            | 旅行 ID                                                   |
+| user_id    | int            | 用户 ID                                                   |
+| title      | string         | 旅行标题                                                    |
+| city       | string         | 城市                                                      |
+| start_date | string         | 开始日期                                                    |
+| end_date   | string         | 结束日期                                                    |
+| status     | string         | 业务生命周期状态：`draft` / `active` / `finished`                |
+| deleted_at | string \| null | ISO 8601 时间。进入回收站的时间；`null` 表示正常旅行。`status` 不再承担“已删除”语义 |
 
 
 ### 3.2 TripDay
@@ -155,10 +160,10 @@ MVP 暂不实现完整登录注册，默认使用：
 
 字段说明：
 
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
+| 字段        | 类型     | 说明                                         |
+| --------- | ------ | ------------------------------------------ |
 | item_type | string | `attraction` / `food` / `rest` / `traffic` |
-| status | string | `planned` / `done` / `skipped` / `changed` |
+| status    | string | `planned` / `done` / `skipped` / `changed` |
 
 
 ### 3.4 Location
@@ -398,7 +403,16 @@ GET /api/trips?user_id=1
 ```
 
 ### 6.5 DELETE `/api/trips/{trip_id}`
-删除旅行。
+将正常旅行移入回收站（软删除）。
+
+行为：
+
++ 校验旅行存在且属于当前用户。
++ 校验旅行当前不在回收站（`deleted_at IS NULL`），否则返回 `4000` 业务错误。
++ 将 `deleted_at` 设置为当前时间。
++ 不修改 `status`。
++ 不删除关联数据（`trip_days`、`trip_items`、`chat_messages`、`photo_records`、`notifications` 保留）。
++ 回收站列表、恢复和永久删除请走本章 6.10–6.12 接口。
 
 查询参数：
 
@@ -407,14 +421,10 @@ GET /api/trips?user_id=1
 | user_id | int | 是 | 用户 ID |
 
 
-请求体：
+请求示例：
 
-```json
-{
-  "user_id": 1,
-  "trip_id": 1,
-  
-}
+```latex
+DELETE /api/trips/1?user_id=1
 ```
 
 响应示例：
@@ -424,7 +434,8 @@ GET /api/trips?user_id=1
   "code": 0,
   "message": "success",
   "data": {
-    "deleted": true
+    "deleted": true,
+    "deleted_at": "2026-06-04T10:00:00+08:00"
   }
 }
 ```
@@ -546,6 +557,137 @@ GET /api/trips?user_id=1
   "message": "success",
   "data": {
     "deleted": true
+  }
+}
+```
+
+### 6.10 GET `/api/trash/trips`
+查询当前用户回收站中的旅行列表。
+
+行为：
+
++ 只返回 `deleted_at IS NOT NULL` 的旅行，默认按 `deleted_at` 降序排列。
++ 不返回完整的 `days` 和 `items`，避免响应过大。
++ 已删除旅行在所有其他业务接口中视为不存在。
+
+查询参数：
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| user_id | int | 是 | 用户 ID |
+
+
+请求示例：
+
+```latex
+GET /api/trash/trips?user_id=1
+```
+
+响应示例：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "trips": [
+      {
+        "id": 1,
+        "title": "大连三日游",
+        "city": "大连",
+        "start_date": "2026-07-01",
+        "end_date": "2026-07-03",
+        "status": "active",
+        "deleted_at": "2026-06-04T10:00:00+08:00"
+      }
+    ]
+  }
+}
+```
+
+### 6.11 POST `/api/trash/trips/{trip_id}/restore`
+从回收站恢复旅行到正常列表。
+
+行为：
+
++ 校验旅行存在且属于当前用户。
++ 校验旅行当前位于回收站（`deleted_at IS NOT NULL`），否则返回 `4000` 业务错误。
++ 将 `deleted_at` 设置为 `NULL`。
++ 旅行删除前的 `status` 和所有关联数据（行程日、节点、聊天、照片、提醒）保持不变。
+
+路径参数：
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| trip_id | int | 旅行 ID |
+
+
+请求体：
+
+```json
+{
+  "user_id": 1
+}
+```
+
+字段说明：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| user_id | int | 是 | 用户 ID |
+
+
+响应示例：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "restored": true
+  }
+}
+```
+
+### 6.12 DELETE `/api/trash/trips/{trip_id}`
+从回收站手动永久删除旅行及其所有关联数据。
+
+行为：
+
++ 校验旅行存在且属于当前用户。
++ 只允许永久删除 `deleted_at IS NOT NULL` 的旅行，否则返回 `4000` 业务错误。
++ 物理删除旅行记录，并通过数据库外键级联清理 `trip_days`、`trip_items`、`chat_messages`、`photo_records`、`notifications`。
++ 删除 `photo_records` 引用的图片文件（`backend/uploads/images/` 内的文件），文件删除失败不阻塞数据库事务。
++ 操作不可恢复。
+
+路径参数：
+
+| 参数 | 类型 | 说明 |
+| --- | --- | --- |
+| trip_id | int | 旅行 ID |
+
+
+查询参数：
+
+| 参数 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| user_id | int | 是 | 用户 ID |
+
+
+请求示例：
+
+```latex
+DELETE /api/trash/trips/1?user_id=1
+```
+
+响应示例：
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "permanently_deleted": true
   }
 }
 ```
@@ -1061,6 +1203,11 @@ Mock 原则：
 11. 检查提醒。
 12. 生成改线草案。
 13. 应用改线方案。
+14. 将旅行移入回收站（验证 `deleted_at` 已设置、`status` 不变、关联数据保留）。
+15. 查询回收站旅行列表（仅返回当前用户的已删除旅行，按 `deleted_at` 降序）。
+16. 从回收站恢复旅行（验证 `deleted_at` 置空、关联数据仍可用）。
+17. 手动永久删除回收站旅行（验证数据库级联清理与本地图片文件清理）。
+18. 关联业务访问已删除旅行应被拒绝：详情、首页、聊天、聊天历史、拍照讲解、提醒检查、提醒列表、行程日/节点 CRUD、改线草案与改线应用。
 
 每个核心接口至少覆盖：
 
