@@ -39,5 +39,25 @@ REPLAN_PROMPT = """
 1. 只生成草案，不直接修改数据库。
 2. 说明调整理由。
 3. 新增行程项字段兼容前端：title、item_type、start_time、end_time、address、notes。
-4. 输出 JSON，字段为 draft_id、summary、reason、new_items、removed_item_ids。
+4. 只输出一个 JSON 对象，不要输出解释文字，不要使用 Markdown 代码块，不要使用 ```json 包裹。
+5. JSON 字段固定为 draft_id、summary、reason、new_items、removed_item_ids。
+6. new_items 至少包含 title、item_type、start_time、end_time、address、notes。
+
+输出示例：
+{
+  "draft_id": "draft_llm_001",
+  "summary": "建议取消较远的户外景点，改为附近咖啡馆休息。",
+  "reason": "用户表达疲惫，希望减少步行和远距离移动。",
+  "new_items": [
+    {
+      "title": "附近咖啡馆休息",
+      "item_type": "rest",
+      "start_time": "14:30",
+      "end_time": "15:30",
+      "address": "当前位置附近",
+      "notes": "减少步行，适合恢复体力"
+    }
+  ],
+  "removed_item_ids": [3]
+}
 """

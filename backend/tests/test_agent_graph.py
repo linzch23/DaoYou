@@ -1,7 +1,10 @@
+from app.agent import llm
 from app.agent.graph import run_agent
 
 
-def test_chat_agent_returns_reply() -> None:
+def test_chat_agent_returns_reply(monkeypatch) -> None:
+    monkeypatch.setattr("app.agent.nodes.call_llm", lambda messages: None)
+
     result = run_agent(
         {
             "user_id": 1,
@@ -15,6 +18,72 @@ def test_chat_agent_returns_reply() -> None:
     assert result["intent"] == "chat"
     assert result["reply"]
     assert isinstance(result["follow_up_questions"], list)
+
+
+def test_chat_agent_uses_llm_when_available(monkeypatch) -> None:
+    def fake_call_llm(messages: list[dict[str, str]]) -> str:
+        return '{"reply": "这是模型生成的旅行建议。", "follow_up_questions": ["要继续优化吗？"]}'
+
+    monkeypatch.setattr("app.agent.nodes.call_llm", fake_call_llm)
+
+    result = run_agent(
+        {
+            "user_id": 1,
+            "trip_id": 1,
+            "user_message": "今天下午怎么安排？",
+            "intent_hint": "chat",
+        }
+    )
+
+    assert result["intent"] == "chat"
+    assert result["reply"] == "这是模型生成的旅行建议。"
+    assert result["follow_up_questions"] == ["要继续优化吗？"]
+
+
+def test_vivo_auth_headers_include_required_fields() -> None:
+    headers = llm._build_vivo_auth_headers(
+        method="POST",
+        uri="/vivogpt/completions",
+        query={"requestId": "req_001"},
+        app_id="demo_app_id",
+        app_key="demo_app_key",
+        timestamp="1710000000",
+        nonce="12345678",
+    )
+
+    assert headers["X-AI-GATEWAY-APP-ID"] == "demo_app_id"
+    assert headers["X-AI-GATEWAY-TIMESTAMP"] == "1710000000"
+    assert headers["X-AI-GATEWAY-NONCE"] == "12345678"
+    assert headers["X-AI-GATEWAY-SIGNATURE"]
+
+
+def test_vivo_llm_returns_content(monkeypatch) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"code": 0, "data": {"content": "蓝心模型生成的旅行建议。"}}
+
+    def fake_post(*args, **kwargs) -> FakeResponse:
+        return FakeResponse()
+
+    monkeypatch.setattr(llm.settings, "llm_provider", "vivo")
+    monkeypatch.setattr(llm.settings, "vivo_app_id", "demo_app_id")
+    monkeypatch.setattr(llm.settings, "vivo_app_key", "demo_app_key")
+    monkeypatch.setattr(llm.httpx, "post", fake_post)
+
+    result = llm.call_llm([{"role": "user", "content": "下午怎么安排？"}])
+
+    assert result == "蓝心模型生成的旅行建议。"
+
+
+def test_vivo_llm_returns_none_without_credentials(monkeypatch) -> None:
+    monkeypatch.setattr(llm.settings, "llm_provider", "vivo")
+    monkeypatch.setattr(llm.settings, "vivo_app_id", "")
+    monkeypatch.setattr(llm.settings, "vivo_app_key", "")
+
+    assert llm.call_llm([{"role": "user", "content": "下午怎么安排？"}]) is None
 
 
 def test_photo_agent_returns_explanation() -> None:
@@ -48,7 +117,9 @@ def test_reminder_agent_returns_risk_payload() -> None:
     assert result["structured_data"]["reminder"]["type"] in {"departure", "conflict"}
 
 
-def test_replan_agent_returns_trip_item_action_options() -> None:
+def test_replan_agent_returns_draft_items(monkeypatch) -> None:
+    monkeypatch.setattr("app.agent.nodes.call_llm", lambda messages: None)
+
     result = run_agent(
         {
             "user_id": 1,
@@ -59,9 +130,95 @@ def test_replan_agent_returns_trip_item_action_options() -> None:
     )
 
     assert result["intent"] == "replan"
-    assert result["action_options"]
-    option = result["action_options"][0]
-    assert option["operation"] == "update_trip_item"
-    assert option["item_id"] == 3
-    assert option["payload"]["city"] == "大连"
-    assert option["payload"]["status"] == "changed"
+    assert result["structured_data"]["draft_id"] == "draft_001"
+    assert result["structured_data"]["new_items"]
+
+
+def test_replan_agent_uses_llm_payload_when_valid(monkeypatch) -> None:
+    def fake_call_llm(messages: list[dict[str, str]]) -> str:
+        return (
+            '{"draft_id":"draft_llm_001","summary":"模型建议改去室内展馆。",'
+            '"reason":"用户表达疲惫，室内路线更轻松。",'
+            '"new_items":[{"title":"室内展馆","item_type":"attraction"}],'
+            '"removed_item_ids":[3]}'
+        )
+
+    monkeypatch.setattr("app.agent.nodes.call_llm", fake_call_llm)
+
+    result = run_agent(
+        {
+            "user_id": 1,
+            "trip_id": 1,
+            "user_message": "我累了，帮我换一个轻松点的安排。",
+            "intent_hint": "replan",
+        }
+    )
+
+    assert result["intent"] == "replan"
+    assert result["structured_data"]["draft_id"] == "draft_llm_001"
+    assert result["structured_data"]["new_items"][0]["title"] == "室内展馆"
+
+
+def test_replan_agent_parses_markdown_json_payload(monkeypatch) -> None:
+    def fake_call_llm(messages: list[dict[str, str]]) -> str:
+        return (
+            '```json\n{"draft_id":"draft_markdown_001","summary":"模型建议改去书店休息。",'
+            '"reason":"用户疲惫，书店更安静。",'
+            '"new_items":[{"title":"安静书店","item_type":"rest"}],'
+            '"removed_item_ids":[3]}\n```'
+        )
+
+    monkeypatch.setattr("app.agent.nodes.call_llm", fake_call_llm)
+
+    result = run_agent(
+        {
+            "user_id": 1,
+            "trip_id": 1,
+            "user_message": "我累了，帮我换一个轻松点的安排。",
+            "intent_hint": "replan",
+        }
+    )
+
+    assert result["structured_data"]["draft_id"] == "draft_markdown_001"
+    assert result["structured_data"]["new_items"][0]["title"] == "安静书店"
+
+
+def test_replan_agent_extracts_json_from_text_payload(monkeypatch) -> None:
+    def fake_call_llm(messages: list[dict[str, str]]) -> str:
+        return (
+            '好的，方案如下：{"draft_id":"draft_text_001","summary":"模型建议改去茶馆。",'
+            '"reason":"茶馆适合坐下休息。",'
+            '"new_items":[{"title":"附近茶馆","item_type":"rest"}],'
+            '"removed_item_ids":[3]}'
+        )
+
+    monkeypatch.setattr("app.agent.nodes.call_llm", fake_call_llm)
+
+    result = run_agent(
+        {
+            "user_id": 1,
+            "trip_id": 1,
+            "user_message": "我累了，帮我换一个轻松点的安排。",
+            "intent_hint": "replan",
+        }
+    )
+
+    assert result["structured_data"]["draft_id"] == "draft_text_001"
+    assert result["structured_data"]["new_items"][0]["title"] == "附近茶馆"
+
+
+def test_replan_agent_falls_back_when_llm_payload_invalid(monkeypatch) -> None:
+    monkeypatch.setattr("app.agent.nodes.call_llm", lambda messages: "这不是 JSON")
+
+    result = run_agent(
+        {
+            "user_id": 1,
+            "trip_id": 1,
+            "user_message": "我累了，帮我换一个轻松点的安排。",
+            "intent_hint": "replan",
+        }
+    )
+
+    assert result["intent"] == "replan"
+    assert result["structured_data"]["draft_id"] == "draft_001"
+    assert result["structured_data"]["new_items"][0]["title"] == "附近咖啡馆休息"
