@@ -834,8 +834,8 @@ async function onDialogConfirm() {
     } catch (err) {
       logger.warn('[TripDetailPage] fetchTrips after delete failed', err)
     }
-    // 跳回收站页(沿用 docs/交互设计.md §7.4 软删除规则)
-    uni.reLaunch({ url: AppRoutes.Trash })
+    // 跳首页(MVP 简化:不强制引导用户进回收站,沿 specs/TripDetailPage.md §1.4 + §9 AC-06)
+    uni.reLaunch({ url: AppRoutes.Home })
   } catch (err) {
     uni.hideLoading()
     logger.error('[TripDetailPage] delete failed', err)
