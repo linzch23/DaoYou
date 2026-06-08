@@ -11,8 +11,9 @@ def send_chat_message(payload: ChatRequest) -> dict[str, object]:
             "user_id": payload.user_id,
             "trip_id": payload.trip_id,
             "user_message": payload.message,
-            "intent_hint": "chat",
-            "current_location": payload.current_location or {},
+            "current_location": (
+                payload.current_location.model_dump() if payload.current_location else {}
+            ),
             "current_trip": get_trip_detail(user_id=payload.user_id, trip_id=payload.trip_id),
             "user_preferences": DEFAULT_PREFERENCES,
             "chat_history": [],
@@ -21,6 +22,7 @@ def send_chat_message(payload: ChatRequest) -> dict[str, object]:
     return {
         "reply": agent_result["reply"],
         "intent": agent_result["intent"],
+        "action_options": agent_result["action_options"],
         "follow_up_questions": agent_result["follow_up_questions"],
     }
 

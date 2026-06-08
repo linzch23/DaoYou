@@ -19,6 +19,7 @@ class AgentState(TypedDict, total=False):
     tool_results: dict[str, object]
     intent: str
     structured_data: dict[str, object]
+    action_options: list[dict[str, object]]
     follow_up_questions: list[str]
     # graph.py 的 run_agent 只读取 final_response 作为对 service 层的统一返回。
     final_response: dict[str, object]

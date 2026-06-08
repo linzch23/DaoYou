@@ -48,7 +48,7 @@ def test_reminder_agent_returns_risk_payload() -> None:
     assert result["structured_data"]["reminder"]["type"] in {"departure", "conflict"}
 
 
-def test_replan_agent_returns_draft_items() -> None:
+def test_replan_agent_returns_trip_item_action_options() -> None:
     result = run_agent(
         {
             "user_id": 1,
@@ -59,5 +59,9 @@ def test_replan_agent_returns_draft_items() -> None:
     )
 
     assert result["intent"] == "replan"
-    assert result["structured_data"]["draft_id"] == "draft_001"
-    assert result["structured_data"]["new_items"]
+    assert result["action_options"]
+    option = result["action_options"][0]
+    assert option["operation"] == "update_trip_item"
+    assert option["item_id"] == 3
+    assert option["payload"]["city"] == "大连"
+    assert option["payload"]["status"] == "changed"

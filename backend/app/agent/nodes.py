@@ -1,5 +1,6 @@
 from app.agent.state import AgentState
 from app.agent.tools import (
+    find_replan_target,
     map_tool,
     memory_tool,
     ocr_tool,
@@ -43,7 +44,7 @@ def chat_response_node(state: AgentState) -> AgentState:
     final_response = {
         "intent": "chat",
         "reply": reply,
-        "structured_data": {},
+        "action_options": [],
         "follow_up_questions": [
             "要不要帮你把下午改轻松一点？",
             "需要我推荐附近适合休息的地方吗？",
@@ -79,6 +80,7 @@ def photo_explain_node(state: AgentState) -> AgentState:
     final_response = {
         "intent": "photo_explain",
         "reply": explanation,
+        "action_options": [],
         "structured_data": structured_data,
         "follow_up_questions": [
             "这里怎么拍照好看？",
@@ -89,6 +91,7 @@ def photo_explain_node(state: AgentState) -> AgentState:
     return {
         **state,
         "tool_results": {"vision": vision_result, "ocr": ocr_result},
+        "structured_data": structured_data,
         "final_response": final_response,
     }
 
@@ -101,49 +104,67 @@ def reminder_node(state: AgentState) -> AgentState:
     final_response = {
         "intent": "reminder",
         "reply": reply,
+        "action_options": [],
         "structured_data": reminder_result,
         "follow_up_questions": [],
     }
     return {
         **state,
         "tool_results": {"reminder": reminder_result},
+        "structured_data": reminder_result,
         "final_response": final_response,
     }
 
 
-# 动态改线节点：根据用户临时需求、地图和天气工具结果生成改线草案。
+# 动态改线节点：在 Chat 流程内生成可选的行程节点更新参数，不直接修改数据库。
 def replan_node(state: AgentState) -> AgentState:
     trip = trip_tool(state)
     preferences = memory_tool(state)
     location = state.get("current_location") or {}
     map_result = map_tool(origin=location, keyword="附近咖啡馆")
-    weather_result = weather_tool(city=str(trip.get("city") or "大连"))
-    new_item = map_result["recommended_place"]
+    target_item = find_replan_target(trip)
+    city = str(target_item.get("city") or "大连")
+    weather_result = weather_tool(city=city)
+    new_item = dict(map_result["recommended_place"])
+    new_item["city"] = city
 
     reason = "用户当前偏好慢节奏和少步行，原计划下午路线较远。"
     if "less_walking" not in preferences.get("special_needs", []):
         reason = "当前请求表达了降低强度的需求，因此建议减少远距离移动。"
 
-    structured_data = {
-        "draft_id": "draft_001",
-        "summary": "建议取消较远的户外景点，改为附近咖啡馆休息。",
-        "reason": reason,
-        "new_items": [new_item],
-        "removed_item_ids": [3],
-    }
-    reply = "我建议把较远的户外景点换成附近咖啡馆休息，再保留傍晚海边散步。"
+    item_id = int(target_item.get("id") or 3)
+    action_options = [
+        {
+            "option_id": "option_001",
+            "label": "改为附近咖啡馆休息",
+            "description": reason,
+            "operation": "update_trip_item",
+            "item_id": item_id,
+            "payload": new_item,
+        },
+        {
+            "option_id": "option_002",
+            "label": "跳过下一站",
+            "description": "直接将下一站标记为跳过。",
+            "operation": "update_trip_item",
+            "item_id": item_id,
+            "payload": {
+                "status": "skipped",
+                "notes": "用户临时取消该安排",
+            },
+        },
+    ]
+    reply = "我建议把较远的户外景点换成附近咖啡馆休息，也可以直接跳过下一站。"
     final_response = {
         "intent": "replan",
         "reply": reply,
-        "structured_data": structured_data,
-        "follow_up_questions": [
-            "要应用这个改线方案吗？",
-            "要不要换成室内博物馆方案？",
-        ],
+        "action_options": action_options,
+        "follow_up_questions": [],
     }
     return {
         **state,
         "tool_results": {"map": map_result, "weather": weather_result},
+        "action_options": action_options,
         "final_response": final_response,
     }
 
