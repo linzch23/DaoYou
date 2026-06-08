@@ -13,7 +13,7 @@ from app.agent.state import AgentState
 FALLBACK_RESPONSE = {
     "intent": "chat",
     "reply": "导友暂时没能生成完整回复，但我会继续帮你看行程和时间安排。",
-    "structured_data": {},
+    "action_options": [],
     "follow_up_questions": [],
 }
 
@@ -69,6 +69,7 @@ def run_agent(state: AgentState) -> dict[str, object]:
 
     response.setdefault("intent", "chat")
     response.setdefault("reply", FALLBACK_RESPONSE["reply"])
+    response.setdefault("action_options", [])
     response.setdefault("structured_data", {})
     response.setdefault("follow_up_questions", [])
     return response

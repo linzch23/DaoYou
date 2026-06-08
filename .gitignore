@@ -17,9 +17,7 @@ __pycache__/
 /STATUS.md
 /PROGRESS.md
 /BACKEND_DEVELOPMENT_FLOW.md
-/docs/
 /frontend/README.md
-/导友-*.md
 /应用赛道初赛作品策划*.pdf
 
 # Local uploads
@@ -53,4 +51,3 @@ fronted/.opencode
 
 # AI
 CLAUDE.md
-

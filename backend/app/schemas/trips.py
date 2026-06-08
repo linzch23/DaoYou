@@ -1,10 +1,11 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 
 class CreateTripRequest(BaseModel):
     user_id: int
     title: str
-    city: str
     start_date: str
     end_date: str
 
@@ -12,7 +13,7 @@ class CreateTripRequest(BaseModel):
 class UpdateTripRequest(BaseModel):
     user_id: int
     title: str | None = None
-    status: str | None = None
+    status: Literal["draft", "active", "finished"] | None = None
 
 
 class CreateTripDayRequest(BaseModel):
@@ -25,6 +26,7 @@ class CreateTripDayRequest(BaseModel):
 class CreateTripItemRequest(BaseModel):
     user_id: int
     trip_day_id: int
+    city: str
     title: str
     item_type: str = "attraction"
     start_time: str | None = None
@@ -37,6 +39,7 @@ class CreateTripItemRequest(BaseModel):
 
 class UpdateTripItemRequest(BaseModel):
     user_id: int
+    city: str | None = None
     title: str | None = None
     item_type: str | None = None
     start_time: str | None = None
@@ -46,15 +49,3 @@ class UpdateTripItemRequest(BaseModel):
     longitude: float | None = None
     status: str | None = None
     notes: str | None = None
-
-
-class ReplanRequest(BaseModel):
-    user_id: int
-    message: str
-    current_location: dict[str, float] | None = None
-
-
-class ApplyPlanRequest(BaseModel):
-    user_id: int
-    draft_id: str
-

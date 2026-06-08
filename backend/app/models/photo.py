@@ -11,9 +11,8 @@ class PhotoRecord(Base):
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
-    trip_id: Mapped[int] = mapped_column(ForeignKey("trips.id"), index=True)
+    trip_id: Mapped[int] = mapped_column(ForeignKey("trips.id", ondelete="CASCADE"), index=True)
     image_path: Mapped[str] = mapped_column(String(500))
     recognition_result: Mapped[str | None] = mapped_column(Text, default=None)
     explanation: Mapped[str | None] = mapped_column(Text, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-

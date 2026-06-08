@@ -2,15 +2,12 @@ from fastapi import APIRouter
 
 from app.core.response import success
 from app.schemas.trips import (
-    ApplyPlanRequest,
     CreateTripDayRequest,
     CreateTripItemRequest,
     CreateTripRequest,
-    ReplanRequest,
     UpdateTripItemRequest,
     UpdateTripRequest,
 )
-from app.services.replan_service import apply_replan_draft, create_replan_draft
 from app.services.trip_service import (
     create_trip,
     create_trip_day,
@@ -69,14 +66,3 @@ def update_trip_item_endpoint(item_id: int, payload: UpdateTripItemRequest) -> d
 @router.delete("/trip-items/{item_id}")
 def delete_trip_item_endpoint(item_id: int, user_id: int) -> dict[str, object]:
     return success(delete_trip_item(user_id=user_id, item_id=item_id))
-
-
-@router.post("/trips/{trip_id}/replan")
-def create_replan_endpoint(trip_id: int, payload: ReplanRequest) -> dict[str, object]:
-    return success(create_replan_draft(trip_id=trip_id, payload=payload))
-
-
-@router.post("/trips/{trip_id}/apply-plan")
-def apply_plan_endpoint(trip_id: int, payload: ApplyPlanRequest) -> dict[str, object]:
-    return success(apply_replan_draft(trip_id=trip_id, payload=payload))
-

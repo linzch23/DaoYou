@@ -11,7 +11,9 @@ def check_reminders(payload: ReminderCheckRequest) -> dict[str, object]:
             "trip_id": payload.trip_id,
             "intent_hint": "reminder",
             "current_time": payload.current_time,
-            "current_location": payload.current_location or {},
+            "current_location": (
+                payload.current_location.model_dump() if payload.current_location else {}
+            ),
             "current_trip": get_trip_detail(user_id=payload.user_id, trip_id=payload.trip_id),
         }
     )

@@ -5,7 +5,6 @@ from app.agent.state import AgentState
 DEFAULT_TRIP = {
     "id": 1,
     "title": "大连三日游",
-    "city": "大连",
     "days": [
         {
             "day_index": 1,
@@ -13,6 +12,7 @@ DEFAULT_TRIP = {
             "items": [
                 {
                     "id": 1,
+                    "city": "大连",
                     "title": "渔人码头",
                     "item_type": "attraction",
                     "start_time": "10:00",
@@ -22,6 +22,7 @@ DEFAULT_TRIP = {
                 },
                 {
                     "id": 3,
+                    "city": "大连",
                     "title": "贝壳博物馆",
                     "item_type": "attraction",
                     "start_time": "14:30",
@@ -91,11 +92,15 @@ def map_tool(
         "distance_text": "距离下一个景点约 40 分钟路程",
         "keyword": keyword or "附近咖啡馆",
         "recommended_place": {
+            "city": "大连",
             "title": "附近咖啡馆休息",
             "item_type": "rest",
             "start_time": "14:30",
             "end_time": "15:30",
             "address": "渔人码头附近",
+            "latitude": 38.92,
+            "longitude": 121.64,
+            "status": "changed",
             "notes": "减少步行，适合恢复体力",
         },
         "origin": origin or {},
@@ -160,7 +165,28 @@ def _find_next_item(trip: dict[str, object]) -> dict[str, object]:
                         return item
     return {
         "id": 1,
+        "city": "大连",
         "title": "渔人码头",
         "start_time": "10:00",
         "address": "大连市中山区滨海路",
+    }
+
+
+def find_replan_target(trip: dict[str, object]) -> dict[str, object]:
+    days = trip.get("days")
+    if isinstance(days, list):
+        planned_items = [
+            item
+            for day in days
+            if isinstance(day, dict)
+            for item in day.get("items", [])
+            if isinstance(item, dict) and item.get("status", "planned") == "planned"
+        ]
+        if planned_items:
+            return planned_items[-1]
+    return {
+        "id": 3,
+        "city": "大连",
+        "title": "贝壳博物馆",
+        "status": "planned",
     }
