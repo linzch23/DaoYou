@@ -1,18 +1,94 @@
-# DaoYou Backend
+# 导友后端
 
-FastAPI backend scaffold for the DaoYou MVP.
+《导友》MVP 的 FastAPI 后端服务，负责业务 API、PostgreSQL 数据访问、文件上传以及 Agent 调用。
 
-## Run
+## 环境要求
+
+- Python 3.10+
+- uv
+- Docker Desktop 或 Docker Engine
+- Docker Compose
+
+## 安装依赖
 
 ```bash
 uv sync
+```
+
+## 启动后端
+
+```bash
 uv run uvicorn app.main:app --reload
 ```
 
-## Check
+服务默认运行在 `http://localhost:8000`，可通过以下地址访问：
+
+- 健康检查：`http://localhost:8000/health`
+- Swagger：`http://localhost:8000/docs`
+- ReDoc：`http://localhost:8000/redoc`
+
+## 运行检查
 
 ```bash
 uv run pytest
 uv run ruff check .
 ```
 
+## 初始化数据库
+
+PostgreSQL 通过 Docker Compose 运行，不需要在本机单独安装 PostgreSQL。先在仓库根目录启动数据库：
+
+```bash
+docker compose up -d postgres
+docker compose ps
+```
+
+当 `daoyou-postgres` 状态显示为 `healthy` 后，进入 `backend/` 执行数据库迁移：
+
+```bash
+uv run alembic upgrade head
+uv run alembic current
+```
+
+然后写入默认用户和“大连三日游”演示数据：
+
+```bash
+uv run python -m app.db.seed
+```
+
+种子脚本可以重复执行；如果演示数据已经存在，不会重复插入。
+
+## 验证数据库
+
+在仓库根目录执行：
+
+```bash
+docker compose exec postgres psql -U daoyou -d daoyou \
+  -c "SELECT id, nickname FROM users;" \
+  -c "SELECT id, title, start_date, end_date, status FROM trips;" \
+  -c "SELECT COUNT(*) AS trip_days FROM trip_days;" \
+  -c "SELECT COUNT(*) AS trip_items FROM trip_items;"
+```
+
+预期结果：
+
+- 默认用户：`id=1`，昵称为“导友演示用户”。
+- 默认旅行：`大连三日游`。
+- 行程日：3 条。
+- 行程节点：5 条。
+
+## 常用数据库命令
+
+```bash
+# 查看当前迁移版本
+uv run alembic current
+
+# 检查 SQLAlchemy 模型和迁移是否一致
+uv run alembic check
+
+# 回退一个迁移版本
+uv run alembic downgrade -1
+
+# 停止数据库容器
+docker compose stop postgres
+```
