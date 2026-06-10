@@ -1,4 +1,5 @@
 from fastapi import UploadFile
+from sqlalchemy.orm import Session
 
 from app.agent.graph import run_agent
 from app.schemas.common import Location
@@ -11,6 +12,8 @@ def explain_photo(
     trip_id: int,
     image: UploadFile,
     current_location: Location | None = None,
+    *,
+    db: Session,
 ) -> dict[str, object]:
     image_path = f"uploads/images/{image.filename or 'demo.jpg'}"
     # 成员 C 接入点：图片路径、文件名和定位信息会进入 Agent 的拍照讲解链路。
@@ -20,7 +23,7 @@ def explain_photo(
             "trip_id": trip_id,
             "intent_hint": "photo_explain",
             "current_location": current_location.model_dump() if current_location else {},
-            "current_trip": get_trip_detail(user_id=user_id, trip_id=trip_id),
+            "current_trip": get_trip_detail(user_id=user_id, trip_id=trip_id, db=db),
             "user_preferences": DEFAULT_PREFERENCES,
             "image_info": {
                 "image_path": image_path,

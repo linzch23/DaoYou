@@ -1,10 +1,14 @@
+from datetime import date
+
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
+from sqlalchemy.orm import Session
 
 from app.api.photos import parse_location_form
 from app.main import app
 from app.models.trip import Trip, TripItem
+from app.models.user import User
 from app.schemas.chat import ChatRequest
 from app.schemas.common import Location
 from app.schemas.trips import CreateTripItemRequest, CreateTripRequest, UpdateTripItemRequest
@@ -35,14 +39,27 @@ def test_independent_replan_routes_are_not_registered() -> None:
     assert "/api/trips/{trip_id}/apply-plan" not in paths
 
 
-def test_chat_replan_returns_action_options() -> None:
+def test_chat_replan_returns_action_options(db: Session) -> None:
+    db.add(User(id=1, nickname="演示用户"))
+    db.flush()
+    db.add(
+        Trip(
+            user_id=1,
+            title="大连三日游",
+            start_date=date(2026, 7, 1),
+            end_date=date(2026, 7, 3),
+            status="active",
+        )
+    )
+    db.commit()
     response = send_chat_message(
         ChatRequest(
             user_id=1,
             trip_id=1,
             message="我累了，不想去下一个景点，帮我换一个轻松点的安排。",
             current_location=Location(latitude=38.92, longitude=121.64),
-        )
+        ),
+        db=db,
     )
 
     assert response["intent"] == "replan"

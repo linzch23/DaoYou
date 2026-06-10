@@ -1,9 +1,11 @@
+from sqlalchemy.orm import Session
+
 from app.agent.graph import run_agent
 from app.schemas.reminders import ReminderCheckRequest
 from app.services.trip_service import get_trip_detail
 
 
-def check_reminders(payload: ReminderCheckRequest) -> dict[str, object]:
+def check_reminders(payload: ReminderCheckRequest, *, db: Session) -> dict[str, object]:
     # 成员 C 接入点：提醒检查只负责准备当前时间、位置和行程上下文。
     agent_result = run_agent(
         {
@@ -14,7 +16,11 @@ def check_reminders(payload: ReminderCheckRequest) -> dict[str, object]:
             "current_location": (
                 payload.current_location.model_dump() if payload.current_location else {}
             ),
-            "current_trip": get_trip_detail(user_id=payload.user_id, trip_id=payload.trip_id),
+            "current_trip": get_trip_detail(
+                user_id=payload.user_id,
+                trip_id=payload.trip_id,
+                db=db,
+            ),
         }
     )
     structured_data = dict(agent_result.get("structured_data") or {})
@@ -28,5 +34,8 @@ def list_reminders(
     user_id: int,
     trip_id: int,
     status: str | None = None,
+    *,
+    db: Session,
 ) -> dict[str, list[dict[str, object]]]:
+    del db
     return {"reminders": []}
