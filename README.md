@@ -56,10 +56,6 @@ uv run ruff check .
 
 ## 文档入口
 
-- `SPEC.md`：MVP 规格说明。
-- `ARCHITECTURE.md`：系统架构说明。
-- `PLAN.md`：开发计划。
-- `STATUS.md`：项目状态。
 - `docs/API接口文档.md`：团队 API 合同。
 - `docs/技术设计文档.md`：详细技术设计。
 - `docs/团队开发协作与项目管理文档.md`：团队协作规范。
