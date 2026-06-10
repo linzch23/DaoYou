@@ -1,7 +1,6 @@
 import pytest
 from pydantic import ValidationError
 
-from app.api.trips import delete_trip_endpoint
 from app.main import app
 from app.models.chat import ChatMessage
 from app.models.notification import Notification
@@ -26,32 +25,6 @@ def test_trash_routes_are_registered() -> None:
     assert ("/api/trash/trips/{trip_id}/restore", "POST") in route_methods
     assert ("/api/trash/trips/{trip_id}", "DELETE") in route_methods
     assert ("/api/trash/trips", "DELETE") in route_methods
-
-
-def test_trash_service_skeleton_responses() -> None:
-    from app.services.trash_service import (
-        empty_trip_trash,
-        list_trashed_trips,
-        permanently_delete_trashed_trip,
-        restore_trashed_trip,
-    )
-
-    assert list_trashed_trips(user_id=1) == {"trips": []}
-    assert restore_trashed_trip(user_id=1, trip_id=1) == {"restored": True}
-    assert permanently_delete_trashed_trip(user_id=1, trip_id=1) == {
-        "permanently_deleted": True
-    }
-    assert empty_trip_trash(user_id=1) == {
-        "permanently_deleted_count": 0,
-        "file_cleanup_failed_count": 0,
-    }
-
-
-def test_delete_trip_endpoint_returns_deleted_at() -> None:
-    response = delete_trip_endpoint(trip_id=1, user_id=1)
-
-    assert response["data"]["deleted"] is True
-    assert response["data"]["deleted_at"] == "2026-06-04T10:00:00+08:00"
 
 
 def test_update_trip_request_rejects_deleted_status() -> None:

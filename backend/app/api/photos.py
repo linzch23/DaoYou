@@ -2,6 +2,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import ValidationError
 
 from app.core.response import success
+from app.db.session import DbSession
 from app.schemas.common import Location
 from app.services.photo_service import explain_photo
 
@@ -26,6 +27,7 @@ def parse_location_form(raw_location: str | None) -> Location | None:
 
 @router.post("/explain")
 def explain(
+    db: DbSession,
     user_id: int = USER_ID_FORM,
     trip_id: int = TRIP_ID_FORM,
     image: UploadFile = IMAGE_FILE,
@@ -37,5 +39,6 @@ def explain(
             trip_id=trip_id,
             image=image,
             current_location=parse_location_form(current_location),
+            db=db,
         )
     )
