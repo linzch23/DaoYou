@@ -18,7 +18,10 @@ __pycache__/
 /PROGRESS.md
 /BACKEND_DEVELOPMENT_FLOW.md
 /frontend/README.md
-/应用赛道初赛作品策划*.pdf
+
+# Project documents are versioned
+!/docs/
+!/docs/*.md
 
 # Local uploads
 backend/uploads/images/*
