@@ -77,8 +77,8 @@ export interface ItineraryItem {
 
 // ───────────────── Trip / TripDay / TripSummary ─────────────────
 
-// §3.1 —— 多了 'deleted'
-export type TripStatus = 'draft' | 'active' | 'finished' | 'deleted'
+// §3.1 —— TripStatus 3 枚举(draft / active / finished);'deleted' 语义由 deleted_at 字段承担(specs/TrashPage.md v0.2.0)
+export type TripStatus = 'draft' | 'active' | 'finished'
 
 export interface TripDay {
   id: number
@@ -100,6 +100,7 @@ export interface Trip {
   end_date: string
   status: TripStatus
   days: TripDay[]
+  deleted_at: string | null // ISO 8601;null = 活跃;非 null = 已删(per docs/API接口文档.md §3.1,TrashPage v0.2.0)
 }
 
 // §6.2 列表响应 —— 轻量 Trip（无 user_id、无 days）
@@ -110,6 +111,7 @@ export interface TripSummary {
   start_date: string
   end_date: string
   status: TripStatus
+  deleted_at: string | null // ISO 8601;null = 活跃;非 null = 已删(TrashPage 用,per docs/API接口文档.md §3.1)
 }
 
 // ───────────────── Preferences ─────────────────

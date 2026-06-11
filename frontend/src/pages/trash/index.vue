@@ -1,11 +1,11 @@
 <!--
   pages/trash/index.vue — 回收站页(独立 route,uni.navigateTo from MyPage 菜单项 2 拉起,无 URL params)
 
-  Spec contract: specs/TrashPage.md v0.1.0
+  Spec contract: specs/TrashPage.md v0.2.0
   Route: /pages/trash/index
   入口:MyPage 菜单项 2「回收站」→ uni.navigateTo({url: AppRoutes.Trash}) 拉起
   出口:Header「←」/ 系统返回手势 → uni.navigateBack({delta:1, fail: reLaunch Home})
-        _PermanentDeleteConfirmDialog 2 按钮(取消 / 永久删除→ Toast「30 天后自动清理」+ 0 API)
+        _PermanentDeleteConfirmDialog 2 按钮(取消 / 永久删除→ trashStore.permanentlyDeleteTrip + Toast「已永久删除」)
 
   4 视图态(spec §3.4 / §4.1 / §5):
     loading — 初始 / onLoad / onShow 重新拉取(_LoadingBlock 居中转圈 + loadingText)
@@ -31,9 +31,11 @@
     - 不跨目录 import MyPage _LogoutConfirmDialog(沿用 _ 前缀私有惯例)
     - 不调 homeStore.fetchTrips()(恢复后由 HomePage onShow 自动重拉,避免本页面主动触发)
 
-  关键决策(per spec §6.4.1 + §6.4.2 + orchestrator 2026-06-04 09:15 steer 确认):
-    - listDeletedTrips 走前端 GET 全量 + JS filter `status==='deleted'` + sort by id desc(后端不支持 ?status=deleted)
-    - 永久删除 2 次确认 + Toast「30 天后自动清理」+ 0 API(等后端定时任务 30 天自动清理)
+  关键决策(per spec §6.4.1 + §6.4.2 Resolved + orchestrator 2026-06-04 09:15 steer 确认):
+    - listDeletedTrips 走 GET /api/trash/trips(后端已支持 deleted_at IS NOT NULL 过滤,v0.2.0 取代 GET 全量 + JS filter)
+    - 恢复走 POST /api/trash/trips/{trip_id}/restore(取代 v0.1.0 PUT /api/trips/{id} {status:'active'} 路径)
+    - 永久删除走 DELETE /api/trash/trips/{trip_id} + 二次确认弹窗 + Toast「已永久删除」(取代 v0.1.0 MVP 0 API 路径)
+    - 状态判定走 deleted_at!==null(取代 v0.1.0 status==='deleted' 判定,per TripStatus 4→3 枚举简化)
 -->
 <template>
   <view
@@ -294,9 +296,11 @@ async function onRestoreTap(tripId) {
  * 永久删除按钮 → 弹 _PermanentDeleteConfirmDialog(per AC-07)
  * - permanentDeleteDialogTripId = tripId
  * - permanentDeleteDialogVisible = true
+ * - 互斥:restoringId !== null / permanentlyDeletingId !== null 时拒绝(避免并发)
  */
 function onPermanentDeleteTap(tripId) {
   if (trashStore.restoringId !== null) return
+  if (trashStore.permanentlyDeletingId !== null) return
   permanentDeleteDialogTripId.value = tripId
   permanentDeleteDialogVisible.value = true
   logger.info('[TrashPage] permanent delete dialog shown', { tripId })
@@ -315,22 +319,36 @@ function onPermanentDeleteCancel() {
 }
 
 /**
- * _PermanentDeleteConfirmDialog 确认 → Toast「30 天后自动清理」+ 0 API(per AC-09 + §6.4.2 PD-001)
- * MVP 阶段不真删,等后端定时任务 30 天自动清理
- * - 不修改 trashedTrips(row 仍在列表中)
- * - 不写 storage
- * - 不调任何 API / store / service
+ * _PermanentDeleteConfirmDialog 确认 → 调 trashStore.permanentlyDeleteTrip + Toast「已永久删除」(per AC-09)
+ * v0.2.0 关键决策(per spec §6.4.2 Resolved,后端补 DELETE 端点):
+ *   - **不**再走 v0.1.0 MVP 0 API 路径(等后端 30 天定时任务)
+ *   - store 内部乐观更新:trashedTrips 移除 row + 失败回滚(沿 restoreTrashById §7.3 模式)
+ *   - 成功 → Toast「已永久删除」+ row 已在乐观更新时移除
+ *   - 失败(非 404)→ 回滚 + viewMode='error' + _ErrorBanner 重试
+ *   - 404/4001 静默:store 内部处理,row 不回滚,viewMode 不切 error
+ *   - 乐观更新后 trashedTrips.length === 0 → viewMode 切 'empty'
  */
-function onPermanentDeleteConfirm() {
+async function onPermanentDeleteConfirm() {
   const tripId = permanentDeleteDialogTripId.value
   permanentDeleteDialogTripId.value = null
   permanentDeleteDialogVisible.value = false
-  uni.showToast({
-    title: strings.permanentDeleteToast,
-    icon: 'none',
-    duration: 2500,
-  })
-  logger.info('[TrashPage] permanent delete confirmed, MVP no-op, will auto-clean in 30 days', { tripId })
+  if (tripId == null) return
+  logger.info('[TrashPage] permanent delete start', { tripId })
+  try {
+    await trashStore.permanentlyDeleteTrip(tripId)
+    // 成功:Toast + 重新决策 viewMode(乐观更新可能让 trashedTrips 变空)
+    uni.showToast({
+      title: strings.permanentDeleteToast,
+      icon: 'success',
+      duration: 1500,
+    })
+    decideViewMode()
+    logger.info('[TrashPage] permanent delete ok', { tripId })
+  } catch (err) {
+    // 失败(非 404):store 已回滚 + 写 error,page 端切 viewMode='error'
+    decideViewMode()
+    logger.error('[TrashPage] permanent delete failed', err)
+  }
 }
 
 /**

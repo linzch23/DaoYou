@@ -437,9 +437,11 @@ function decideViewMode() {
     viewMode.value = 'notfound'
     return
   }
-  // trip 拉取成功 + status !== 'deleted' → detail
+  // trip 拉取成功 + deleted_at == null → detail
+  // v0.2.0 修订(per spec §3.3 + §3.4):TripStatus 3 枚举,deleted 语义由 deleted_at 字段承担
+  // (用 != 兜底 null / undefined)
   if (trip.value) {
-    if (trip.value.status === 'deleted') {
+    if (trip.value.deleted_at != null) {
       viewMode.value = 'notfound'
       return
     }
@@ -588,8 +590,8 @@ async function fetchTripDetail() {
   try {
     const res = await getTripDetail(/** @type {number} */ (tripId.value))
     const data = res.data
-    if (!data || data.status === 'deleted') {
-      // 后端返回 deleted 视为 notfound
+    if (!data || data.deleted_at != null) {
+      // 后端返回 deleted_at 非 null 视为 notfound(per spec §3.3 v0.2.0)
       trip.value = null
       error.value = {
         type: 'notfound',

@@ -51,8 +51,10 @@ const props = defineProps({
 
 const emit = defineEmits(['tap'])
 
-// UI-024:finished 行程仍可点(可查看详情 + 复制),仅 deleted 才禁点
-const isDisabled = computed(() => props.trip.status === 'deleted')
+// v0.2.0 修订(per TrashPage spec §6.4.4 Resolved):TripStatus 4→3 枚举后,
+// 'deleted' 语义由 deleted_at 字段承担;UI 仍禁点已删 trip 不可跳详情(per spec §7.1 决策)
+// 兼容旧 mock 数据中 deleted_at 可能为 undefined 的边界(用 != 兜底 null/undefined)
+const isDisabled = computed(() => props.trip.deleted_at != null)
 
 const statusLabel = computed(
   () => HomeTripStatusLabel[props.trip.status] || props.trip.status

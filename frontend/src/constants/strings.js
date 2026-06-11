@@ -204,13 +204,18 @@ export const HomeItemStatusLabel = Object.freeze({
 
 /**
  * TripStatus → 中文徽章文案(spec §3.7 列表展示)
- * 1:1 对齐 api/types.ts TripStatus 4 枚举
- * @type {Readonly<Record<import('../api/types').TripStatus, string>>}
+ * v0.2.0 修订(per TrashPage spec §6.4.4 Resolved):
+ *   - TripStatus 3 枚举(draft / active / finished),'deleted' 不再是 enum value
+ *   - 但 `deleted` 键**仍保留**作为显示别名:TrashPage 列表徽章固定展示「已结束」文案
+ *     (由 TrashPageStrings.statusLabel 显式传 HomeTripStatusLabel.deleted,语义稳定)
+ *   - 实际 TripStatus 走 'finished' 枚举 + deleted_at 字段表达删除状态
+ * @type {Readonly<Record<import('../api/types').TripStatus | 'deleted', string>>}
  */
 export const HomeTripStatusLabel = Object.freeze({
   draft: HomeStrings.tripStatusDraft,
   active: HomeStrings.tripStatusActive,
   finished: HomeStrings.tripStatusFinished,
+  // 显示别名(TrashPage 复用,非 TripStatus enum value)
   deleted: HomeStrings.tripStatusFinished,
 })
 
@@ -947,12 +952,13 @@ export const TrashPageStrings = {
   restoreSuccessToast: '已恢复',    // 恢复成功后短暂 Toast
   restoreFailToast: '恢复失败,请稍后重试', // 恢复失败 Toast(兜底文案,per §6.2 错误表)
 
-  // 永久删除弹窗(spec §4.4 永久删除弹窗)
+  // 永久删除弹窗(spec §4.4 + §9 AC-09 永久删除弹窗)
+  // v0.2.0 修订:弹窗正文 + Toast 文案随后端补 DELETE 端点同步改(per spec §6.4.2 Resolved)
   permanentDeleteDialogTitle: '永久删除?',              // _PermanentDeleteConfirmDialog 标题
-  permanentDeleteDialogMessage: '30 天后将自动清理,无需手动操作。', // 弹窗正文
+  permanentDeleteDialogMessage: '此操作不可恢复',       // 弹窗正文(v0.2.0 改,原 30 天后将自动清理)
   permanentDeleteDialogCancel: '取消',                   // 取消按钮文案
   permanentDeleteDialogConfirm: '永久删除',              // 确认按钮文案(红色 Danger 配色)
-  permanentDeleteToast: '30 天后将自动清理,暂不支持手动永久删除', // 确认后 Toast(per §6.4.2)
+  permanentDeleteToast: '已永久删除',                    // 确认后 Toast(v0.2.0 改,后端真删已支持)
 
   // 空态(spec §4.4 空态)
   emptyTitle: '回收站空空如也',                          // EmptyState 主标题

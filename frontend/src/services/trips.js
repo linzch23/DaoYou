@@ -1,13 +1,16 @@
 // frontend/services/trips.js
-// 封装 docs/API接口文档.md §6.1 创建行程 + §6.2 行程列表 + §6.3 行程详情 + §6.4 修改行程 + §6.5 软删除 + 本地草稿持久化
+// 封装 docs/API接口文档.md §6.1 创建行程 + §6.2 行程列表 + §6.3 行程详情 + §6.4 修改行程 + §6.5 软删除 + §6.10-§6.12 回收站域 + 本地草稿持久化
 //
-//   POST   /api/trips              → createTrip(req)
-//   GET    /api/trips?user_id=1    → listDeletedTrips()                              [TrashPage 落地,JS filter 兜底]
-//   GET    /api/trips/{trip_id}    → getTripDetail(tripId)
-//   PUT    /api/trips/{trip_id}    → updateTrip(tripId, req)        [EditTripPage 落地]
-//   DELETE /api/trips/{trip_id}    → deleteTrip(tripId)
-//   草稿 uni.setStorageSync        → saveDraft(draft) / loadDrafts()            [NewTripPage 列表]
-//   编辑草稿 uni.setStorageSync     → saveEditDraft(draft) / loadEditDraft(tripId) / clearEditDraft(tripId)  [EditTripPage 落地]
+//   POST   /api/trips                      → createTrip(req)
+//   GET    /api/trips?user_id=1            → listTrips() [HomePage / EditTripPage]
+//   GET    /api/trash/trips?user_id=1      → listDeletedTrips()                              [TrashPage v0.2.0,后端已支持 deleted_at IS NOT NULL 过滤]
+//   GET    /api/trips/{trip_id}            → getTripDetail(tripId)
+//   PUT    /api/trips/{trip_id}            → updateTrip(tripId, req)        [EditTripPage 落地]
+//   DELETE /api/trips/{trip_id}            → deleteTrip(tripId) [TripDetailPage 软删除,后端置 deleted_at]
+//   POST   /api/trash/trips/{trip_id}/restore → restoreTrashById(tripId)    [TrashPage v0.2.0 落地,后端置 deleted_at = null]
+//   DELETE /api/trash/trips/{trip_id}      → permanentlyDeleteTrip(tripId)  [TrashPage v0.2.0 落地,真删]
+//   草稿 uni.setStorageSync                → saveDraft(draft) / loadDrafts()            [NewTripPage 列表]
+//   编辑草稿 uni.setStorageSync            → saveEditDraft(draft) / loadEditDraft(tripId) / clearEditDraft(tripId)  [EditTripPage 落地]
 //
 // MVP 约定(见 docs/API接口文档.md §1.3):
 //   - `user_id` 固定为 1,前端不感知
@@ -195,13 +198,16 @@ export function deleteTrip(tripId) {
  *
  * @param {number} tripId
  * @param {object} req UpdateTripRequest 形状(`api/types.ts:174-178` + UI-025):
- *   { title?: string, status?: 'draft' | 'active' | 'finished' | 'deleted',
+ *   { title?: string, status?: 'draft' | 'active' | 'finished',
  *     itineraryArrange?: ItineraryItem[] }
  *   - title?: 仅当 formData.title !== originalData.title 时携带
  *   - status?: 仅当 formData.status !== originalData.status 时携带
  *   - itineraryArrange?: 仅当 formData.itineraryArrange !== originalData.itineraryArrange 时携带
  *   - **不**含 city / start_date / end_date / 4 选填字段
  *   - 内部 `data: { user_id: MVP_USER_ID, ...req }` 注入 user_id
+ *   - TripStatus 3 枚举(per v0.2.0 spec-writer 修订,TrashPage / TripDetailPage spec v0.2.0)
+ *   - 'deleted' 语义**不**由 status 表达,由 `deleted_at: string | null` 字段承担
+ *   - 恢复软删除的 trip 用 `restoreTrashById`(POST /api/trash/trips/{id}/restore),**不**走 updateTrip
  * @returns {Promise<import('../api/types').ApiResponse<{ updated: true }>>}
  * @throws  {ApiError}
  */
@@ -222,21 +228,15 @@ export function updateTrip(tripId, req) {
 }
 
 /**
- * GET /api/trips?user_id=1 —— 拉取已删行程列表(specs/TrashPage.md §6.1 / §6.4.1 / §7.2 触发新增)
+ * GET /api/trash/trips?user_id=1 —— 拉取已删行程列表(specs/TrashPage.md §6.10 / §6.4.1 触发新增)
  *
- * 关键决策(per spec §6.4.1 PD-001,触发 orchestrator 2026-06-04 09:15 steer 确认):
- *   - `docs/API接口文档.md` §6.2 查询参数 `status` **仅**支持 `draft` / `active` / `finished` 3 枚举,
- *     **不**支持 `deleted`(`api/types.ts:57` `TripStatus` 4 枚举多 1 个)
- *   - 本函数**不**传 `data: { status: 'deleted' }` —— 后端会忽略,**实际**走"GET 全量 + JS 客户端 filter"路径
- *   - service 层封装 GET 拿全量 → success 回调内 `body.data.trips.filter(t => t.status === 'deleted').sort((a, b) => b.id - a.id)`
- *     → resolve(与正常 ApiResponse 形态 1:1,data = { trips: TripSummary[] })→ 调用方(trashStore)不感知
- *   - 未来若后端补 `?status=deleted` 支持(由 IssueManager 提议),本函数改为
- *     `data: { user_id: MVP_USER_ID, status: 'deleted' }` 直接返回,filter 退化走 `||`(零成本切换)
+ * v0.2.0 关键决策(per TrashPage spec §6.4.1 Resolved,后端补 3 trash 域端点):
+ *   - 后端 `GET /api/trash/trips` 端点已支持,服务端**只**返回 `deleted_at IS NOT NULL` 的行
+ *   - 本函数 URL 改 `/api/trash/trips`(原 `/api/trips` 全量 + JS filter 路径废弃)
+ *   - service 层**不**做客户端 filter(后端已过滤);**不**做客户端 sort(后端按 `deleted_at desc` 返回)
+ *   - data 形如 `{ trips: TripSummary[] }`(每项含 `deleted_at: string | null` 字段,后端非 null)
  *
- * 排序决策(per spec §6.4.3 Resolved):`Trip` / `TripSummary` 字段**无** `deleted_at`(后端未提供),
- * 按 `id` 降序近似 deleted_at 降序(id 单调递增 ≈ 创建/删除时间降序)
- *
- * 错误归一(ApiError 复用):
+ * 错误归一(走既有 mapSuccess):
  *   - 4000 / 400     → 参数非法(GET 理论上不会,除非 url 拼错)
  *   - 5000 / 5xx     → 服务端错误
  *   - isNetworkError → 网络断开
@@ -247,24 +247,81 @@ export function updateTrip(tripId, req) {
 export function listDeletedTrips() {
   return new Promise((resolve, reject) => {
     uni.request({
-      url: `${BASE_URL}/api/trips`,
+      url: `${BASE_URL}/api/trash/trips`,
       method: 'GET',
       data: { user_id: MVP_USER_ID },
       success: (res) => {
         const body = res.data
         if (res.statusCode >= 200 && res.statusCode < 300 && body && body.code === 0) {
-          const allTrips = Array.isArray(body.data?.trips) ? body.data.trips : []
-          // 客户端 filter `status === 'deleted'` + sort by id desc
-          const deletedTrips = allTrips
-            .filter((t) => t && t.status === 'deleted')
-            .sort((a, b) => (b.id || 0) - (a.id || 0))
-          logger.info('[trips.listDeletedTrips] ok', { total: allTrips.length, deleted: deletedTrips.length })
+          const deletedTrips = Array.isArray(body.data?.trips) ? body.data.trips : []
+          logger.info('[trips.listDeletedTrips] ok', { deleted: deletedTrips.length })
           resolve({ ...body, data: { trips: deletedTrips } })
         } else {
           // 走既有 mapSuccess 错误归一
           mapSuccess(res, resolve, reject)
         }
       },
+      fail: (err) => mapFail(err, reject),
+    })
+  })
+}
+
+/**
+ * POST /api/trash/trips/{trip_id}/restore —— 恢复已删行程(per docs/API接口文档.md §6.11,TrashPage v0.2.0 落地)
+ *
+ * v0.2.0 关键决策(per TrashPage spec §6.4.1 Resolved):
+ *   - **不**走 v0.1.0 `PUT /api/trips/{id} { status: 'active' }` 路径(原路径依赖 TripStatus 4 枚举含 'deleted',
+ *     v0.2.0 TripStatus 缩为 3 枚举后该路径已废弃)
+ *   - 后端置 `deleted_at = null`(per API doc §6.11)
+ *   - body 仅 `{ user_id }`(无其他字段;user_id 由本服务内部注入)
+ *
+ * 错误归一(ApiError 复用):
+ *   - 4000 / 400     → 参数非法
+ *   - 4001 / 404     → 资源不存在(并发删除场景 → 视为 notfound,store 端静默)
+ *   - 5000 / 5xx     → 服务端错误
+ *   - isNetworkError → 网络断开
+ *
+ * @param {number} tripId
+ * @returns {Promise<import('../api/types').ApiResponse<{ restored: true }>>}
+ * @throws  {ApiError}
+ */
+export function restoreTrashById(tripId) {
+  return new Promise((resolve, reject) => {
+    uni.request({
+      url: `${BASE_URL}/api/trash/trips/${tripId}/restore`,
+      method: 'POST',
+      header: { 'content-type': 'application/json' },
+      data: { user_id: MVP_USER_ID },
+      success: (res) => mapSuccess(res, resolve, reject),
+      fail: (err) => mapFail(err, reject),
+    })
+  })
+}
+
+/**
+ * DELETE /api/trash/trips/{trip_id} —— 永久删除(per docs/API接口文档.md §6.12,TrashPage v0.2.0 落地)
+ *
+ * v0.2.0 关键决策(per TrashPage spec §6.4.2 Resolved):
+ *   - **不**走 v0.1.0 MVP 0 API 路径(等后端 30 天定时任务)
+ *   - 后端**真删**记录(per API doc §6.12)
+ *   - data 形如 `{ user_id }`(query param 注入,符合后端 REST 风格)
+ *
+ * 错误归一(ApiError 复用):
+ *   - 4000 / 400     → 参数非法
+ *   - 4001 / 404     → 资源不存在(并发删除场景 → 静默,store 端 drop row)
+ *   - 5000 / 5xx     → 服务端错误
+ *   - isNetworkError → 网络断开
+ *
+ * @param {number} tripId
+ * @returns {Promise<import('../api/types').ApiResponse<{ permanently_deleted: true }>>}
+ * @throws  {ApiError}
+ */
+export function permanentlyDeleteTrip(tripId) {
+  return new Promise((resolve, reject) => {
+    uni.request({
+      url: `${BASE_URL}/api/trash/trips/${tripId}?user_id=${MVP_USER_ID}`,
+      method: 'DELETE',
+      success: (res) => mapSuccess(res, resolve, reject),
       fail: (err) => mapFail(err, reject),
     })
   })

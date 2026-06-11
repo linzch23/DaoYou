@@ -43,12 +43,17 @@ import {
   todayHomeMock,
   tripsMock,
   remindersMock,
+  reminderCheckMock,
+  chatMock,
+  chatHistoryMock,
   createTripMock,
   tripDetailMock,
   updateTripMock,
   deleteTripMock,
+  trashListMock,
+  trashRestoreMock,
+  trashPermanentDeleteMock,
   photoExplainMock,
-  chatMock,
   replanMock,
   applyPlanMock,
   createTripDayMock,
@@ -90,6 +95,11 @@ const ROUTE_TABLE = [
   { method: 'POST', pattern: /\/api\/trips\/\d+\/apply-plan\/?$/, response: () => applyPlanMock },
   { method: 'POST', pattern: /\/api\/trips\/\d+\/days\/?$/, response: () => createTripDayMock },
 
+  // Trash (per docs/API接口文档.md §6.10-§6.12,TrashPage v0.2.0 新增)
+  { method: 'GET', pattern: /\/api\/trash\/trips\/?$/, response: () => trashListMock },
+  { method: 'POST', pattern: /\/api\/trash\/trips\/\d+\/restore\/?$/, response: () => trashRestoreMock },
+  { method: 'DELETE', pattern: /\/api\/trash\/trips\/\d+\/?$/, response: () => trashPermanentDeleteMock },
+
   // Trip Items CRUD
   { method: 'POST', pattern: /\/api\/trip-items\/?$/, response: () => createTripItemMock },
   { method: 'PUT', pattern: /\/api\/trip-items\/\d+\/?$/, response: () => updateTripItemMock },
@@ -100,6 +110,10 @@ const ROUTE_TABLE = [
 
   // Chat
   { method: 'POST', pattern: /\/api\/chat\/?$/, response: () => chatMock },
+  { method: 'GET', pattern: /\/api\/chat\/history\/?$/, response: () => chatHistoryMock },
+
+  // Reminders
+  { method: 'POST', pattern: /\/api\/reminders\/check\/?$/, response: () => reminderCheckMock },
 
   // Memory
   { method: 'POST', pattern: /\/api\/memory\/summary\/?$/, response: () => memorySummaryMock },
