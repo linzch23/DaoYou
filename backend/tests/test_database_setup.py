@@ -8,6 +8,9 @@ def test_demo_seed_contains_default_user_and_three_day_trip() -> None:
 
     assert seed.user.id == DEFAULT_USER_ID
     assert seed.user.nickname == "导友演示用户"
+    assert seed.user.latitude is not None
+    assert seed.user.longitude is not None
+    assert seed.user.location_updated_at is None
     assert seed.trip.user_id == DEFAULT_USER_ID
     assert seed.trip.title == "大连三日游"
     assert seed.trip.start_date == date(2026, 7, 1)
@@ -28,4 +31,3 @@ def test_demo_seed_contains_items_for_each_trip_day() -> None:
     assert item_day_indexes == {1, 2, 3}
     assert any(item.title == "渔人码头" for item in seed.items)
     assert all(item.city == "大连" for item in seed.items)
-
