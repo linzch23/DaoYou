@@ -2,10 +2,10 @@
 Page: SpotDetailSheet
 IssueType: Spec
 Priority: High
-Status: InProgress
+Status: Resolved
 CreatedAt: 2026-06-02T23:30:00+08:00
-ResolvedAt: null
-ResolvedBy: null
+ResolvedAt: 2026-06-03T00:08:00+08:00
+ResolvedBy: spec-auditor(users-andrew-desktop-vivo-daoyou-frontend--spec-auditor)
 IssueFile: issues/Spec/SpotDetailSheet-001.md
 ReviewNotes: |
   2026-06-02 23:50 re-audit #1 by spec-auditor: code-writer **未**修复 2 条硬 FAIL;
@@ -14,6 +14,15 @@ ReviewNotes: |
         pages/spot-detail-sheet/index.vue:254-261 watch(() => store.today) 仍无 warn 分支;
   Status 保持 Open;PageStatus.yaml Review.spec 仍 Fail,FinalStatus 仍 NeedFix;
   聚合: ui Fail + spec Fail + test Pass → 等 code-writer 真正落地 2 处 logger 增量。
+
+  2026-06-03 00:08 re-audit #2 by spec-auditor: code-writer **已**修复 2 条硬 FAIL + 顺手修 1 软观察;
+  file mtime 23:54:42(原 23:08 → 现 23:53-23:54 fix 落地);grep 全项目:
+    `notfound, bad spotId` 命中 2 处: pages/spot-detail-sheet/index.vue:174 + :181(均 parseQuery 早返回分支,触发时机 onLoad 立即)
+    `today cleared mid-flight` 命中 1 处: pages/spot-detail-sheet/index.vue:269(watch(() => store.today) sheet+null+prevNonNull 分支)
+    `toggleFavorite` 命中 1 处: pages/spot-detail-sheet/index.vue:384(camelCase, 字段 isFavorite)
+  5 项核对无回归(AC 12/12 + API 8/8 + Store 7/7 + State Flow 11/11 + Component 16/16 + NFR no-console);
+  Status 改 Resolved;PageStatus.yaml Review.spec 改 Pass;FinalStatus 改 Done;
+  聚合: ui Pass + spec Pass + test Pass + Arch Pass + Dev Completed → 5 个 Done 条件全满足。
 ---
 
 # Spec Issue: SpotDetailSheet #001
@@ -241,6 +250,52 @@ logger.info('[SpotDetailSheetPage] toggle favorite', {  // ← 事件名 'toggle
 
 **总修复成本**:2~3 行代码,30 秒。本轮 r2 复审已确认 5 项核对无回归,**r3 复审时只需 grep 2 个字符串是否在 pages/spot-detail-sheet/index.vue 命中即可**。
 
-### 重审 #2 — 等待 code-writer 修复
+### 重审 #2 — 2026-06-03 00:08 spec-auditor 复审 r3(PASS → Resolved)
 
-(本 Issue Status 仍 `Open`;等 code-writer 修 2 条硬 FAIL 后由 spec-auditor 写「重审 #2 → Resolved」记录)
+**结论**:code-writer **已**修复 2 条硬 FAIL,顺手修 1 软观察;`Status` 改 `Resolved`,**不**留 Open。
+
+**验证证据**(基于磁盘最新 mtime 23:54:42,非 snapshot):
+
+1. **文件 mtime 变化**:
+   - `pages/spot-detail-sheet/index.vue`:**23:08 → 23:54:42**(46 分钟内修改,fix 窗口 23:53-23:54)
+   - `components/SpotDetailSheet.vue`:23:53:19(23:30 → 23:53,ui-reviewer r2 触发的 fix 副产品,**未**触动 logger 契约)
+   - `pages/spot-detail-sheet/components/_ErrorOverlay.vue`:23:52:45(同 ui-reviewer r2)
+   - `stores/homeStore.js`:17:14:47(不变,本 fix **未**触 homeStore)
+   - `services/home.js`:17:13:35(不变,本 fix **未**触 service)
+   - `constants/strings.js`:23:12:50(不变,本 fix **未**触 constants)
+
+2. **AC-04 修复**:`grep "notfound, bad spotId" pages/spot-detail-sheet/index.vue` → 2 命中:
+   - `L174` — parseQuery 第 1 个早返回分支(URL 缺省 / 空)前 1 行 `logger.info('[SpotDetailSheetPage] notfound, bad spotId', { rawSpotId: raw })`
+   - `L181` — parseQuery 第 2 个早返回分支(非数字 / <= 0)前 1 行同上
+   - **触发时机 = `initialize(options)` → `parseQuery(options)`(onMounted 阶段 ≈ spec 期望的 onLoad 立即)**,**不**再等用户点按钮
+   - spec §5.3.A 异常流程 A + §9 AC-04 + §9 AC-12 + §10 NFR 可观测性 **全过**
+
+3. **AC-08 修复**:`grep "today cleared mid-flight" pages/spot-detail-sheet/index.vue` → 1 命中:
+   - `L268-270` — `watch(() => store.today, (next, prev) => { ... })` 回调内新增分支:
+     ```js
+     if (viewMode.value === 'sheet' && next === null && prev !== null) {
+       logger.warn('[SpotDetailSheetPage] today cleared mid-flight, keep sheet')
+     }
+     ```
+   - **触发条件精确匹配 spec §9 AC-08**:viewMode='sheet' + today 由非 null 变 null(模拟登出 / clearHome)
+   - **不切换 viewMode**(只 warn 不动作,符合 AC-08 显式"浮层不自动消失")
+   - spec §9 AC-08 + §9 AC-12 + §10 NFR 可观测性 **全过**
+
+4. **OBS-SDS-001 软观察修复**(顺手 polish):
+   - `L384` — 事件名 `toggle favorite` → `toggleFavorite`(camelCase 对齐 spec §5.2 Step D L319)
+   - `L386` — 字段名 `has` → `isFavorite`(对齐 spec §5.2 Step D L319)
+   - `L387` — `total: next.length` 增量字段**保留**(spec 不禁止增量调试信息,不阻断)
+
+5. **5 项核对无回归**(沿用 r2 验证方法 + 本轮 grep 复核):
+   - **AC**:12/12 PASS(原 10/12 → 现 12/12,AC-04 + AC-08 治完;AC-09 / AC-10 仍 OOS 留 ui-reviewer,后者已 Pass)
+   - **API Contract**:8/8 PASS — `pages/spot-detail-sheet/index.vue` 0 处直接调 `uni.request`;全部经 `store.refreshAll()` 走 `services/home.js: getToday / listTrips`;spec §6.2「不调用」接口(`GET /api/trips/{trip_id}` / `PUT /api/trip-items/{item_id}` / `POST /api/favorites` / `POST /api/chat` / `POST /api/photos/explain` / `GET /api/preferences` 等)grep 全部 0 命中
+   - **Store Contract**:7/7 PASS — page 只读 `store.today` / `store.isFetchingToday` / `store.error`,action 只调 `store.refreshAll()`;**不**新增 state / getter / action;**不**改 homeStore(mtime 17:14 不变)
+   - **State Flow**:11/11 PASS — 4 视图态(loading / sheet / notfound / error)全部显式处理;`decideViewMode()` L114-144 + `fetchAndDecide()` L150-159 + watchers L258-276 / L279-286 + lifecycle L239-253 全部对齐 spec §5.1-§5.4
+   - **Component Contract**:16/16 PASS — `SpotDetailSheet` 2 props + 4 emits + 0 slots(`components/SpotDetailSheet.vue:144,156`);`_ErrorOverlay` 3 props + 1 emit + 0 slots(`pages/spot-detail-sheet/components/_ErrorOverlay.vue:46,63`)
+   - **NFR**:0 处 `console.*` 命中(`grep "console\." pages/spot-detail-sheet/index.vue components/SpotDetailSheet.vue pages/spot-detail-sheet/components/_ErrorOverlay.vue stores/homeStore.js services/home.js` → 空)
+
+**修复成本核算**:code-writer 23:53-23:54 落地,约 1-2 分钟工作量;实际代码改动 4 行(2 行 AC-04 + 3 行 AC-08 分支),与本 Issue 修复建议(2-3 行,30 秒)的预估略高(因顺手修软观察),但量级一致。
+
+**聚合**:ui-reviewer Pass + spec-auditor r3 Pass + test-agent Pass + Architecture Pass + Development Completed → 5 个 Done 条件**全部满足**;`PageStatus.yaml` `Review.spec` 改 `Fail → Pass`,`FinalStatus` 改 `NeedFix → Done`。
+
+**No follow-up Issue**:本 Issue 唯一 owner = spec-auditor,关闭后 0 残留;后续若需新增 spec 修订 → 走 spec-writer 路径(`specs/SpotDetailSheet.md` v0.2.0+)。

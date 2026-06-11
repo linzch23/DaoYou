@@ -1,0 +1,29 @@
+# services/
+
+> **本目录由 `code-writer` 独占**。
+>
+> 存放 API 请求封装。一个业务域一个 service 文件,文件名 kebab-case。
+>
+> 推荐结构:
+
+```
+services/
+├── api.ts               # 通用 axios 实例(拦截器 / 错误处理)
+├── auth.ts              # 鉴权相关(login / sendCode / logout)
+├── user.ts
+└── order.ts
+```
+
+约束:
+
+- 所有 HTTP 调用必须走 `services/`,禁止在 `pages/` / `components/` / `stores/` 里直接 `axios`
+- service 函数返回标准化结果 `{ code, data, message }`(或抛业务异常),由调用方决定如何渲染
+- 接口路径、参数、返回结构必须**与 `specs/<Page>.md` 的 §6 API Contract 严格一致**
+
+**禁止**:
+
+- 在 service 里写 UI 逻辑(toast / 弹窗)
+- 在 service 里写规格或 Issue
+- 其他 6 个 rein 修改本目录
+
+**关联契约**:`workflow/AGENT_CONTRACTS.md` §2.4 `code-writer`

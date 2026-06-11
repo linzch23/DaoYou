@@ -4,6 +4,7 @@
 export * from './health'
 export * from './home'
 export * from './trips'
+export * from './trash'
 export * from './trip-days'
 export * from './trip-items'
 export * from './chat'

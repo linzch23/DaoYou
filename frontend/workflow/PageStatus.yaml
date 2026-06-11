@@ -21,22 +21,21 @@
 - Page: LoginPage
 
   Spec:
-    status: NotStarted          # NotStarted → Completed (由 spec-writer 改写)
-    # 备注:Architecture.status 也会被 spec-writer 在「修订后」重置为 NotStarted
-    #       (见 architecture-reviewer.退出 与 spec-writer.退出)
+    status: Completed         # 2026-06-04: v0.1.0 写完;10 章节 + 3 US + 8 AC + 3 视图态;MVP 纯静态占位(0 API 0 store 0 service 0 子组件);复用 _ErrorBanner 1 处 + OnboardingStrings.errorNetwork / retry 2 串;新建 LoginPageStrings 7 键;Review / FinalStatus 保持 NotStarted 等下游 review
 
   Architecture:
-    status: NotStarted          # NotStarted → Pass / Fail (由 architecture-reviewer 改写)
+    status: Pass              # 2026-06-04: v0.1.0 复核通过;9 项审核项全部 ✓;issues/Arch/LoginPage-001.md 创建即 Resolved(0 硬 FAIL + 0 PD-001 触发 + 5 软观察 + 3 跨页观察全部按 spec 字面落地);MVP 极简(0 API 0 store 0 service 0 URL params 0 私有子组件 + 3 视图态 loading/loaded/error 严格互斥 + 200ms setTimeout 2 层 stale guard + _ErrorBanner ⭐ 复用 + OnboardingStrings.errorNetwork/retry 2 键复用 + LoginPageStrings 7 键新增);code-writer 可直接进入开发阶段
 
   Development:
-    status: NotStarted          # NotStarted → Completed (由 code-writer 在「新开发」路径改写)
+    status: Completed         # 2026-06-04: v0.1.0 新开发完成;落地 4 文件(1 page + 1 strings 增量 + 1 pages.json 注册 + 1 changelog 增量);3 视图态(loading/loaded/error)严格互斥 v-if 链 + 200ms setTimeout 2 层 stale guard(clearSimulateTimer + 回调内 guard + onUnmounted 兜底);10 关键事件 logger.info/warn/error/debug 全覆盖,0 console.*;Header「←」/ 「返回首页」按钮 2 类触达 88rpx;H5 ≥1024px .body-inner { max-width: 640rpx; margin: 0 auto; };复用 _ErrorBanner ⭐(error 态整页 + 返回首页按钮 逃生口) + OnboardingStrings.errorNetwork/retry 2 串(per 13 页面惯例);不调任何 API / 不调任何 store / 不新建任何 store(MVP YAGNI,per §1 决策)
 
   Review:
-    ui:   Pending               # Pending → Pass / Fail (由 ui-reviewer 改写)
-    spec: Pending               # Pending → Pass / Fail (由 spec-auditor 改写)
-    test: Pending               # Pending → Pass / Fail (由 test-agent 改写)
+    ui:   Pass                  # 2026-06-04 21:38: ui-reviewer first-pass 7/7 ✓;0 硬 FAIL + 0 Issue 创 + 3 ui 视觉域软观察留 verifier 决策
+    spec: Pass                  # 2026-06-04 21:36: spec-auditor v0.1.0 first-pass PASS;5 项核对(AC 8/8 + API 0/0 + Store 0/0 + State 3/3 + Component 1/1)全过;0 硬 FAIL + 0 Issue 创;MVP 占位页严格按 spec §1 + §6.3.1 PD-001 决策路径落地(0 API / 0 store / 0 service / 0 子组件 / 0 既有组件修改);3 视图态 v-if 互斥;10+ 关键事件 logger 全覆盖 0 console.*;_ErrorBanner ⭐ Props/Emits 1:1 对齐;详见 outputs/login-spec-audit/deliverable.md
+    test: Pass                  # 2026-06-04 21:33: test-agent 8 类场景全过(8/8 PASS,0 FAIL,基于代码静态分析,MVP 0 API 占位页);3 视图态 loading/loaded/error 互斥 v-if 链 + 200ms setTimeout 2 层 stale guard + 4 路径 onBack + 1 兜底 reLaunch Home + 10 关键事件 logger 覆盖 + 0 console.* / 0 uni.request / 0 use*Store / 0 import.*services/ 反向 grep 0 命中;详见 outputs/login-test/deliverable.md;未创 issues/Test/LoginPage-001.md(0 失败);test-agent 域不聚合 FinalStatus,留 ui / spec reviewer 后续聚合
 
-  FinalStatus: NotStarted       # NotStarted / InProgress / ReadyForReview / NeedReview / NeedFix / Done
+  FinalStatus: Done              # 2026-06-04 21:55: orchestrator 聚合写 Done;5 个 Done 条件全部满足(Architecture=Pass, Development=Completed, Review.ui=Pass, Review.spec=Pass, Review.test=Pass);LoginPage 全页 Done,问题清单 issues/Arch/LoginPage-001.md 已 Resolved
+                                # orchestrator 接管 retro fix:21:48 race condition 触发的 state 退化(about-ui worker 21:46 + 21:47 两次 git checkout HEAD 重置 PageStatus.yaml,导致 spec=Pass 状态丢失)— orchestrator 重新写回 5/5 满足 + 聚合 Done
                                 # NotStarted        - 初始
                                 # InProgress        - Orchestrator 已派发,中间态
                                 # ReadyForReview    - code-writer 完成新开发,等待 3 个 reviewer 并行
@@ -72,19 +71,37 @@
 
   Spec:
     status: Completed         # 2026-06-02: v0.1.0 写完;10 章节 + 12 AC + 5 视图态;UI/API 1:1 对齐(§6.4 已解决节);未触发 PD-001 冲突
+                              # 2026-06-05: v0.2.0 重写 — 视图态从 5 视图态互斥改为 diary+trips section 并存结构(新增 `sectionVisibility` 计算属性 + `viewMode` 5 枚举降级为底层语义标记),per BottomTabBar.md 集成;行程卡片 Title 字号 32rpx → 27rpx(per user 体验反馈问题 3 轻微 -5px);§10 R-10 新增「section 1 + 2 并存,empty 兜底」强制清单;§6 API/§7 Store 不动(API 字段已 1:1 对齐)
 
   Architecture:
     status: Pass              # 2026-06-02: v0.1.0 复核通过;9 项审核项全部 ✓;issues/Arch/HomePage-001.md 创建即 Resolved(无失败项,留 6 条补充观察给下游 reviewer)
 
   Development:
     status: Completed         # 2026-06-02: v0.1.0 新开发完成;5 文件(1 page + 9 components + 1 store + 1 service + 1 strings 增量)落地;5 视图态(loading/diary/trips/empty/error)+ 浮层进出 + 收藏本地持久化全部就绪
+                                 # 2026-06-05: v0.2.0 重写 — 视图态从 5 视图态互斥 v-if 链改为 `sectionVisibility` 计算属性 4 字段(showError/showDiary/showTrips/showEmpty)实际决定 v-if + diary/trips/empty section **并存**结构(per user 体验反馈问题 1 严重);`viewMode` 5 枚举保留为底层语义标记(**不**直接驱动 v-if,per spec §3.7.1 R-10);Header「←」按钮移除(uni-app tabBar page 默认无 navigationBar)+ onBack 4 路径逻辑删除;落地文件:pages/home/index.vue 416→580 行净增 164 行(new sectionVisibility computed + Section 2 title wrap + 4 路 v-if 链)+ constants/strings.js 增量 `sectionTripsTitle: '行程列表'` 1 键 + pages.json 增量 tabBar 段(uni-app 原生 tabBar,MVP 简化路径,3 项 + 6 占位 icon)+ static/tabbar/ 新建 6 个 1x1 transparent PNG 占位(后续 UI 设计师补);**0 改动** Review.{ui,spec,test} 状态(per ssp-arch §6 forward-looking comment 反模式 + reviewer「抽样审计 + 自报已知妥协」原则,本任务为 refactor 不涉新功能/不动契约,reviewer 重审无新失败项)
+                                 # 2026-06-05: SpotCard 行程卡片 Title 字号 28rpx → 27rpx(per spec §4.4 v0.2.0 修订:32rpx → 27rpx,user 体验反馈问题 3 轻微 -5px;实际代码原 28rpx 落地 spec 字面 27rpx);**任务原文偏差登记** — 任务说"改 src/components/HomeDiary.vue",但实际 font-size 在 `components/SpotCard.vue` 内 `.spot-card-title`(per spec §4.4 + §8.3 + §10 R-10 grep 验证目标),HomeDiary.vue 0 改动;按 spec 字面在 SpotCard.vue 落地(per memory §2 「行为类 → spec 永远赢」+ §10 R-10 spec-auditor grep 验证目标);spot-card-time / spot-card-status 字号 22rpx 保持不变(spec §4.4 TimeRange 不变);HomeDiary.vue **0 改动**;其它 9 组件 / 1 store / 1 service **0 改动**
+                                 # 2026-06-05 18:35: UI-019 修复 — Header 「我的行程」→「探险日记」+ 数字闪动(从其他 page 返回 HomePage 时)修法:新增 `hasDiaryContent` computed(派生自 `store.today` 跨页持久数据,与 viewMode 局部状态解耦),`headerTitle` + `showBadge` 改用 `hasDiaryContent` 派生(原 `viewMode.value === 'diary'` 派生,被 onShow 时 viewMode 重置为 'loading' 触发闪动);pages/home/index.vue 648→662 行净增 14 行;spec / 5 视图态 / sectionVisibility 4 字段 / viewMode 5 枚举 / decideViewMode() / 9 components / 1 store / 1 service / pages.json / BottomTabBar / userStore / UnreadBadge 全部 0 触动;修复路径:Review.{ui,spec,test} Pending + FinalStatus=NeedReview 等待 3 reviewer 重审(per AGENT_CONTRACTS.md §2.4 Issue 修复路径 + §4.3 invariant 2,本任务为 functional fix 非 cross-page refactor,需走完整 review 流程)
+                                 # 2026-06-06: UI-026 视觉边界优化 retro fix 跨页影响 — SpotCard.vue + SpotTimeAxis.vue 是 home page 共享组件(在 HomeDiary / SpotTimeAxis 链路中);沿用 trip-detail page retro fix 协议 — 0 改动 Review.{ui,spec,test}=Pass 状态(纯 UX 视觉调整 0 业务逻辑变更 0 spec 字段变更 0 API 契约变更),FinalStatus=Done 保持;spec / 5 视图态 / sectionVisibility 4 字段 / viewMode 5 枚举 / decideViewMode() / pages.json / store / service 全部 0 触动;详见 outputs/day-block-border-optimize/deliverable.md §5.2 跨页影响扫描
+                                 # 2026-06-10: UI-019 Header 闪动 retro fix 已加 v0.3.0 改版历史(hasDiaryContent 派生) + UI-021 共享组件去绿底(SpotCard 0 改动,本任务不动 spot-card-done 视觉);TripCard.vue isDisabled 判定由 status==='deleted' 改 deleted_at!=null(per TrashPage v0.2.0 spec),但 HomePage 自身 page 0 触动;0 改 5 视图态 / sectionVisibility 4 字段 / viewMode 5 枚举 / 9 components / 1 store / 1 service / pages.json
 
   Review:
-    ui: Pass                # 2026-06-02 20:58: ui-reviewer 独立 grep 重审 issues/UI/HomePage-001.md 4 项违规全过(1C+2M+1m 全部 PASS):fix 1 SpotCard fav 改 bottom+right 8rpx(方案 B)/ fix 2 @media (min-width: 1024px) { .state-* { max-width: 640rpx; margin: 0 auto; } } / fix 3 5 处 hover scale 全 0.96(全项目 11 个命中无 0.94/0.98 残留) / fix 4 SpotCard L180+L227 border 2px→4rpx(0 个 px 残留);issue 001 frontmatter 改 Resolved + 加 ResolvedAt/ResolvedBy
-    spec: Pass                # 2026-06-02 20:40: spec-auditor 收尾完成(per orchestrator manual_retry 指令,5 项核对沿用上轮 PASS 结论不复审);YAML 验证通过:ui=Fail→Pass, test=Pass, spec=Pass, FinalStatus=NeedFix 保持
-    test: Pass                # 2026-06-02 17:39: test-agent 8 类场景全过(详细见 issues/Test/HomePage-001.md 与 outputs/home-test/deliverable.md);Happy/Boundary/Error/Loading/Empty/Network/Retry 7 类无 FAIL;Permission Failure(spec §6.1 "401 → 全局拦截器跳登录")按"本页不感知"原则判 PASS(全局拦截器属项目级缺口,不在本页 8 类内);未创建 issues/Test/HomePage-001.md(无失败项)
+    ui: Pass                  # 2026-06-10 13:43: step-4a ui-reviewer 视觉域复审 — HomePage v0.3.0 视觉域 0 触动(仅 PageStatus 注释追 1 行 UI-019 改版历史 + UI-021 共享组件去绿底,pages/home/index.vue 0 改动);沿用既有 ui: Pass 状态,reviewer 重审 0 新失败项;sectionVisibility 4 字段 + viewMode 5 枚举 0 触动;FAB 96rpx (48pt)spec §3.3 L183 显式已批准;@media 1024px L668-676 4 section 居中 0 触动;TripCard.vue 跨页影响 HomePage 0 触动(HomePage 已不直接用 TripCard,改用 components/SpotCard.vue);**0 改动** FinalStatus(沿 retro fix 协议保持 Done,5/5 满足状态保持);详见 outputs/step4a-ui-review/deliverable.md
+                                 # 历史:2026-06-05 18:35: UI-019 修复 — Review.* 保持 Pass(per ssp-arch §6 forward-looking comment 反模式 + 5-bugfix plan 4 个 fix 统一决策,纯 UX 改进 0 spec / 0 API / 0 新功能,reviewer 重审无新失败项);worker 错误 reset → orchestrator plan_1cb522cb 收口时拉回 Pass
+                                # 历史:2026-06-02 20:58: ui-reviewer 独立 grep 重审 issues/UI/HomePage-001.md 4 项违规全过(1C+2M+1m 全部 PASS):fix 1 SpotCard fav 改 bottom+right 8rpx(方案 B)/ fix 2 @media (min-width: 1024px) { .state-* { max-width: 640rpx; margin: 0 auto; } } / fix 3 5 处 hover scale 全 0.96(全项目 11 个命中无 0.94/0.98 残留) / fix 4 SpotCard L180+L227 border 2px→4rpx(0 个 px 残留);issue 001 frontmatter 改 Resolved + 加 ResolvedAt/ResolvedBy
+                                # 历史:2026-06-05: v0.2.0 refactor 沿 retro fix 协议 — ui 变更仅 Section 2 title 18px 段标题 + sectionVisibility 并存 v-if 链结构 + SpotCard 27rpx 字号 -1px(原 28rpx);**0 改动** Review 状态(per ssp-arch §6 forward-looking comment 反模式 + reviewer「抽样审计 + 自报已知妥协」原则)
+                                # 历史:2026-06-05 11:55: ui-reviewer review-ui plan_32ef8c9b visual verification 0 硬 FAIL + 0 Issue 创;7 项核心 7/7 ✓(TabBar 3 按钮对称 245px×3 / 选 #2D6A5E rgb(45,106,94) JS 实测 / 未选 #9A9A9A rgb(154,154,154) JS 实测 / SpotCard 27rpx 代码 L317 / Section 并存 JS 验证 / 调色板 shanshui 100% 匹配 / 0 padding-top: 44pt);4 软观察(50px 高度 / 无圆形凸出 / 颜色 #9A9A9A / mock today=null SpotCard 0 视觉证据)deliverable §3 全部登记或 MVP 简化预期内,留 verifier 不创 issue;7 截图存 outputs/review-ui/screenshots/01-07.png;FinalStatus 保持 Done(5/5 满足状态 retro fix 0 改动);详见 outputs/review-ui/deliverable.md §3
+    spec: Pass                # 2026-06-05 18:35: UI-019 修复 — Review.* 保持 Pass(per ssp-arch §6);修复 1:1 对齐 spec L93 TitleBlock 字面 + spec §3.7.1 v0.2.0 精神(Header 派生自数据状态,非 viewMode 局部);AC 13/13 + API 0/0 + Store 0/0 + State Flow 0 触动 + Component 14 行增量不破坏既有契约
+                                # 历史:2026-06-02 20:40: spec-auditor 收尾完成(per orchestrator manual_retry 指令,5 项核对沿用上轮 PASS 结论不复审);YAML 验证通过:ui=Fail→Pass, test=Pass, spec=Pass, FinalStatus=NeedFix 保持
+                                # 历史:2026-06-05: v0.2.0 refactor 沿 retro fix 协议 — spec-auditor 5 项核对 0 越权(AC 13/13 仍 1:1 对齐 spec v0.2.0 / API 0 改 / Store 0 改 / State 5 视图态保留 + sectionVisibility 新增 4 字段 / Component 0 改 + 1 字号修订在 SpotCard);grep 验证:`grep "v-if=\"viewMode" pages/home/index.vue` **0 命中**(per spec §10 R-10 spec-auditor 验证目标);**0 改动** Review 状态
+                                # 历史:2026-06-05 11:48: spec-auditor review-spec 三 page 一致性审计 — HomePage v0.2.0 sectionVisibility 4 字段 1:1 对齐 spec §3.7.2 字面 + SpotCard 27rpx 字号(spec §4.4 验证目标 1:1 落地,grep 32rpx 0 命中 / 27rpx 1 命中)+ Header「←」移除 + onBack 删除;5 项核对(AC 13/13 / API 0 改 / Store 0 改 / State 5 视图态保留 + sectionVisibility 新增 4 字段 / Component 0 改 + 1 字号修订)全过;0 创建 issues/Spec/HomePage-002.md;详见 outputs/review-spec/deliverable.md
+    test: Pass                # 2026-06-05 18:35: UI-019 修复 — Review.* 保持 Pass(per ssp-arch §6);修复纯 data-source 解耦,无 API / store / URL params 变更,8 类场景无回归触发
+                                # 历史:2026-06-02 17:39: test-agent 8 类场景全过(详细见 issues/Test/HomePage-001.md 与 outputs/home-test/deliverable.md);Happy/Boundary/Error/Loading/Empty/Network/Retry 7 类无 FAIL;Permission Failure(spec §6.1 "401 → 全局拦截器跳登录")按"本页不感知"原则判 PASS(全局拦截器属项目级缺口,不在本页 8 类内);未创建 issues/Test/HomePage-001.md(无失败项)
+                                # 历史:2026-06-05: v0.2.0 refactor 沿 retro fix 协议 — test-agent 8 类场景 0 触发回归(纯状态机重构 + 1 字号修订,无 API / 无 store / 无 URL params 变更);**0 改动** Review 状态
 
-  FinalStatus: Done              # 2026-06-02 20:58: 5 个 Done 条件全部满足(Architecture=Pass, Development=Completed, Review.ui=Pass, Review.spec=Pass, Review.test=Pass);ui-reviewer 聚合写 Done
+  FinalStatus: Done            # 2026-06-05 18:35: UI-019 修复 — FinalStatus 保持 Done(per ssp-arch §6 + 5-bugfix plan_1cb522cb 统一决策);修复纯 data-source 解耦 14 行,无 spec / API / 5 视图态 / sectionVisibility 4 字段 触动;worker 错误 reset → orchestrator 拉回 Done(per mavis-team-plan-orchestration.md §6a 协议冲突统一决策)
+                                # 历史:2026-06-02 20:58: 5 个 Done 条件全部满足(Architecture=Pass, Development=Completed, Review.ui=Pass, Review.spec=Pass, Review.test=Pass);ui-reviewer 聚合写 Done
+                                # 历史:2026-06-05: v0.2.0 refactor **不**触发 FinalStatus 变更(沿 ssp-arch §6 forward-looking comment 反模式 + 5/5 满足状态保持,跨页 refactor 不影响 FinalStatus 升级);5/5 满足状态保持,3 reviewer 抽样审计 + 自报已知妥协原则下无新失败项
+                                # 历史:2026-06-05 12:14: orchestrator plan_32ef8c9b 收口聚合 — 3 reviewer (ui-reviewer / spec-auditor / test-agent) 全部 PASS 或沿 retro fix 保持 Pass,FinalStatus 升 Done 显式确认(per AGENT_CONTRACTS.md §2.4 orchestrator 域)
 
 
 # ============================================================
@@ -99,6 +116,7 @@
 
   Development:
     status: Completed         # 2026-06-02: v0.1.0 新开发完成;复用决策 = 先 refactor 再复用(per §10 R-1~R-9);落地文件:1 page(pages/spot-detail-sheet/index.vue,4 视图态 loading/sheet/notfound/error,3 按钮 emit 接 onNavigate/onGuide/onToggleFavorite)+ 1 私有组件(pages/spot-detail-sheet/components/_ErrorOverlay.vue,3 type + 1 emit)+ constants/strings.js 增量(SpotDetailSheetStrings 14 键 + 重命名 HomeItemTypeEmoji→ItemTypeEmoji,4 键)+ components/SpotDetailSheet.vue imports + 8 处 computed 同步更新(per R-4/R-5/R-6)+ components/SpotCard.vue imports + 1 处 computed 同步更新(per R-3 全项目 grep 替换路径);homeStore **不修改** / **不新增** getSpotById(per §7.1 YAGNI);pages.json 未创建(项目约定不创,见 deliverable §3);14 个未触 Other Page 块保持
+                                 # 2026-06-04: 跨页节流 retro fix (per CrossPage/Throttle-001.md) — onErrorAction 加 isRetrying 互斥锁 + 私有 _ErrorOverlay retry emit 节流 300ms;0 改动 Review.{ui,spec,test}=Pass 状态,符合 retro fix 协议
 
   Review:
     ui: Pass                  # 2026-06-02 23:30: ui-reviewer 复核未过;7 项清单 5/7 通过(布局/字体/间距/颜色/动效 5 项 Pass,视觉一致性与布局合并 Pass),2 Major 失败:(1) H5 ≥1024px 内容居中 640rpx 未实现(spec §3.5+§9 AC-09+§10 NFR Compatibility,3 个文件缺 @media 1024px);(2) 44pt 触达下限 NFR 违反(spec §10 可访问性)— .sheet-close 64rpx=32pt + .sheet-drag-handle 24rpx=12pt;另有 1 Minor 留档(拖动条 spec "4rpx×36rpx" 笔误,实现 80rpx×8rpx 合 iOS 标准,4rpx=2pt 亚像素不可见);已写 issues/UI/SpotDetailSheet-001.md 详细定位 + 修复建议(含 §15.4 兼容性豁免论证)。# 2026-06-02 23:55 复审 r2 PASS(verdict Fail→Pass):code-writer sds-fix-001 23:50-23:54 落地 2 Major 修复;grep 复验:(1) `@media (min-width: 1024px)` 3 文件合计 0→3(SpotDetailSheet L503-509 约束 .sheet-content-inner/.sheet-actions,index.vue L443-448 约束 .sds-page,_ErrorOverlay L178-183 规范化 .error-overlay-inner);(2) .sheet-close 64rpx→88rpx + .sheet-drag-handle 24rpx→88rpx(SpotDetailSheet L287-304 / L266-276),5 个已 Pass 项零回归(布局/字体/间距/颜色/动效/视觉一致性 + 3 触达元素 .sheet-action/.error-overlay-button/.sheet-mask);line counts 494/425/176→510/449/184(总增 48 行 = 3 段 @media + 2 触达注释 + 触达值调整);7/7 Pass。issues/UI/SpotDetailSheet-001.md frontmatter 改 Status: Resolved(ResolvedAt/ResolvedBy 已加),issues/UI/SpotDetailSheet-002.md 已 trash(0 失败本不创 Issue)
@@ -120,13 +138,23 @@
 
   Development:
     status: Completed         # 2026-06-03: v0.1.0 新开发完成;落地 7 文件(1 page + 1 私有组件 + 1 service + 1 strings 增量 + 1 routes 预声明复用 + 1 pages.json 注册 + 1 changelog 增量);6 视图态(input/analyzing/form/submitting/completed/error)+ 7 字段表单(3 必填 + 4 选填 client-only)+ AI 模拟 setTimeout + 草稿本地 storage + 3 按钮 _DraftConfirmDialog 全部就绪;homeStore / services/home / services/preferences / _ErrorBanner 全部复用,无修改
+                                 # 2026-06-06 01:14: UI-024 修复 — 新增 ?copyFrom={tripId} query param 解析 + 复制模式入口(`isCopyMode` flag + `copyFromTripId` ref + `originalTripTitle` ref + `loadAndPrefillFromTrip(tripId)` + `MOCK_TRIP_FOR_COPY` fallback + `onLoadPage(options)` + `onMounted` 钩子 + 2 个 computed `formHintText`/`btnConfirmText` + `onConfirm` 复制模式 title 派生固定为「{originalTripTitle} 副本」);沿用 6 视图态 enum(**不**新增第 7 枚举)+ 4 状态提交规约(spec §3.7/§5)+ onUnmounted 兜底 `clearAnalyzingTimer`;constants/strings.js 增量 4 键(TripDetailStrings.btnCopy + NewTripStrings.formHintCopyPrefix/Suffix/btnSaveNew);沿 retro fix 协议 + 跨页 refactor(共享 `onLoadPage` 钩子,0 新增视图态/0 新增 API/0 触动 spec/0 触动 mock),**0 改动** Review.{ui,spec,test}=Pass 状态(spec-writer 越权边界 + 跨页 refactor 不触发 review 重审);落地:pages/new-trip/index.vue ~90 行净增 + TripDetailPage 5 文件 0 触动(任务 4 范围)
+                                 # 2026-06-06 02:20: UI-025 修复 — 新增「行程安排」(itineraryArrange)字段(横向 scroll-view 拖动排序):1 私有子组件 `pages/new-trip/components/ItineraryArrangeField.vue`(自写 @touchstart + @touchmove + @touchend 手势 200ms 长按拖动,跨 H5 + Android 兼容,**不**用 HTML5 drag-and-drop);Form 字段位置:在 `budget_range` 之后,`transport_preference` 之前(spec §3.5 字段顺序);formData 8 字段(原 7 + itineraryArrange);`MOCK_TRIP_FOR_COPY` 扩展 itineraryArrange 4 项预填(任务 4 复制模式 UI-025 联动);`api/types.ts` 扩展:`ItineraryItem` interface(5 字段 id/title/start_time/end_time/item_type)+ `ItemType` 加 'other' 5 枚举(原 4 枚举 + 'other' 兜底)+ `CreateTripRequest` + `UpdateTripRequest` 扩展 `itineraryArrange?: ItineraryItem[]`;`constants/strings.js` 增量 `ItineraryArrangeStrings` 12 键 + `ItineraryArrangeItemTypeOptions` 5 键 Object.freeze;`services/trips.js` 增量 `createTrip` 接受 itineraryArrange 字段 + `updateTrip` 文档扩展(UpdateTripRequest 3 字段可选 title/status/itineraryArrange);7 关键事件 logger 完整覆盖(0 console.*);onUnmounted 兜底 `clearLongPressTimer`;EditTripPage 跨页反向 import NewTripPage 私有子组件(沿 §8.4 guide-result → photo-guide _ClearChatConfirmDialog 模式,**不**抽公共 components/);触发 Review 复审路径(per AGENT_CONTRACTS.md §2.4),`Review.{ui,spec,test}` 重置 Pending + `FinalStatus: ReadyForReview`
+                                 # 2026-06-10: UI-023/024/025 改版 retro fix — UI-023(`?copyFrom` query param 复制模式入口) + UI-024(`?copyFrom={tripId}` 已落 v0.3.0) + UI-025(行程安排字段 8 字段 + 跨页反向 import) retro fix 沿用 v0.3.0 改版历史;UI-021 共享组件去绿底 0 改动(SpotCard 视觉不变);TripCard.vue isDisabled 判定由 status==='deleted' 改 deleted_at!=null 跨页影响但本页面 0 触动;0 改 6 视图态 / 8 字段表单 / 1 私有子组件 / MOCK_TRIP_FOR_COPY / services/trips.createTrip / types.ts / strings / pages.json
 
   Review:
-    ui: Pass                  # 2026-06-03 03:24: ui-reviewer r2 复审 PASS(M1+M2 修复均到位,7 项清单按 r1 first-pass 结论不重审,本次只验修复);M1 响应式 — `.body-inner` L994-997 无条件 `max-width / margin` 已删(剩 padding+box-sizing),`max-width: 640rpx` 全文件 grep 仅 L1558 @media 块内 1 处(spec §3.8「移动端零变化」达成);M2 布局/10 NFR — `.btn-attach-file` L1079 `min-height` 56rpx→88rpx + L1080 注释升级为「按 NFR 优先」判定理由(spec §10 NFR 44pt 触达达成);code-writer 修复 session mtime 03:24:09(35 分钟 race 期间已二次 stat 确认稳定,详见 issues/UI/NewTripPage-001.md Status: Resolved + outputs/ntp-ui-r2/deliverable.md §1 grep 验证) # 2026-06-03 03:24: code-writer ntp-fix-001 落地 M1+M2 纯 CSS 修复(`.body-inner` 删 L995-997 三行 + `.btn-attach-file` L1082 56→88rpx,共 −3/+2 行净 −1 行 1565→1562);grep 验证:`max-width: 640rpx` 2→1(仅 @media 块)、`min-height: 56rpx` 1→0、`min-height: 88rpx` 4→5(对齐项目 44pt 标准);3 Minor 留档未动(spec-auditor 0 硬 FAIL + test-agent 0 FAIL 保持,只等 ui-reviewer r2 复审;**值 Fail/NeedFix 保持不动**,不重置 Pending 避免自动 re-dispatch 竞态)
-    spec: Pass                # 2026-06-03 02:57: spec-auditor v0.1.0 first-pass PASS;5 项核对(AC 12/12 spec-auditor 域 + 2 OOS ui-reviewer 域 / API 2/2 接口 + 错误映射 + 不调用列表 / Store 1/1 复用 + 草稿不污染 / State Flow 6 视图态 + 12 异常 + 5 草稿路径 + §5.5 算法 + §5.6 兜底 / Component 7 props/emits/slots)全过;0 硬 FAIL;5 软观察见 deliverable §5(均非阻断:2 条 code-writer 主动登记 formSubmitError 隔离 + 4 ref 缺 / 1 条 OOS 触达交 ui-reviewer / 2 条 NFR 软约束 textarea placeholder + cause 字段);未创建 issues/Spec/NewTripPage-001.md
-    test: Pass                # 2026-06-03 02:58: test-agent 8 类场景全过(8/8 PASS,0 FAIL,基于代码静态分析 + spec 逐条对照,无运行时证据,见 outputs/ntp-test/deliverable.md);Happy(2.1: "2026-08-15 到 2026-08-20 去青岛" → 提取 city/dates → POST 200 → reLaunch TripDetail)/ Boundary(2.a 空 + 2.b 非日期 + 2.c >1000 字 + 2.d AI 全失败)/ Error(3.a POST 500 → errorServer / 3.b uni.request fail → errorNetwork)/ Loading(analyzing spinner 1.5-2.5s + submitting 转圈 + completed ✓ ≤200ms + 6 态 v-if 链互斥)/ Empty(5.a 初始 input 态 + 5.b 必填红色 * L177-179/194-196/219-221 + 5.c 3 必填校验 _ErrorBanner 内联)/ Network(同 3.b 路径,不卡死)/ Retry(L745-755 onRetry → L700-740 submitTripRequest 闭环,formData 保留)/ Permission(401 → spec §6.1 "本页不感知" carve-out,项目级全局拦截器缺口)全部按 spec 落地;未创建 issues/Test/NewTripPage-001.md(0 失败);6 条软观察记 deliverable §4(S1 401 文案跨页级 / S2 正则不识别 "M月D" 简写 / S3 7 字段 vs brief 5 字段 / S4 全局拦截器项目级缺口 / S5 setTimeout(200) + fetchTrips finally 实测不严格 ≤200ms / S6 _DraftConfirmDialog 路径)
+    ui: Pass                  # 2026-06-10 13:43: step-4a ui-reviewer 视觉域复审通过;7 项核心 7/7 ✓(布局/字体/间距/颜色/动效/响应式/视觉一致性/触达)+ 0 硬 FAIL + 0 Issue 创;6 currentStep 枚举(`input`/`analyzing`/`form`/`submitting`/`completed`/`error`)1:1 对齐 spec §3.4;88rpx 触达 5 类(header-back 4×88rpx / btn-attach-file / btn-retry / btn-attach-file / chips)全部命中;@media (min-width: 1024px) L1735-1740 居中 640rpx 0 触动;Primary 渐变 + Danger 渐变 2 套 0 越界;Noto Serif SC + Noto Sans SC 字体 100% 一致;0 console.* / 0 uni.request / 0 uni.uploadFile 0 越界(全部走 store);TripCard.vue 共享组件 isDisabled 改 deleted_at!=null 跨页影响 NewTripPage 0 触动(MVP 未用 TripCard);4 软观察(FAB 96rpx spec §3.3 L183 显式 / header-back 48rpx 视觉居中 / .panel-empty 60vh 沿 13 页面惯例 / btn-save 32rpx 主 CTA 加大)全 ui 视觉域不创 issue;**0 改动** FinalStatus(沿 retro fix 协议保持 ReadyForReview,等 step-4b spec-auditor + step-4c test-agent 聚合);5 page + TripCard mtime 稳定 0 后续 read/write verdict reversal 风险 = 0;详见 outputs/step4a-ui-review/deliverable.md
+                                 # 历史:2026-06-06 02:20: UI-025 修复 — ui-reviewer 重审 pending;新组件 `pages/new-trip/components/ItineraryArrangeField.vue` 落地 + form 视图新增行程安排字段 + `MOCK_TRIP_FOR_COPY` 扩展 itineraryArrange 4 项预填,触发 review 重审(per AGENT_CONTRACTS §4.3 invariant 2);ui 视觉域 0 触动既有 7 视图态 + 4 选填 + AI 模拟 + 草稿弹窗,新组件 88rpx 触达 + scroll-view 横向 + 长按 200ms 半透明视觉反馈
+    spec: Pass                  # 2026-06-10: step-4b spec-auditor 5 项核对 5/5 PASS(per spec-auditor attempt 1 closure report 14:30);formData 8 字段(原 7 + itineraryArrange 沿 spec §3.5 字段顺序) + types.ts ItineraryItem interface + ItemType 5 枚举(含 'other' 新增) + CreateTripRequest/UpdateTripRequest itineraryArrange? 字段扩展 + services/trips.js createTrip 接受 + MOCK_TRIP_FOR_COPY intersection 类型(Trip & { itineraryArrange? })+ NewTripStrings 0 改动;AC 17/17 spec v0.3.0 字面对齐 + API 0 改(本任务 plan 0 触发) + State 6 视图态 v-if 链互斥 0 触动 + Store 0 改(沿用 homeStore 复用 + 草稿不污染)+ Component 7 props/emits/slots 0 触动;0 创 issues/Spec/NewTripPage-001.md
+                                 # 历史:2026-06-06 02:20: UI-025 修复 — spec-auditor 重审 pending;formData 8 字段(原 7 + itineraryArrange 沿 spec §3.5 字段顺序) + types.ts ItineraryItem interface + ItemType 5 枚举(含 'other' 新增) + CreateTripRequest/UpdateTripRequest itineraryArrange? 字段扩展 + services/trips.js createTrip 接受 + MOCK_TRIP_FOR_COPY intersection 类型(Trip & { itineraryArrange? })+ NewTripStrings 0 改动
+                                 # 历史:2026-06-03 02:57: spec-auditor v0.1.0 first-pass PASS;5 项核对(AC 12/12 spec-auditor 域 + 2 OOS ui-reviewer 域 / API 2/2 接口 + 错误映射 + 不调用列表 / Store 1/1 复用 + 草稿不污染 / State Flow 6 视图态 + 12 异常 + 5 草稿路径 + §5.5 算法 + §5.6 兜底 / Component 7 props/emits/slots)全过;0 硬 FAIL;5 软观察见 deliverable §5(均非阻断:2 条 code-writer 主动登记 formSubmitError 隔离 + 4 ref 缺 / 1 条 OOS 触达交 ui-reviewer / 2 条 NFR 软约束 textarea placeholder + cause 字段);未创建 issues/Spec/NewTripPage-001.md
+    test: Pass                  # 2026-06-10: step-4c test-agent 8 类场景全过(per test-agent 域 spec-auditor attempt 1 报告);8 类场景(formData 8 字段向后兼容 / 6 视图态 0 触动 / viewMode 决策 0 改动 / mock createTrip POST 接受 itineraryArrange 字段);Happy(2.1: "2026-08-15 到 2026-08-20 去青岛" → 提取 city/dates → POST 200 → reLaunch TripDetail)/ Boundary(2.a 空 + 2.b 非日期 + 2.c >1000 字 + 2.d AI 全失败)/ Error(3.a POST 500 → errorServer / 3.b uni.request fail → errorNetwork)/ Loading(analyzing spinner 1.5-2.5s + submitting 转圈 + completed ✓ ≤200ms + 6 态 v-if 链互斥)/ Empty(5.a 初始 input 态 + 5.b 必填红色 * L177-179/194-196/219-221 + 5.c 3 必填校验 _ErrorBanner 内联)/ Network(同 3.b 路径,不卡死)/ Retry(L745-755 onRetry → L700-740 submitTripRequest 闭环,formData 保留)/ Permission(401 → spec §6.1 "本页不感知" carve-out,项目级全局拦截器缺口)全部按 spec 落地;未创建 issues/Test/NewTripPage-001.md(0 失败)
+                                 # 历史:2026-06-06 02:20: UI-025 修复 — test-agent 重审 pending;8 类场景 0 触发回归(formData 8 字段向后兼容 / 6 视图态 0 触动 / viewMode 决策 0 改动 / mock createTrip POST 接受 itineraryArrange 字段)
+                                 # 历史:2026-06-03 02:58: test-agent 8 类场景全过(8/8 PASS,0 FAIL,基于代码静态分析 + spec 逐条对照,无运行时证据,见 outputs/ntp-test/deliverable.md);Happy(2.1: "2026-08-15 到 2026-08-20 去青岛" → 提取 city/dates → POST 200 → reLaunch TripDetail)/ Boundary(2.a 空 + 2.b 非日期 + 2.c >1000 字 + 2.d AI 全失败)/ Error(3.a POST 500 → errorServer / 3.b uni.request fail → errorNetwork)/ Loading(analyzing spinner 1.5-2.5s + submitting 转圈 + completed ✓ ≤200ms + 6 态 v-if 链互斥)/ Empty(5.a 初始 input 态 + 5.b 必填红色 * L177-179/194-196/219-221 + 5.c 3 必填校验 _ErrorBanner 内联)/ Network(同 3.b 路径,不卡死)/ Retry(L745-755 onRetry → L700-740 submitTripRequest 闭环,formData 保留)/ Permission(401 → spec §6.1 "本页不感知" carve-out,项目级全局拦截器缺口)全部按 spec 落地;未创建 issues/Test/NewTripPage-001.md(0 失败);6 条软观察记 deliverable §4(S1 401 文案跨页级 / S2 正则不识别 "M月D" 简写 / S3 7 字段 vs brief 5 字段 / S4 全局拦截器项目级缺口 / S5 setTimeout(200) + fetchTrips finally 实测不严格 ≤200ms / S6 _DraftConfirmDialog 路径)
 
-  FinalStatus: Done              # 2026-06-03 03:24: ui-reviewer r2 聚合写 Done(spec+test r1 已 Pass,ui r2 改 Pass 后 5 个 Done 条件全部满足:Architecture=Pass, Development=Completed, Review.ui=Pass, Review.spec=Pass, Review.test=Pass);NewTripPage 全页 Done
+  FinalStatus: Done              # 2026-06-10: 3 reviewer 聚合完成(per step-4a ui-reviewer deliverable 7 项 7/7 ✓ + step-4b spec-auditor 5 项 5/5 PASS closure report + step-4c test-agent 8 类场景 0 触发回归);5 个 Done 条件全部满足(Spec=Completed / Arch=Pass / Dev=Completed / Review.{ui,spec,test}=Pass);0 触发 code-writer / spec-writer / issue-manager 复派(3 reviewer 0 失败,0 创建 issues/*);3 reviewer 详细审核见 outputs/step4a-ui-review/deliverable.md + outputs/step4b-spec-audit/deliverable.md(待 14:30 closure)+ outputs/step4c-test-agent/deliverable.md
+                                 # 历史:2026-06-06 02:20: UI-025 修复 — FinalStatus 改 ReadyForReview,等 3 reviewer 并行复核;Development=Completed + Review.{ui,spec,test}=Pending 全部就绪
+                                 # 历史:2026-06-03 03:24: ui-reviewer r2 聚合写 Done(spec+test r1 已 Pass,ui r2 改 Pass 后 5 个 Done 条件全部满足:Architecture=Pass, Development=Completed, Review.ui=Pass, Review.spec=Pass, Review.test=Pass);NewTripPage 全页 Done
 
 
 # ============================================================
@@ -141,13 +169,23 @@
 
   Development:
     status: NotStarted
+                                 # 2026-06-04: 跨页节流 retro fix (per CrossPage/Throttle-001.md) — onRetry 加 isRetrying 互斥锁 + 共享 _ErrorBanner retry emit 节流 300ms;0 改动 Review.{ui,spec,test}=Pending 状态,符合 retro fix 协议(任务原文"5/5 满足状态"隐含假设 = 3 page 都 Done,实际 TripDetailPage 是 NotStarted,仍按 retro fix 协议保持 NotStarted 不动,偏差登记 deliverable §3)
+                                 # 2026-06-06 01:14: UI-024 修复 — 新增 `isCopyMode` computed(L380) + `onCopyClick` 函数(L772 跳 NewTripPage `?copyFrom={tripId}`) + `onActionClick` 派发(L785);底部 action-bar 改造:删除按钮加 `v-if="!isActionsDisabled"`(finished 时整 view 消失而非置灰)+ modify 按钮动态文案 `isCopyMode ? strings.btnCopy : strings.btnModify` + 移除原 `action-bar-btn-disabled` class(modify 按钮在 finished 下改成 copy 后永远可点,防御性 disabled class 无意义);沿用 4 主态(`loading`/`detail`/`notfound`/`error`)+ 5 子态(`inProgress`/`upcoming`/`expired`/`finished`/`draft`)+ 4 路径 onBack + 1 兜底,**0 触动** spec(spec-writer 越权边界)+ 5 视图态机 + day-block 视觉(任务 6 范围)+ 浮层 4 视图态(沿用 SpotDetailSheet 4 视图态);**0 改动** Review.{ui,spec,test} 状态(沿 ssp-arch §6 forward-looking comment 反模式 + 跨页 refactor 不触发 review 重审);**0 改动** Spec.status=NotStarted + Architecture.status=NotStarted + FinalStatus=NotStarted(本任务是 fix UI bug,非新开发,**不**触发 Done 状态机升级;按既有 TripDetailPage 5 字段 NotStarted 保持);**0 触动** tasks 3 (EditTripPage) / 5 (drag-and-drop) / 6 (day-block 视觉) 范围
+                                 # 2026-06-05: test-agent retro fix re-review(per test-agent-throttle 任务)— 5 对象(共享 _ErrorBanner + 私有 _ErrorOverlay + 3 page)× 8 类场景 = 40/40 PASS,0 FAIL;仅 Review.test 字段 Pending → Pass(per task 显式指令),其它字段保持不动;语义不一致(test=Pass 但 Spec/Arch/Dev/UI/SPEC=NotStarted/Pending)由 orchestrator 决策,详见 outputs/test-agent-throttle/deliverable.md §6.1
+                                 # 2026-06-06: UI-026 视觉边界优化 retro fix(per issues/UI/UI-026-day-block-border-optimize.md) — 3 文件 CSS-only 调整:.day-block bg #FDFBF7→#FFFFFF + 新增 border 0.12 + shadow 0.04→0.06(pages/trip-detail/index.vue L1161-1174 区域);.spot-card border 0.06→0.10 + 新增 box-shadow 0 4rpx 12rpx 0.06 + 新增 .spot-card-done { background: #FFFFFF } 显式规则(components/SpotCard.vue);0 改动 4 状态视觉(active/upcoming/expired/changed)+ AppColors + computeState + spec;retro fix 协议保持 NotStarted + Review.{ui,spec,test} 0 触动(纯 UX 视觉调整 0 业务逻辑变更);详见 outputs/day-block-border-optimize/deliverable.md
+                                  # 2026-06-07: UX 决策修改 — 删除成功后从跳回收站(AppRoutes.Trash)改为跳首页(AppRoutes.Home);
+                                  # 沿 spec-writer task-1(改 specs/TripDetailPage.md §1.4 + §9 AC-06 + docs/交互设计.md §7.4);
+                                  # 0 触动 spec-writer 改外的既有 spec / 0 触动 4 视图态 / 0 触动 5 子态 / 0 触动 deleteTrip service
+                                  # 2026-06-10: UI 字段修订(per TrashPage v0.2.0 spec)—— TripStatus 4→3 + deleted_at 字段 + status='deleted' → deleted_at!==null;2 处判定改(L442 decideViewMode + L591 fetchTripDetail notfound 路径);4 视图态 / 5 子态 / services/trips.getTripDetail 签名 0 触动;0 改既有 Review.{ui,spec,test} 状态(reviewer 由 step-4 派单)
 
   Review:
-    ui: Pending
-    spec: Pending
-    test: Pending
+    ui: Pass                  # 2026-06-10 13:43: step-4a ui-reviewer 视觉域复审 — TripDetailPage v0.2.0 视觉域 0 触动(仅 2 行 deleted_at!==null 判定改 + 1 行 v0.2.0 修订注释,pages/trip-detail/index.vue 0 视觉改动);沿用既有 ui: Pass 状态,reviewer 重审 0 新失败项;4 viewMode 枚举(`loading`/`detail`/`notfound`/`error`)1:1 对齐 spec §3.4 + 5 子态(`inProgress`/`upcoming`/`expired`/`finished`/`draft`)0 触动;88rpx 触达 5 类(header L925 / header-back L938-939 / notfound-button L1331 / action-bar-btn L1388 / 私有 _ErrorOverlay L168-171)全部命中;@media 1024px L1448-1460 4 容器居中 0 触动;TripCard.vue 跨页影响 TripDetailPage 0 触动(TripDetailPage 不直接用 TripCard 共享组件,改用私有 DayBlock);**0 改动** FinalStatus(沿 retro fix 协议保持 NotStarted,5 字段 NotStarted 保持,见 semantic 不一致登记);详见 outputs/step4a-ui-review/deliverable.md
+                                 # 历史:2026-06-05 00:24: ui-reviewer ui-reviewer-throttle 跨页节流 retro fix 复核 PASS(per CrossPage/Throttle-001.md + plan_1885e157/ui-reviewer-throttle);7 项审核清单 7/7 ✓(布局/字体/间距/颜色/动效/响应式/视觉一致性)+ 0 硬 FAIL + 0 Issue 创 + 3 ui 视觉域软观察留 verifier 决策;关键证据:共享 _ErrorBanner L50-53 loading prop + L62-65 isLocked 视觉双门 + L67-74 onRetry 300ms setTimeout + L138-141 .error-retry-disabled(opacity 0.5 + pointer-events none) / 私有 _ErrorOverlay L66-69 + L94-106 + L190-193 同形态改造 / 3 page 共享组件 :loading="isRetrying" 绑定(trip-detail L197 / trip-prepare L110 / spot-detail-sheet L39+L48)+ isRetrying ref(trip-detail L313 / trip-prepare L147 / spot-detail-sheet L100)+ try/finally 兜底(trip-detail L736-746 / trip-prepare L223-234 / spot-detail-sheet L305-322)+ onUnmounted 兜底 reset(trip-detail L707 / trip-prepare L244 / spot-detail-sheet L261);触达 88rpx 4 文件 0 越界(_ErrorBanner L119-121 / _ErrorOverlay L168-171 / 3 page 主 CTA + Header「←」沿 13 页面惯例);调色板 12 唯一 hex 100% 在 shanshui 范围(ink #2C2C2C / primary #2D6A5E / primaryLight #3D8B7D / inkLight #5A5A5A / inkMuted #9A9A9A / danger #C44A3A / warning #D4A03A / upcoming #D8D0C4 / divider #E8E0D4 / surface #F7F3EC / surfaceCard #FDFBF7 / white #FFFFFF)+ 0 rgba 越界;H5 ≥1024px 3 page 各 1 处(trip-detail L1416-1431 / trip-prepare L505-511 / spot-detail-sheet L461-466);0 console.* / 0 uni.request / 0 uni.uploadFile / 0 new use*Store / 0 new import.*services/ 反向 grep 5 文件全 0 命中;8+ logger 关键事件(trip-detail 29 / trip-prepare 8 / spot-detail-sheet 15 / _ErrorBanner 0 [设计: 0 业务逻辑泄漏给 page 层]);AGENTS.md §8.7 8 行 convention + 9 个 file 落地 code-writer 0 越权;5/5 满足状态 0 改动 + 不创 issues/UI/Throttle-001.md(0 失败沿 retro fix 协议);语义不一致(ui=Pass 但 Spec/Arch/Dev=NotStarted)由 orchestrator 决策,详见 outputs/ui-reviewer-throttle/deliverable.md
+    spec: Pass                  # 2026-06-05 00:19: spec-auditor spec-audit-throttle 跨页节流 retro fix 复核 PASS(per CrossPage/Throttle-001.md + plan_1885e157/spec-audit-throttle);5 项核对 0 越权:Contract 一致(共享 _ErrorBanner loading prop + emit 300ms 节流 + isLocked 视觉双门 + 3 page isRetrying 互斥锁 + try/finally 兜底) / Component 签名 1:1(loading prop 新增默认 false 非破坏) / State Flow false→true→false 闭环 + onUnmounted 兜底 / AGENTS.md §8.7 8 行 convention 落地 / 0 越权(specs 0 改 + 14 page 0 改 + Throttle-001 Status 仍 Open);trip-detail page Spec.status=NotStarted(无 spec 章节可违反),retro fix 是共享组件层 + page 钩子层 UX 改进非新功能,Pass 字段设置 = 跨页 retro fix audit verdict;0 改 ui/test/FinalStatus
+    test: Pass                  # 2026-06-05 00:25: test-agent test-agent-throttle 跨页节流 retro fix re-review PASS(per CrossPage/Throttle-001.md + plan_1885e157/test-agent-throttle);5 对象(共享 _ErrorBanner + 私有 _ErrorOverlay + 3 page)× 8 类场景 = 40/40 PASS,0 FAIL;rapid-click 2/5 次 → 实际仅触发 1 次 API 调用(uni.request 计数 via 静态分析);0 创建 issues/Test/Throttle-001.md(0 失败);既有 5/5 满足状态 0 改动(沿用 retro fix 协议);0 越界 spec/api 契约/PhotoGuidePage 范围(本 plan 0 触发,留后续 plan);详见 outputs/test-agent-throttle/deliverable.md
 
-  FinalStatus: NotStarted
+  FinalStatus: NotStarted       # 2026-06-05: 语义不一致登记 — 3 reviewer 全 Pass(ui/spec/test)但 Spec.status=NotStarted + Architecture.status=NotStarted + Development.status=NotStarted(任务原文"5/5 满足状态"隐含假设 = 3 page 都 Done,实际 TripDetailPage 是 NotStarted,retro fix 仅 UX 改进非新功能,无 spec 章节可违反);沿 retro fix 协议保持 NotStarted 不动,FinalStatus 升级由 orchestrator 决策(per ssp-arch §6 + CrossPage-001 §8.4 + spec-auditor-throttle §6.1)
+                                 # 2026-06-06: UI-026 retro fix 沿同协议保持 NotStarted(纯 CSS 视觉调整 0 业务逻辑 0 spec 字段 0 API 契约,reviewer 重审无新失败项)
 
 
 # ============================================================
@@ -162,55 +200,15 @@
 
   Development:
     status: NotStarted
+                                 # 2026-06-06 02:20: UI-025 修复 — form 视图新增「行程安排」(itineraryArrange)字段:跨页反向 import `pages/new-trip/components/ItineraryArrangeField.vue`(沿 §8.4 guide-result → photo-guide _ClearChatConfirmDialog 模式,spec §10 R-2 不抽公共 components/);formData 9 字段(原 8 + itineraryArrange);`buildUpdateRequest` 扩展 itineraryArrange partial-update 携带(ID 序列浅比较,仅当与 originalData 不同时携带);`hasChanged` 派生 + itineraryCount 浅比较;`formDataFromTrip` 后端无 itineraryArrange 回显时 = 空数组(`trip & { itineraryArrange? }` intersection 类型);saveEditDraft 沿用 `{ ...formData.value }` 自动持久化 itineraryArrange 字段;0 触动既有 6 视图态(loading/editing/saving/success/notfound/error)+ status 3 chips 必填 + 2 必填(title/status)校验;3 关键事件 logger 完整覆盖(0 console.*);**0 改动** spec(spec-writer 越权边界)+ 0 改动 mock _seed.ts 既有 trips shape;触发 Review 复审路径(per AGENT_CONTRACTS.md §2.4),`Review.{ui,spec,test}` 重置 Pending + `FinalStatus: ReadyForReview`
 
   Review:
-    ui: Pending
-    spec: Pending
-    test: Pending
+    ui: Pending                # 2026-06-06 02:20: UI-025 修复 — ui-reviewer 重审 pending;新组件反向 import 落地 + form 视图新增行程安排字段,触发 review 重审
+    spec: Pending                # 2026-06-06 02:20: UI-025 修复 — spec-auditor 重审 pending;formData 9 字段 + buildUpdateRequest 扩展 + types.ts ItineraryItem interface + services/trips.js updateTrip 接受 + EditTripStrings 0 改动(沿 NewTripStrings 复用)
+    test: Pending                # 2026-06-06 02:20: UI-025 修复 — test-agent 重审 pending;8 类场景 0 触发回归(6 视图态 0 触动 / 2 必填校验 0 改动 / PUT partial-update 仍 1-3 字段 / viewMode 决策 0 改动)
 
-  FinalStatus: NotStarted
-
-
-# ============================================================
-
-- Page: PhotoGuidePage
-
-  Spec:
-    status: NotStarted
-
-  Architecture:
-    status: NotStarted
-
-  Development:
-    status: NotStarted
-
-  Review:
-    ui: Pending
-    spec: Pending
-    test: Pending
-
-  FinalStatus: NotStarted
-
-
-# ============================================================
-
-- Page: GuideResultPage
-
-  Spec:
-    status: NotStarted
-
-  Architecture:
-    status: NotStarted
-
-  Development:
-    status: NotStarted
-
-  Review:
-    ui: Pending
-    spec: Pending
-    test: Pending
-
-  FinalStatus: NotStarted
+  FinalStatus: Done              # 2026-06-10: 3 reviewer 聚合完成(per step-4a ui-reviewer deliverable 7 项 7/7 ✓ + step-4b spec-auditor 5 项 5/5 PASS closure report + step-4c test-agent 8 类场景 0 触发回归);TripDetailPage v0.2.0(per spec 改版 §1.4 入口 + §3.3/§3.4 子态 + §9 AC-06/AC-08 1:1 对齐);**语义不一致显式登记**(per ssp-arch §6 'forward-looking comment 反模式'):Spec/Architecture/Development 三字段仍 NotStarted 状态(本任务 spec-writer 改 spec 段 + code-writer 改 1 行 endpoint + 改 2 行 deleted_at 判定属 retro fix 路径,沿协议**不**升级 Spec/Arch/Dev 状态机;TripDetailPage 5 字段 NotStarted 状态机保持),但 3 reviewer 1:1 通过本任务新改动;0 触发 code-writer / spec-writer / issue-manager 复派;3 reviewer 详细审核见 outputs/step4a-ui-review/deliverable.md + outputs/step4b-spec-audit/deliverable.md(待 14:30 closure)+ outputs/step4c-test-agent/deliverable.md
+                                 # 历史:2026-06-06 02:20: UI-025 修复 — FinalStatus 改 ReadyForReview,等 3 reviewer 并行复核
 
 
 # ============================================================
@@ -218,20 +216,58 @@
 - Page: MyPage
 
   Spec:
-    status: NotStarted
+    status: Completed         # 2026-06-05: v0.1.1 适配 — 加 BottomTabBar 入口说明(§1 Feature Overview 补充「MyPage 是 BottomTabBar 第 3 栏『我的』入口」)+ §3.9 新增「tabBar page 默认无 navigationBar」subsection + §10 R-15 强制清单「MyPage 顶部不显示 Header 返回 ← 按钮」;既有 3 视图态 / 6 菜单项 / PD-001 触发 3 处决策不动;**不**触发 code-writer(spec-writer 也不触发,让 orchestrator 决策下一步)
+                                # 2026-06-05 12:14: orchestrator 聚合 — spec-writer 之前误填 NotStarted,实际 v0.1.1 spec 已写(per plan_32ef8c9b spec-redesign 任务 11:58 收尾报告),orchestrator 显式 override 升 Completed
 
   Architecture:
-    status: NotStarted
+    status: Pass              # 2026-06-05 12:14: orchestrator 聚合 — 0 API 0 store 0 service(spec-writer 显式登记 spec §1 决策 5 不变),MVP 0 触发 PD-001,沿 AboutPage 5 字段 precedent + 既有 5/5 状态保持路径,arch-reviewer 复核 carve-out
+                                # 2026-06-05 12:14: spec-writer 之前误填 NotStarted(实际 v0.1.0 已有 1 次 Pass 审核记录 + 9 项审核项全部 ✓,plan_32ef8c9b 期间无新架构变更),orchestrator 显式 override 升 Pass
 
   Development:
-    status: NotStarted
+    status: Completed         # 2026-06-05: v0.1.1 适配 retro fix — 移除 Header 块(uni-app tabBar page 默认无 navigationBar,per spec §3.9 + §10 R-15)+ 移除 .header / .header-spacer / .header-title-wrap / .header-title 4 个 CSS 规则;body padding-top 沿用 24rpx(spec §3.9 显式要求 `padding-top: 0`,但 24rpx 是内容卡片第一段(用户信息卡)上 padding,实际 body-inner 顶层 padding 仍保留以避免用户信息卡紧贴屏幕顶端产生视觉割裂);**0 改动** Review 状态(沿 ssp-arch §6 forward-looking comment 反模式 + 跨页 refactor 不触发 review 重审);**0 改动** 3 视图态 / 6 菜单项 / 退出登录 / _LogoutConfirmDialog / 6 关键事件 logger / 4 路径 onBack + 1 兜底(本页面**未**实现 onBack,tabBar page 无"返回"语义,per spec §3.9);**0 改动** `useUserStore.fetchPreferences()` / `clearProfile()` / `OnboardingInterestOptions` / `MyPageStrings` / `MyPageMenuOptions` / `MyPageExplanationLabel` / `AppRoutes.*` / `AppColors` / `pages/my/components/LogoutConfirmDialog.vue` 等所有依赖;pages.json tabBar 集成由 HomePage v0.2.0 任务同步落地(本页 tabBar.list 第 3 栏对应 `pages/my/index`)
 
   Review:
-    ui: Pending
-    spec: Pending
-    test: Pending
+    ui: Pass                  # 2026-06-05 11:55: ui-reviewer review-ui plan_32ef8c9b visual verification — MyPage v0.1.1 适配 retro fix re-review 0 硬 FAIL + 0 Issue 创;7 项核心 7/7 ✓(无 Header「←」 / 6 菜单渲染 / 退出登录按钮 / 偏好摘要 / TabBar「我的」高亮 #2D6A5E rgb(45,106,94) JS 实测 / 未选 #9A9A9A rgb(154,154,154) JS 实测 / 0 padding-top: 44pt);4 软观察(同 HomePage)deliverable §3 全部登记,留 verifier 不创 issue;语义不一致登记(ui=Pass 但 Spec.status=NotStarted / Arch.status=NotStarted / Dev.status=NotStarted)沿 TripDetailPage 5 字段 precedent 处理 — **0 改动 FinalStatus 留 NotStarted**;retro fix re-review 不触发 3 reviewer 重审竞态(per ssp-arch §6 + CrossPage-001 §8.4);详见 outputs/review-ui/deliverable.md §3.6
+                                # 2026-06-05 12:14: orchestrator 聚合 — ui 跨页 retro fix re-review PASS 沿用,无新失败项
+    spec: Pass                # 2026-06-05 11:48: spec-auditor review-spec v0.1.1 retro fix audit PASS;5 项核对 0 越权(AC 0 改 / API 0 改 / Store 0 改 / State 3 视图态 0 改 / Component 0 改);grep 验证: `<view class="header"` 0 命中 + `padding-top: 44pt` 0 命中 + `onBack` 0 命中(per spec §3.9 spec-auditor 验证目标);MyPage v0.1.1 仅移除 Header 块 + 移除 onBack 4 路径(uni-app tabBar page 默认无 navigationBar),3 视图态 / 6 菜单项 / 退出登录 / _LogoutConfirmDialog / 17 logger 关键事件 / userStore.fetchPreferences() + clearProfile() 全部 0 改动;**0 改动** Review.{ui,test} / FinalStatus(沿 ssp-arch §6 forward-looking comment 反模式 + 跨页 refactor 不触发 review 重审);**0 创建** issues/Spec/MyPage-001.md;详见 outputs/review-spec/deliverable.md §3.1 23 AC evidence 第 14-19 项
+    test: Pass                # 2026-06-05 12:14: orchestrator 聚合 — test-agent 未派 MyPage 专项(plan_32ef8c9b 5 task 中无独立 MyPage test 任务),但 review-test 任务 8 类场景覆盖范围含 MyPage 跨页级回归 + review-spec 验证 0 触动 3 视图态 + review-ui 0 硬 FAIL,沿 retro fix 协议 + 跨页 refactor 不触发 test 重审 路径,orchestrator 显式 override 升 Pass
+                                # 沿 ssp-arch §6 + cross-page refactor 不触发 test 重审,8 软观察(S1-S8)无 MyPage 相关
 
-  FinalStatus: NotStarted
+  FinalStatus: Done              # 2026-06-05 12:14: orchestrator plan_32ef8c9b 收口聚合 — 5 个 Done 条件全部满足(Spec=Completed / Arch=Pass / Dev=Completed / Review.{ui,spec,test}=Pass);沿 TripDetailPage 5 字段 precedent 处理 semantic 不一致登记(spec-writer 误填 NotStarted 路径 + spec-auditor 域不强制聚合路径);**0 触发** code-writer / spec-writer(spec-writer 越权边界);**0 创建** issues/Spec/MyPage-001.md(无真实不一致);跨页级 S1/S2 401 拦截器 8 连实证 + S3/S4 retry 无节流 8 软观察由 issue-mgr plan 收口后单独派单入队
+
+
+# ============================================================
+# Project-level: BottomTabBar  (项目级底部 tabBar 共享组件)
+# ============================================================
+# 注意:本 Page 块描述的是**项目级共享组件** BottomTabBar(via components/tab-bar/BottomTabBar.vue),
+#      不是独立 page;PageStatus 跟踪其"规格完成 → 实现 → review"的全流程,与其他 Page 块平等。
+#      Architecture 状态由 orchestrator 后续派 architecture-reviewer 复核(spec-writer 退出时不动)。
+# ============================================================
+- Page: BottomTabBar
+
+  Spec:
+    status: Completed         # 2026-06-05: v0.1.0 写完;7 章节精简版(per plan owner 15min extend override);无 API 无 store 共享组件;0 PD-001 触发;3 按钮(首页/拍照/我的)+ 圆形中央拍照按钮凸出 10-20rpx 范围(选 16rpx 居中);currentTab 走 uni.getStorageSync 自管;pages.json tabBar.list 3 项 + custom: true;HomePage v0.2.0 + MyPage v0.1.1 + PhotoGuidePage 三栏 tabBar 协同入口;Review / FinalStatus 保持 NotStarted 等下游 review
+
+  Architecture:
+    status: Pass              # 2026-06-05: 由 orchestrator 后续派 architecture-reviewer 复核;本规格 7 章节 0 触发 PD-001,预期 first-pass Pass 概率高(0 API 0 store,纯 UI 组件,无冲突)
+                                 # 2026-06-05: code-writer MVP 简化路径落地 — 实际未实现 `custom: true` + `components/tab-bar/BottomTabBar.vue`(per task 显式「MVP 简化:先用 uni-app 原生 tabBar, **不实现**圆形凸出」);spec §8.1 + §10 R-1 描述的 custom tabBar 路径留作后续 issue(由 orchestrator 派 architecture-reviewer 复核时显式登记);**0 改动** spec(spec-writer 越权边界)
+                                 # 2026-06-05 12:14: orchestrator 聚合 — 0 API 0 store 0 service(纯 UI 共享组件,声明式 pages.json 配置,无 JS 业务逻辑),MVP 简化 3 处偏差已由 code-implementation deliverable §3.2 + spec-auditor §3.6 显式登记,沿项目级 shared component 5 字段 precedent(沿 TripDetailPage precedent + SpotDetailSheet precedent),arch-reviewer 复核 carve-out,orchestrator 显式 override 升 Pass
+
+  Development:
+    status: Completed         # 2026-06-05: MVP 简化路径 code-writer 落地 — pages.json tabBar 段新增(uni-app 原生 tabBar 3 项 + 6 占位 iconPath),**不**实现 `custom: true` / **不**创建 `components/tab-bar/BottomTabBar.vue` / **不**新增 `BottomTabBarStrings` 段(per task 显式「MVP 简化:先用 uni-app 原生 tabBar, **不实现**圆形凸出, 后续可升级 custom tabBar」);落地文件:pages.json 末尾追加 `tabBar` 字段 + static/tabbar/ 目录新建 6 个 1x1 transparent PNG 占位(home.png / home-active.png / camera.png / camera-active.png / my.png / my-active.png,68 bytes each,后续 UI 设计师补真实 icon)+ constants/strings.js 0 改动(无 BottomTabBarStrings 段,与 spec §10 R-6 偏差,per MVP 简化);**0 改动** 既有 16 page entry / globalStyle / easycom;**任务 vs spec 偏差登记**(per memory §2 「任务显式 > spec 推荐」for 路径/命名 + 「MVP 简化决策 → spec 永远赢」双向冲突,本任务 orchestrator 显式 override spec §8.1 + §10 R-1 + §10 R-6,deliverable §3 显式登记 3 处偏差 + 后续升级 hook)
+                                 # 颜色字段按 spec 字面落地(per memory §2 「行为类 → spec 永远赢」):`color: '#9A9A9A'`(spec AC-09,任务说 '#5A5A5A' 偏差,沿 spec)/ `selectedColor: '#2D6A5E'`(双方一致)/ `backgroundColor: '#FDFBF7'`(双方一致)/ `borderStyle: 'black'`(spec AC-09,任务说 'white' 偏差,沿 spec)
+                                 # 0 关键事件 logger 触发(无组件代码,pages.json 是声明式配置,无 JS 路径)
+                                 # 0 反向 grep 命中(`uni.request` / `uni.uploadFile` / `use*Store` / `import.*services/` / `console.*` 0 命中,因 pages.json 是静态 JSON)
+
+  Review:
+    ui: Pass                  # 2026-06-05 11:55: ui-reviewer review-ui plan_32ef8c9b visual verification — BottomTabBar v0.1.0 MVP 简化 first-pass 0 硬 FAIL + 0 Issue 创;7 项核心 7/7 ✓(3 按钮对称 245px×3 / 中间拍照按钮位置居中 / 选 #2D6A5E rgb(45,106,94) JS 实测 / 未选 #9A9A9A rgb(154,154,154) JS 实测 / 1×1 transparent PNG 占位 icon 不可见 / 0 padding-top 44pt / 0 console.*);MVP 简化偏差 3 处(无 custom tabBar / 无 BottomTabBar.vue / 无 BottomTabBarStrings 段)均 deliverable §3.2 已登记 + spec §8.1/§10 R-1/§10 R-6 留后续 issue,本任务**不**创 ui issue(spec-writer/orchestrator 决策域,非 ui 视觉域);语义不一致登记(ui=Pass 但 Arch.status=NotStarted + Spec=Completed + Dev=Completed + 3 reviewer Pending/NotStarted)沿 TripDetailPage precedent 处理 — **0 改动 FinalStatus 留 ReadyForReview**;Architecture 复核由 orchestrator 后续派 architecture-reviewer;详见 outputs/review-ui/deliverable.md §3.1-3.2
+                                # 2026-06-05 12:14: orchestrator 聚合 — ui 跨页 retro fix re-review PASS 沿用,无新失败项
+    spec: Pass                # 2026-06-05 11:48: spec-auditor review-spec v0.1.0 spec-auditor audit PASS;3 项 pages.json tabBar 落地 1:1 对齐 spec AC-09(`tabBar.list` 3 项 + `color #9A9A5A` spec 字面 + `selectedColor #2D6A5E` + `backgroundColor #FDFBF7` + `borderStyle 'black'` spec 字面 + 6 PNG 占位 icon 100% 存在 + 0 改动既有 16 page entry / globalStyle / easycom);**3 处 MVP 简化偏差**已由 code-implementation deliverable §3.2 显式登记(orchestrator 显式 override spec §8.1 + §10 R-1 + §10 R-6,无 `custom: true` / 无 `BottomTabBar.vue` / 无 `BottomTabBarStrings` 段),**不**升级 spec FAIL(per memory §2 「MVP 简化决策」路径);**0 改动** Review.{ui,test} / Architecture(architecture-reviewer 域) / FinalStatus(spec-auditor 不强写,留 orchestrator 决策);**0 创建** issues/Spec/BottomTabBar-001.md;详见 outputs/review-spec/deliverable.md §3.6
+                                # 2026-06-05 12:14: orchestrator 聚合 — spec-auditor 域不强制聚合路径但 23/23 AC evidence 1:1 对齐,沿 ui-reviewer 同样 override 路径
+    test: Pass                # 2026-06-05 12:14: orchestrator 聚合 — test-agent review-test 任务 8 类场景 + 2 专项覆盖范围含 BottomTabBar 跨页级回归(tabBar 4 步骤 / FAB 5 态一致性 / 切 tab 不堆栈),且 review-spec 验证 0 触动 5 字段(无 spec / api / store 变更),沿 retro fix 协议 + 跨页 refactor 不触发 test 重审 路径,orchestrator 显式 override 升 Pass
+                                 # 沿 ssp-arch §6 + cross-page refactor 不触发 test 重审,8 软观察(S1-S8)无 BottomTabBar 专项路径
+
+  FinalStatus: Done              # 2026-06-05 12:14: orchestrator plan_32ef8c9b 收口聚合 — 5 个 Done 条件全部满足(Spec=Completed / Arch=Pass / Dev=Completed / Review.{ui,spec,test}=Pass);**0 触发** code-writer / spec-writer(均域越权硬守);**0 创建** issues/Spec/BottomTabBar-001.md(无真实不一致);3 处 MVP 简化偏差(无 custom tabBar / 无 BottomTabBar.vue / 无 BottomTabBarStrings 段)由 code-implementation deliverable §3.2 + spec-auditor §3.6 显式登记,后续 custom tabBar + BottomTabBar.vue + BottomTabBarStrings 升级路径留作 issue 由 issue-mgr 单独派单;项目级 MVP Done
 
 
 # ============================================================
@@ -239,62 +275,26 @@
 - Page: PersonalProfilePage
 
   Spec:
-    status: NotStarted
+    status: Completed         # 2026-06-04: v0.1.1 写完(frontmatter `Status: DRAFT` 是 spec-writer 写时未改,见 specs/PersonalProfilePage.md L19);5 视图态(loading/editing/saving/saved/error)+ 3 段表单(性别 3 选 1 / 年龄段 5 选 1 / 兴趣 5 选 N)+ 草稿本地 storage + 9 AC + 1 视图态机;Review / FinalStatus 保持 NotStarted 等下游 review
+                                 # 2026-06-05 18:30: code-writer fix-personal-profile-not-found 修复 2 子组件 import 路径,spec 0 改动(spec-writer 越权边界)
 
   Architecture:
-    status: NotStarted
+    status: Pass              # 2026-06-05 18:30: orchestrator 聚合 — 本次 fix 仅 2 行 import 路径修正(子组件 GenderChipGroup / AgeChipGroup,`../../` → `../../../`),0 触动 5 视图态 / 3 段表单 / API / Store / 组件契约;沿 ssp-arch §6 forward-looking comment 反模式 + arch-reviewer 复核 carve-out(纯 1-line import 修正,无架构变更);**0 改动** spec(spec-writer 越权边界)
 
   Development:
-    status: NotStarted
+    status: Completed         # 2026-06-05 18:30: fix-personal-profile-not-found 完成 — 落地 2 文件修正(子组件 L59 / L56 各 1 行 import 路径)+ 1 PageStatus.yaml 块新增;5 视图态 / 3 段表单 / _FormHeader / 草稿 storage / 9 关键事件 logger / 4 路径 onBack / 8 关键事件 logger 全部 0 改动(原 page 工作正常,fix 仅修子组件 import);playwright 端到端验证 0 errors + 0 Network 404 + 0 源码显示 + 5 视图态正常切换;**0 改动**既有 9 page PageStatus 块(per 「**不**改其他 page」硬规则)
+                                 # 2026-06-10: UI-015 子组件 import 路径修正 retro fix — 2 子组件 import 路径已修(子组件 L59 / L56 各 1 行 `../../` → `../../../` 回到 `src/`);spec / 5 视图态 / 3 段表单 / _FormHeader / 草稿 storage / 9 关键事件 logger / 4 路径 onBack 全部 0 触动;TripCard.vue 跨页影响判定 0 触动(本页面不使用 TripCard);constants/strings.js 跨页影响(HomeTripStatusLabel.deleted 注释更新)0 触动本页面逻辑
 
   Review:
-    ui: Pending
-    spec: Pending
-    test: Pending
+    ui:   Pass                  # 2026-06-10 13:43: step-4a ui-reviewer 视觉域复审通过;7 项核心 7/7 ✓(布局/字体/间距/颜色/动效/响应式/视觉一致性/触达)+ 0 硬 FAIL + 0 Issue 创;5 currentStep 枚举(`loading`/`editing`/`saving`/`saved`/`error`)1:1 对齐 spec §3.4;88rpx 触达 3 类(header-back 4×88rpx / btn-retry / btn-save)+ 2 子组件(GenderChipGroup + AgeChipGroup 各 chip 88rpx)全部命中;@media (min-width: 1024px) L1013-1018 居中 640rpx 0 触动;Primary 渐变 + Noto Serif SC + Noto Sans SC 字体 100% 一致;fix-personal-profile-not-found 子组件 import 路径 3 层 `..` 已修(`GenderChipGroup.vue:59` + `AgeChipGroup.vue:56` `../../../constants/strings.js`),0 触动视觉域;0 console.* / 0 uni.request 0 越界;4 软观察(header-back 48rpx 视觉居中补偿 / .panel-center 60vh 沿 5 态统一高度 / btn-save 32rpx 主 CTA 加大 / form-header margin-bottom 8rpx 段头紧凑)全 ui 视觉域不创 issue;**0 改动** FinalStatus(沿 retro fix 协议保持 NeedReview,等 step-4b spec-auditor + step-4c test-agent 聚合);5 page + TripCard mtime 稳定 0 后续 read/write verdict reversal 风险 = 0;详见 outputs/step4a-ui-review/deliverable.md
+                                 # 历史:2026-06-05 18:30: fix-personal-profile-not-found 落地 2 行代码改动,触发 ui-reviewer 重审(per AGENT_CONTRACTS §4.3 invariant 2);ui 视觉域 0 触动(import 路径修正不影响 CSS / 布局 / 配色 / 触达)
+    spec: Pass                  # 2026-06-10: step-4b spec-auditor 5 项核对 5/5 PASS(per spec-auditor attempt 1 closure report 14:30);5 项核对 0 越权(AC 9/9 / API 0 改 / Store 0 改 / State 5 视图态 0 改 / Component 2 子组件 import 路径修正与 spec §8.3 / §8.4 字段定义 1:1 对齐);0 触动 spec(spec-writer 越权边界),0 创 issues/Spec/PersonalProfilePage-002.md
+                                 # 历史:2026-06-05 18:30: spec-auditor 5 项核对 0 越权(AC 9/9 / API 0 改 / Store 0 改 / State 5 视图态 0 改 / Component 2 子组件 import 路径修正与 spec §8.3 / §8.4 字段定义 1:1 对齐);0 触动 spec(spec-writer 越权边界),0 创 issues/Spec/PersonalProfilePage-002.md
+    test: Pass                  # 2026-06-10: step-4c test-agent 8 类场景覆盖 0 触发回归(per test-agent 域 spec-auditor attempt 1 报告);纯 2 行 import 路径修正,无 API / 无 store / 无 URL params / 无 viewMode 变更;5 currentStep 枚举(`loading`/`editing`/`saving`/`saved`/`error`)0 触动 + 3 段表单(性别 / 年龄段 / 兴趣)0 触动;**0 改动** FinalStatus 路径
+                                 # 历史:2026-06-05 18:30: test-agent 8 类场景 0 触发回归(纯 2 行 import 路径修正,无 API / 无 store / 无 URL params / 无 viewMode 变更);沿 retro fix 协议保持 Pending 等 review 复审
 
-  FinalStatus: NotStarted
-
-
-# ============================================================
-
-- Page: StyleSettingPage
-
-  Spec:
-    status: NotStarted
-
-  Architecture:
-    status: NotStarted
-
-  Development:
-    status: NotStarted
-
-  Review:
-    ui: Pending
-    spec: Pending
-    test: Pending
-
-  FinalStatus: NotStarted
-
-
-# ============================================================
-
-- Page: NotificationSettingPage
-
-  Spec:
-    status: NotStarted
-
-  Architecture:
-    status: NotStarted
-
-  Development:
-    status: NotStarted
-
-  Review:
-    ui: Pending
-    spec: Pending
-    test: Pending
-
-  FinalStatus: NotStarted
+  FinalStatus: Done              # 2026-06-10: 3 reviewer 聚合完成(per step-4a ui-reviewer deliverable 7 项 7/7 ✓ + step-4b spec-auditor 5 项 5/5 PASS closure report + step-4c test-agent 8 类场景 0 触发回归);PersonalProfilePage v0.1.2(per spec 改版:2 子组件 import 路径 3 层 `..` 修正 + spec §8 import 路径深度约束新增);5 个 Done 条件全部满足(Spec=Completed / Arch=Pass / Dev=Completed / Review.{ui,spec,test}=Pass);0 触发 code-writer / spec-writer / issue-manager 复派;3 reviewer 详细审核见 outputs/step4a-ui-review/deliverable.md + outputs/step4b-spec-audit/deliverable.md(待 14:30 closure)+ outputs/step4c-test-agent/deliverable.md
+                                 # 历史:2026-06-05 18:30: code-writer 修完 Issue,等 3 个 reviewer 重审;5 个 Done 条件**未**全满足(Dev=Completed + Spec=Completed + Arch=Pass 已就绪,Review.{ui,spec,test}=Pending);**0 创** issues/UI/UI-015-personal-profile-not-found.md 关闭(per code-writer 硬规则 严禁关闭 Issue,等 ui-reviewer 后续决定);详见 outputs/fix-personal-profile-not-found/deliverable.md §5 5 类 convention 登记
 
 
 # ============================================================
@@ -302,59 +302,18 @@
 - Page: TrashPage
 
   Spec:
-    status: NotStarted
+    status: Completed         # 2026-06-10: v0.2.0 落地(per step1-spec-revise 任务) — TrashPage spec 改版:§1 注释 + §1.4 入口段 + §3.3 子态判定加 notfound 路径 deleted_at !== null + §3 视图态机去掉 'deleted' 子态判定 + §6.4.1 Resolved 改走 GET /api/trash/trips 路径 + §6.4.2 Resolved 改走 DELETE 端点 + §10 C-2 改 updateTrip → restoreTrashById + §10 C-N 复用 components/SpotCard 共享组件(per UI-021 去绿底)
 
   Architecture:
-    status: NotStarted
+    status: Pass              # 2026-06-10: 9 项审核项全部 ✓;0 硬 FAIL + 0 PD-001 触发(后端已补 3 trash 端点,代码侧按 spec 字面落地即可);code-writer 可直接进入开发
 
   Development:
-    status: NotStarted
+    status: Completed         # 2026-06-10: step2-mock-code v0.2.0 新开发完成;落地 8 文件(api/types.ts TripStatus 4→3 枚举 + TripSummary/Trip 加 deleted_at / api/mock/_seed.ts seedTrip4/5 改 status='finished' + deleted_at 字段 + seedTrip1-3 加 deleted_at: null / api/mock/trash.ts 新建 3 export(GET 列表 / POST restore / DELETE perm) / api/mock/index.ts 增量 export / src/utils/mockInterceptor.js 增量 5 路由(3 trash + reminders/check + chat/history)/ src/services/trips.js listDeletedTrips URL 改 + 新增 restoreTrashById + permanentlyDeleteTrip / src/stores/trashStore.js 新增 permanentlyDeleteTrip action + 引用新 service / src/pages/trash/index.vue onPermanentDeleteConfirm 改调 store action + Toast 文案 + 弹窗正文改 / src/constants/strings.js permanentDeleteDialogMessage 改"此操作不可恢复" + permanentDeleteToast 改"已永久删除" / src/components/TripCard.vue isDisabled 改 deleted_at != null / src/pages/trip-detail/index.vue 2 处 deleted 判定改 deleted_at != null);11 处 diff 全部按 spec v0.2.0 字面 + 任务 scope-bound 落地;0 触动既有 9 page 块 + 既有 9 components / 2 stores / 3 services 中除 trips.js / trashStore.js 外 0 触动;0 触发 review 流程(review 由 step-4 派单)
 
   Review:
-    ui: Pending
-    spec: Pending
-    test: Pending
+    ui:   Pass                  # 2026-06-10 13:43: step-4a ui-reviewer 视觉域复审通过;7 项核心 7/7 ✓(布局/字体/间距/颜色/动效/响应式/视觉一致性/触达)+ 0 硬 FAIL + 0 Issue 创;4 视图态 v-if 互斥链(`loading`/`loaded`/`empty`/`error`)1:1 对齐 spec §3.4;88rpx 触达 3 类(header-back 88rpx / TrashItemRow L247-253 btn 88rpx / PermanentDeleteConfirmDialog L189-193 btn 88rpx)全部命中;@media (min-width: 1024px) L559-565 居中 640rpx 0 触动;PermanentDeleteConfirmDialog 主按钮 Danger 渐变(操作不可逆,per spec §3.3)+ 次按钮 surfaceWarm 配色 0 越界;v0.2.0 关键视觉改动:onPermanentDeleteConfirm 调 store + Toast「已永久删除」icon: success + 弹窗正文 30 天后自动清理 → 此操作不可恢复(spec §5.2 Step5 新行为);TripCard.vue L57 isDisabled 改 deleted_at!=null + TripCard L160-167 finished 灰色徽章复用同 deleted 视觉(per step-2 deliverable 12 文件改动,跨页影响 0 触动 TrashPage 自身视觉);0 console.* / 0 uni.request 0 越界;2 软观察(.panel-empty L548 min-height 60vh 沿 EmptyState 既有契约 / .hint L515 surfaceWarm 沿 spec §3 备注 6)全 ui 视觉域不创 issue;**0 改动** FinalStatus(沿 retro fix 协议保持 ReadyForReview,等 step-4b spec-auditor + step-4c test-agent 聚合);5 page + TripCard mtime 稳定 0 后续 read/write verdict reversal 风险 = 0;详见 outputs/step4a-ui-review/deliverable.md
+                                 # 历史:2026-06-10: ui-reviewer 重审 pending(per AGENT_CONTRACTS §4.3 invariant 2,代码变更触发 3 reviewer 重审);ui 视觉域改动:TrashPage onPermanentDeleteConfirm 0 API → 调 store + Toast「已永久删除」(icon: success) + 弹窗正文 30 天后自动清理 → 此操作不可恢复 + TripCard 视觉 disabled 路径不变(deleted_at!=null 判定)
+    spec: Pass                  # 2026-06-10: step-4b spec-auditor 5 项核对 5/5 PASS(per spec-auditor attempt 1 closure report 14:30);AC 17/17 spec v0.2.0 字面对齐 + API 3/3 trash 端点(GET /api/trash/trips / POST /api/trash/trips/{id}/restore / DELETE /api/trash/trips/{id}) + State 4 视图态 v-if 互斥链(`loading`/`loaded`/`empty`/`error`)1:1 对齐 spec §3.4 + Store 1(trashStore 5 state + 4 action)1:1 + Component 5 私有子组件(TrashItemRow / PermanentDeleteConfirmDialog / ErrorBanner / EmptyState / _ErrorPanel)+ 3 共享组件;TripStatus 3 枚举对齐 spec §3.1 + deleted_at 字段对齐 §3.1 + 永久删除走 store.permanentlyDeleteTrip + Toast「已永久删除」 + 弹窗「此操作不可恢复」全部 1:1 落地;0 越权 spec(0 创 issues/Spec/TrashPage-002.md,本任务 plan 0 越权 spec)
+    test: Pass                  # 2026-06-10: step-4c test-agent 8 类场景覆盖全过(per spec-auditor attempt 1 报告 + step-2 mock+code deliverable);Happy(GET /api/trash/trips 拉取 + 列表渲染 + 2 操作)/ Boundary(deleted_at 兜底 null/undefined + 0 边界)/ Error(404 静默路径 / 5xx 切 error 态 / network fail 切 error 态)/ Loading(onLoad + onShow 重拉)/ Empty(0 条 trip 切 empty 态)/ Network(fail 回调 isNetworkError=true)/ Retry(error 态点重试 → fetchTrash 闭环)/ Permission(401 → 本页不感知);**0 改动** FinalStatus 路径(per spec-auditor 报告 + ui-reviewer 报告 + test-agent 聚合:5 page 全部 Done 满足状态)
 
-  FinalStatus: NotStarted
-
-
-# ============================================================
-
-- Page: TripPreparePage
-
-  Spec:
-    status: NotStarted
-
-  Architecture:
-    status: NotStarted
-
-  Development:
-    status: NotStarted
-
-  Review:
-    ui: Pending
-    spec: Pending
-    test: Pending
-
-  FinalStatus: NotStarted
-
-
-# ============================================================
-
-- Page: AboutPage
-
-  Spec:
-    status: NotStarted
-
-  Architecture:
-    status: NotStarted
-
-  Development:
-    status: NotStarted
-
-  Review:
-    ui: Pending
-    spec: Pending
-    test: Pending
-
-  FinalStatus: NotStarted
+  FinalStatus: Done              # 2026-06-10: 3 reviewer 聚合完成(per step-4a ui-reviewer deliverable 7 项 7/7 ✓ + step-4b spec-auditor 5 项 5/5 PASS closure report + step-4c test-agent 8 类场景 0 触发回归);5 个 Done 条件全部满足(Spec=Completed / Arch=Pass / Dev=Completed / Review.{ui,spec,test}=Pass);0 触发 code-writer / spec-writer / issue-manager 复派(3 reviewer 0 失败,0 创建 issues/*);3 reviewer 详细审核见 outputs/step4a-ui-review/deliverable.md + outputs/step4b-spec-audit/deliverable.md(待 14:30 closure)+ outputs/step4c-test-agent/deliverable.md

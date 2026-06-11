@@ -1,0 +1,23 @@
+# pages/
+
+> **本目录由 `code-writer` 独占**。
+>
+> 存放 UniApp 页面入口。一个页面一个子目录,子目录名与 `workflow/PageStatus.yaml` 的 `Page:` 字段一致(kebab-case)。
+>
+> 推荐结构(以 `LoginPage` 为例,见 `docs/Frontend Code Style Guide.md`):
+
+```
+pages/
+└── login-page/
+    ├── index.vue        # 页面入口
+    ├── components/      # 仅本页面使用的子组件
+    └── README.md        # 页面级说明(可选)
+```
+
+**禁止**:
+
+- 跨页面直接引用 `components/` 内部实现,只能通过 store / service
+- 在本目录写规格或 Issue(spec 走 `specs/`,Issue 走 `issues/`)
+- 其他 6 个 rein 修改本目录
+
+**关联契约**:`workflow/AGENT_CONTRACTS.md` §2.4 `code-writer`
