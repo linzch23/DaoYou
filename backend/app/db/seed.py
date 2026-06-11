@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from datetime import date, time
+from datetime import date, datetime, time
 from decimal import Decimal
 
 from sqlalchemy import select
@@ -18,6 +18,9 @@ DEMO_TRIP_TITLE = "大连三日游"
 class SeedUser:
     id: int
     nickname: str
+    latitude: Decimal
+    longitude: Decimal
+    location_updated_at: datetime | None
 
 
 @dataclass(frozen=True)
@@ -60,7 +63,13 @@ class DemoSeed:
 
 def build_demo_seed() -> DemoSeed:
     return DemoSeed(
-        user=SeedUser(id=DEFAULT_USER_ID, nickname="导友演示用户"),
+        user=SeedUser(
+            id=DEFAULT_USER_ID,
+            nickname="导友演示用户",
+            latitude=Decimal("31.2304000"),
+            longitude=Decimal("121.4737000"),
+            location_updated_at=None,
+        ),
         trip=SeedTrip(
             user_id=DEFAULT_USER_ID,
             title=DEMO_TRIP_TITLE,
@@ -143,7 +152,13 @@ def seed_database(session: Session) -> dict[str, int | bool]:
     user = session.get(User, seed.user.id)
     created_user = user is None
     if user is None:
-        user = User(id=seed.user.id, nickname=seed.user.nickname)
+        user = User(
+            id=seed.user.id,
+            nickname=seed.user.nickname,
+            latitude=seed.user.latitude,
+            longitude=seed.user.longitude,
+            location_updated_at=seed.user.location_updated_at,
+        )
         session.add(user)
         session.flush()
 
@@ -232,4 +247,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
