@@ -31,21 +31,6 @@ backend/uploads/audio/*
 !backend/uploads/docs/.gitkeep
 !backend/uploads/audio/.gitkeep
 
-# Frontend
-frontend/node_modules/
-frontend/dist/
-frontend/unpackage/
-frontend/docs/
-frontend/outputs/                                # plan-engine 交付物缓存
-frontend/.mavis/plans/                           # plan-engine 状态文件
-node_modules/.vite/                     # Vite 预构建缓存
-frontend/回收站功能API接口文档.md                 # 顶层临时文档(后续可改正式 spec 名)
-frontend/回收站功能前端实施Checklist.md           # 同上
-frontend/workflow
-frontend/issues/
-frontend/specs
-frontend/.harness/
-fronted/.opencode
 
 # OS / editor
 .DS_Store

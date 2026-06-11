@@ -1,0 +1,203 @@
+{
+  "pages": [
+    {
+      "path": "pages/onboarding/index",
+      "style": {
+        "navigationBarTitleText": "导友",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FDFBF7",
+        "backgroundColor": "#F7F3EC"
+      }
+    },
+    {
+      "path": "pages/home/index",
+      "style": {
+        "navigationBarTitleText": "探险日记",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FDFBF7",
+        "backgroundColor": "#F7F3EC"
+      }
+    },
+    {
+      "path": "pages/spot-detail-sheet/index",
+      "style": {
+        "navigationBarTitleText": "",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FDFBF7",
+        "backgroundColor": "#F7F3EC"
+      }
+    },
+    {
+      "path": "pages/new-trip/index",
+      "style": {
+        "navigationBarTitleText": "新建行程",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FDFBF7",
+        "backgroundColor": "#F7F3EC"
+      }
+    },
+    {
+      "path": "pages/trip-detail/index",
+      "style": {
+        "navigationBarTitleText": "行程详情",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FDFBF7",
+        "backgroundColor": "#F7F3EC"
+      }
+    },
+    {
+      "path": "pages/edit-trip/index",
+      "style": {
+        "navigationBarTitleText": "编辑行程",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FDFBF7",
+        "backgroundColor": "#F7F3EC"
+      }
+    },
+    {
+      "path": "pages/photo-guide/index",
+      "style": {
+        "navigationBarTitleText": "拍照讲解",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FDFBF7",
+        "backgroundColor": "#F7F3EC"
+      }
+    },
+    {
+      "path": "pages/guide-result/index",
+      "style": {
+        "navigationBarTitleText": "讲解结果",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FDFBF7",
+        "backgroundColor": "#F7F3EC"
+      }
+    },
+    {
+      "path": "pages/my/index",
+      "style": {
+        "navigationBarTitleText": "我的",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FDFBF7",
+        "backgroundColor": "#F7F3EC"
+      }
+    },
+    {
+      "path": "pages/style-setting/index",
+      "style": {
+        "navigationBarTitleText": "讲解风格",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FDFBF7",
+        "backgroundColor": "#F7F3EC"
+      }
+    },
+    {
+      "path": "pages/trash/index",
+      "style": {
+        "navigationBarTitleText": "回收站",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FDFBF7",
+        "backgroundColor": "#F7F3EC"
+      }
+    },
+    {
+      "path": "pages/notification-setting/index",
+      "style": {
+        "navigationBarTitleText": "通知设置",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FDFBF7",
+        "backgroundColor": "#F7F3EC"
+      }
+    },
+    {
+      "path": "pages/personal-profile/index",
+      "style": {
+        "navigationBarTitleText": "个人资料",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FDFBF7",
+        "backgroundColor": "#F7F3EC"
+      }
+    },
+    {
+      "path": "pages/login/index",
+      "style": {
+        "navigationBarTitleText": "登录",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FDFBF7",
+        "backgroundColor": "#F7F3EC"
+      }
+    },
+    {
+      "path": "pages/trip-prepare/index",
+      "style": {
+        "navigationBarTitleText": "行程准备",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FDFBF7",
+        "backgroundColor": "#F7F3EC"
+      }
+    },
+    {
+      "path": "pages/about/index",
+      "style": {
+        "navigationBarTitleText": "关于导友",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FDFBF7",
+        "backgroundColor": "#F7F3EC"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "导友",
+    "navigationBarBackgroundColor": "#FDFBF7",
+    "backgroundColor": "#F7F3EC",
+    "app-plus": {
+      "background": "#F7F3EC"
+    }
+  },
+  "easycom": {
+    "autoscan": true,
+    "custom": {}
+  },
+  "tabBar": {
+    "color": "#9A9A9A",
+    "selectedColor": "#2D6A5E",
+    "backgroundColor": "#FDFBF7",
+    "borderStyle": "black",
+    "list": [
+      {
+        "pagePath": "pages/home/index",
+        "text": "首页",
+        "iconPath": "static/tabbar/home.png",
+        "selectedIconPath": "static/tabbar/home-active.png"
+      },
+      {
+        "pagePath": "pages/photo-guide/index",
+        "text": "拍照讲解",
+        "iconPath": "static/tabbar/camera.png",
+        "selectedIconPath": "static/tabbar/camera-active.png"
+      },
+      {
+        "pagePath": "pages/my/index",
+        "text": "我的",
+        "iconPath": "static/tabbar/my.png",
+        "selectedIconPath": "static/tabbar/my-active.png"
+      }
+    ]
+  }
+}

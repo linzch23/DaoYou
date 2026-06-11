@@ -178,6 +178,7 @@ export const seedTrip: Trip = {
   end_date: END,
   status: 'active',
   days: [day1, day2, day3],
+  deleted_at: null,
 }
 
 // 另一条「草稿」trip，用于列表展示
@@ -199,6 +200,7 @@ const seedTrip2: Trip = {
       items: [],
     },
   ],
+  deleted_at: null,
 }
 
 // 一条已结束的 trip
@@ -211,11 +213,38 @@ const seedTrip3: Trip = {
   end_date: '2026-05-04',
   status: 'finished',
   days: [],
+  deleted_at: null,
 }
 
-export const seedTrips: Trip[] = [seedTrip, seedTrip2, seedTrip3]
+// 两条「已删除」trip(specs/TrashPage.md §6.4.4 触发新增,演示 TrashPage 4 视图态中的 `loaded`)
+// v0.2.0 修订:`status: 'deleted'` 改 `status: 'finished'` + 加 `deleted_at` 字段(per spec §6.4.4 Resolved 决策路径)
+// status 3 枚举后,'deleted' 语义完全由 deleted_at: string | null 字段承担
+const seedTrip4: Trip = {
+  id: 4,
+  user_id: SEED_USER_ID,
+  title: '西藏自驾游',
+  city: '拉萨',
+  start_date: '2026-06-01',
+  end_date: '2026-06-03',
+  status: 'finished',
+  days: [],
+  deleted_at: '2026-06-04T10:00:00+08:00',
+}
+const seedTrip5: Trip = {
+  id: 5,
+  user_id: SEED_USER_ID,
+  title: '上海周末',
+  city: '上海',
+  start_date: '2026-04-15',
+  end_date: '2026-04-16',
+  status: 'finished',
+  days: [],
+  deleted_at: '2026-06-02T15:30:00+08:00',
+}
 
-// §6.2 列表响应用 —— 投影掉 user_id 与 days
+export const seedTrips: Trip[] = [seedTrip, seedTrip2, seedTrip3, seedTrip4, seedTrip5]
+
+// §6.2 列表响应用 —— 投影掉 user_id 与 days(保留 deleted_at,per spec §3.1 + §6.4.4)
 export const seedTripSummaries: TripSummary[] = seedTrips.map((t) => ({
   id: t.id,
   title: t.title,
@@ -223,6 +252,7 @@ export const seedTripSummaries: TripSummary[] = seedTrips.map((t) => ({
   start_date: t.start_date,
   end_date: t.end_date,
   status: t.status,
+  deleted_at: t.deleted_at ?? null,
 }))
 
 // ──────────── 今日行程（day 1 of trip 1） ────────────

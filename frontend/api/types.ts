@@ -34,7 +34,11 @@ export interface Location {
 
 // ───────────────── TripItem ─────────────────
 
-export type ItemType = 'attraction' | 'food' | 'rest' | 'traffic'
+// §3.3 + UI-025 扩展:'other' 用于行程安排(横向拖动)兜底类型,
+//     实际 TripItem 后端字段未含,纯前端 client-only 类型(POST /api/trips
+//     body 用 ItineraryItem,内部包 item_type 字段;TripItem 接受 'other' 是
+//     防御性扩展,后端若返回 'other' 也照常展示,ItemTypeEmoji.default 兜底)
+export type ItemType = 'attraction' | 'food' | 'rest' | 'traffic' | 'other'
 export type ItemStatus = 'planned' | 'done' | 'skipped' | 'changed'
 
 export interface TripItem {
@@ -51,10 +55,30 @@ export interface TripItem {
   notes?: string
 }
 
+// ───────────────── ItineraryItem(UI-025 行程安排字段)─────────────────
+//
+// 用于 NewTripPage / EditTripPage form 视图的「行程安排」字段
+// (横向 scroll-view + 拖动排序)。
+//
+// 与 TripItem 的区别(per spec UI-025 §2 / issues/UI/UI-025):
+//   - 无 trip_day_id / address / lat-lng / status / notes(纯文本 + 时间段 + 类型)
+//   - id 是**客户端生成**稳定 key(Date.now() + 随机后缀),用于 v-for 拖动
+//   - item_type 用 'other' 兜底(新加,ItemType 5 枚举)
+//   - 服务端若需要回显,POST /api/trips body 携带 itineraryArrange: ItineraryItem[]
+//
+// 时间格式与 TripItem 一致(沿 §3.3 'HH:mm')
+export interface ItineraryItem {
+  id: number                // 客户端生成稳定 key(拖动排序需要)
+  title: string             // 地点名称
+  start_time: string        // 'HH:mm'
+  end_time: string          // 'HH:mm'
+  item_type: ItemType       // 'attraction' | 'food' | 'traffic' | 'rest' | 'other'
+}
+
 // ───────────────── Trip / TripDay / TripSummary ─────────────────
 
-// §3.1 —— 多了 'deleted'
-export type TripStatus = 'draft' | 'active' | 'finished' | 'deleted'
+// §3.1 —— TripStatus 3 枚举(draft / active / finished);'deleted' 语义由 deleted_at 字段承担(specs/TrashPage.md v0.2.0)
+export type TripStatus = 'draft' | 'active' | 'finished'
 
 export interface TripDay {
   id: number
@@ -76,6 +100,7 @@ export interface Trip {
   end_date: string
   status: TripStatus
   days: TripDay[]
+  deleted_at: string | null // ISO 8601;null = 活跃;非 null = 已删(per docs/API接口文档.md §3.1,TrashPage v0.2.0)
 }
 
 // §6.2 列表响应 —— 轻量 Trip（无 user_id、无 days）
@@ -86,6 +111,7 @@ export interface TripSummary {
   start_date: string
   end_date: string
   status: TripStatus
+  deleted_at: string | null // ISO 8601;null = 活跃;非 null = 已删(TrashPage 用,per docs/API接口文档.md §3.1)
 }
 
 // ───────────────── Preferences ─────────────────
@@ -163,18 +189,26 @@ export interface ReplanDraft {
 
 // ───────────────── Request 类型（mock 不消费，但为后续 request 封装做准备） ─────────────────
 
+// CreateTripRequest 扩展 itineraryArrange 字段(per UI-025):
+//   - 后端是否存 itineraryArrange 暂未确定(per spec §6.4.x PD-001 触发现状),
+//     但**前端 POST 携带**便于后续后端补字段时无侵入升级
+//   - 沿用既有 5 字段 + user_id(由 service 内部注入) + itineraryArrange 数组
+//   - 4 选填字段(companions / budget_range / transport_preference / special_needs)
+//     仍**不**入参,client-only(per spec §6.4.2)
 export interface CreateTripRequest {
   user_id: number
   title: string
   city: string
   start_date: string
   end_date: string
+  itineraryArrange?: ItineraryItem[] // UI-025 新增(可选,空数组也合法)
 }
 
 export interface UpdateTripRequest {
   user_id: number
   title?: string
   status?: TripStatus
+  itineraryArrange?: ItineraryItem[] // UI-025 新增(可选,EditTripPage PUT partial-update)
 }
 
 export interface CreateTripDayRequest {

@@ -1,0 +1,26 @@
+# components/
+
+> **本目录由 `code-writer` 独占**。
+>
+> 存放可复用 UI 组件(跨页面 / 跨 feature)。仅单个页面使用的子组件,放 `pages/<page>/components/`。
+>
+> 推荐结构:
+
+```
+components/
+├── AppHeader/           # 全站统一头
+│   ├── AppHeader.vue
+│   └── index.ts         # 统一出口
+├── EmptyState/          # 通用空状态
+└── LoadingSpinner/      # 通用加载
+```
+
+每个组件目录包含 `.vue` + `index.ts` 出口,组件名用 PascalCase,目录用 kebab-case(见 `docs/Frontend Code Style Guide.md` §2)。
+
+**禁止**:
+
+- 跨 Feature 互相直接引用(只能通过 store / service)
+- 在本目录写业务页面入口(那是 `pages/`)
+- 其他 6 个 rein 修改本目录
+
+**关联契约**:`workflow/AGENT_CONTRACTS.md` §2.4 `code-writer`
