@@ -58,7 +58,7 @@ MVP 暂不实现完整登录注册，默认使用：
 | --- | --- | --- |
 | 0 | 成功 | 请求正常完成 |
 | 4000 | 请求参数错误 | 缺少必填字段、字段类型错误、日期格式错误 |
-| 4001 | 资源不存在 | trip、trip_day、trip_item、photo、notification 不存在 |
+| 4001 | 资源不存在 | user、trip、trip_day、trip_item、photo、notification 不存在 |
 | 4002 | 文件上传失败 | 文件为空、类型不支持、大小超限、保存失败 |
 | 5000 | 后端服务错误 | 未分类服务端异常 |
 | 5001 | 大模型调用失败 | LLM API 超时、限流、鉴权失败 |
@@ -77,6 +77,7 @@ MVP 暂不实现完整登录注册，默认使用：
 | --- | --- | --- | --- | --- | --- |
 | 健康检查 | GET | `/health` | 检查后端服务 | 是 | 否 |
 | 首页 | GET | `/api/home/today` | 今日行程和未读提醒 | 是 | 否 |
+| 用户位置 | PUT | `/api/location` | 上传用户最新位置 | 是 | 否 |
 | 行程 | POST | `/api/trips` | 创建旅行 | 是 | 否 |
 | 行程 | GET | `/api/trips` | 获取旅行列表 | 是 | 否 |
 | 行程 | GET | `/api/trips/{trip_id}` | 获取旅行详情 | 是 | 否 |
@@ -210,8 +211,28 @@ MVP 暂不实现完整登录注册，默认使用：
 | latitude | number | 纬度，范围 `-90` 至 `90` |
 | longitude | number | 经度，范围 `-180` 至 `180` |
 
+### 3.5 UserLocation
+表示后端保存的用户最新位置及其采集时间。
 
-### 3.5 Preferences
+```json
+{
+  "latitude": 31.2304,
+  "longitude": 121.4737,
+  "location_updated_at": "2026-06-11T09:20:00+08:00"
+}
+```
+
+字段说明：
+
+| 字段 | 类型 | 说明 |
+| --- | --- | --- |
+| latitude | number | 最新纬度 |
+| longitude | number | 最新经度 |
+| location_updated_at | string \| null | 设备采集位置的时间，ISO 8601；`null` 表示尚未收到真实定位 |
+
+MVP 可在 `users` 中预置演示经纬度，但默认记录的 `location_updated_at` 必须为 `null`。提醒任务只有在该字段非空且位置未过期时，才将其视为用户真实位置。
+
+### 3.6 Preferences
 ```json
 {
   "explanation_style": "fun",
@@ -231,7 +252,7 @@ MVP 暂不实现完整登录注册，默认使用：
 | special_needs | string[] | `less_walking` / `less_queue` / `accessible` |
 
 
-### 3.6 ChatMessage
+### 3.7 ChatMessage
 ```json
 {
   "id": 1,
@@ -251,7 +272,7 @@ MVP 暂不实现完整登录注册，默认使用：
 | created_at | string | ISO 8601 创建时间 |
 
 
-### 3.7 Reminder
+### 3.8 Reminder
 ```json
 {
   "id": 1,
@@ -273,7 +294,7 @@ MVP 暂不实现完整登录注册，默认使用：
 | created_at | string \| null | ISO 8601 创建时间；即时检查响应中可省略 |
 
 
-### 3.8 AgentActionOption
+### 3.9 AgentActionOption
 Agent 识别到改线意图时，通过该结构返回可供用户选择的行程节点修改方案。
 
 ```json
@@ -373,8 +394,86 @@ GET /api/home/today?user_id=1&date=2026-07-01
 }
 ```
 
-## 6. 行程接口
-### 6.1 POST `/api/trips`
+## 6. 用户位置接口
+### 6.1 PUT `/api/location`
+上传用户最新位置。Android 客户端在获得定位权限后建议每 15 分钟调用一次；位置变化明显时也可以提前上报。
+
+请求字段：
+
+| 字段 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| user_id | int | 是 | 用户 ID，MVP 默认 `1` |
+| latitude | number | 是 | 纬度，范围 `-90` 至 `90` |
+| longitude | number | 是 | 经度，范围 `-180` 至 `180` |
+| timestamp | int | 是 | Android 实际采集位置的 Unix 秒时间戳，不是请求到达时间 |
+
+请求体：
+
+```json
+{
+  "user_id": 1,
+  "latitude": 31.2304,
+  "longitude": 121.4737,
+  "timestamp": 1781140800
+}
+```
+
+请求示例：
+
+```latex
+PUT /api/location
+Content-Type: application/json
+
+{"user_id":1,"latitude":31.2304,"longitude":121.4737,"timestamp":1781140800}
+```
+
+响应示例：位置已更新
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "updated": true,
+    "location": {
+      "latitude": 31.2304,
+      "longitude": 121.4737,
+      "location_updated_at": "2026-06-11T09:20:00+08:00"
+    }
+  }
+}
+```
+
+响应示例：收到乱序旧位置
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "updated": false,
+    "reason": "stale_timestamp",
+    "location": {
+      "latitude": 31.2305,
+      "longitude": 121.4738,
+      "location_updated_at": "2026-06-11T12:15:00+08:00"
+    }
+  }
+}
+```
+
+处理约束：
+
++ 后端将 `timestamp` 转换为带时区时间并保存到 `users.location_updated_at`。
++ 只有请求时间戳晚于当前 `location_updated_at` 时才更新，防止离线重试或网络乱序覆盖新位置。
++ 相同时间戳和相同位置的重复 PUT 应保持幂等。
++ 客户端不得用请求发送时间代替设备定位采集时间。
++ 后端不保存位置历史轨迹，只保留用户最新位置。
++ 日志不得记录精确经纬度。
++ 用户不存在时返回 `4001`；经纬度越界、时间戳无效或超过服务器时间 5 分钟时返回 `4000`。
+
+## 7. 行程接口
+### 7.1 POST `/api/trips`
 创建旅行。
 
 请求字段：
@@ -421,7 +520,7 @@ Content-Type: application/json
 }
 ```
 
-### 6.2 GET `/api/trips`
+### 7.2 GET `/api/trips`
 获取旅行列表。
 
 查询参数：
@@ -464,7 +563,7 @@ GET /api/trips?user_id=1
 + 此接口只返回 `deleted_at IS NULL` 的正常旅行。
 + `status` 参数只接受 `draft`、`active` 或 `finished`。
 
-### 6.3 GET `/api/trips/{trip_id}`
+### 7.3 GET `/api/trips/{trip_id}`
 获取旅行详情。
 
 路径参数：
@@ -532,7 +631,7 @@ GET /api/trips/1?user_id=1
 
 已进入回收站的旅行通过此接口按资源不存在处理。
 
-### 6.4 PUT `/api/trips/{trip_id}`
+### 7.4 PUT `/api/trips/{trip_id}`
 更新旅行基础信息。
 
 路径参数：
@@ -584,7 +683,7 @@ Content-Type: application/json
 
 `deleted_at` 不允许出现在请求体中。已进入回收站的旅行不能通过此接口更新。
 
-### 6.5 DELETE `/api/trips/{trip_id}`
+### 7.5 DELETE `/api/trips/{trip_id}`
 将旅行移入回收站。
 
 路径参数：
@@ -622,7 +721,7 @@ DELETE /api/trips/1?user_id=1
 
 此接口不修改旅行原有的 `status`，也不删除行程日、行程节点、聊天、照片和提醒数据。已进入回收站的旅行不能继续用于普通业务接口。
 
-### 6.6 POST `/api/trips/{trip_id}/days`
+### 7.6 POST `/api/trips/{trip_id}/days`
 创建行程日。
 
 路径参数：
@@ -674,7 +773,7 @@ Content-Type: application/json
 }
 ```
 
-### 6.7 POST `/api/trip-items`
+### 7.7 POST `/api/trip-items`
 创建行程节点。
 
 请求字段：
@@ -735,7 +834,7 @@ Content-Type: application/json
 }
 ```
 
-### 6.8 PUT `/api/trip-items/{item_id}`
+### 7.8 PUT `/api/trip-items/{item_id}`
 更新行程节点。
 
 路径参数：
@@ -795,7 +894,7 @@ Content-Type: application/json
 }
 ```
 
-### 6.9 DELETE `/api/trip-items/{item_id}`
+### 7.9 DELETE `/api/trip-items/{item_id}`
 删除行程节点。
 
 路径参数：
@@ -830,10 +929,10 @@ DELETE /api/trip-items/1?user_id=1
 }
 ```
 
-### 6.10 回收站接口（独立资源）
+### 7.10 回收站接口（独立资源）
 回收站使用 `/api/trash/trips` 作为独立资源路径，只处理已进入回收站的旅行。正常旅行不能通过回收站接口恢复或永久删除。
 
-#### 6.10.1 GET `/api/trash/trips`
+#### 7.10.1 GET `/api/trash/trips`
 查询当前用户的回收站旅行列表。
 
 查询参数：
@@ -870,7 +969,7 @@ GET /api/trash/trips?user_id=1
 }
 ```
 
-#### 6.10.2 POST `/api/trash/trips/{trip_id}/restore`
+#### 7.10.2 POST `/api/trash/trips/{trip_id}/restore`
 恢复回收站中的旅行。
 
 路径参数：
@@ -916,7 +1015,7 @@ Content-Type: application/json
 }
 ```
 
-#### 6.10.3 DELETE `/api/trash/trips/{trip_id}`
+#### 7.10.3 DELETE `/api/trash/trips/{trip_id}`
 永久删除回收站中的单条旅行。此操作会删除旅行及其关联的行程日、行程节点、聊天、照片记录、提醒和本地图片文件，且不可恢复。
 
 路径参数：
@@ -951,7 +1050,7 @@ DELETE /api/trash/trips/1?user_id=1
 }
 ```
 
-#### 6.10.4 DELETE `/api/trash/trips`
+#### 7.10.4 DELETE `/api/trash/trips`
 清空当前用户的旅行回收站。此操作只删除当前用户已进入回收站的旅行，不影响正常旅行和其他用户的数据。
 
 查询参数：
@@ -984,8 +1083,8 @@ DELETE /api/trash/trips?user_id=1
 
 本阶段不实现 30 天自动删除。回收站中的旅行只会在用户调用单条永久删除或清空回收站接口时消失。
 
-## 7. AI 对话接口
-### 7.1 POST `/api/chat`
+## 8. AI 对话接口
+### 8.1 POST `/api/chat`
 向导友 Agent 发送消息。
 
 后端处理流程：
@@ -1118,7 +1217,7 @@ Agent 输出约定：
 }
 ```
 
-### 7.2 GET `/api/chat/history`
+### 8.2 GET `/api/chat/history`
 查询聊天历史。
 
 查询参数：
@@ -1161,8 +1260,8 @@ GET /api/chat/history?user_id=1&trip_id=1&limit=20
 }
 ```
 
-## 8. 拍照讲解接口
-### 8.1 POST `/api/photos/explain`
+## 9. 拍照讲解接口
+### 9.1 POST `/api/photos/explain`
 上传图片并生成景点讲解。
 
 请求类型：
@@ -1220,9 +1319,9 @@ curl -X POST "http://localhost:8000/api/photos/explain" \
 + 数据库保存相对路径。
 + 文件保存失败时返回 `4002`。
 
-## 9. 智能提醒接口
-### 9.1 POST `/api/reminders/check`
-检查当前行程风险。MVP 使用半主动提醒，由用户点击触发。
+## 10. 智能提醒接口
+### 10.1 POST `/api/reminders/check`
+手动检查当前行程风险。用户点击时触发；后台 `reminder-worker` 也会读取 `users` 中未过期的最新位置执行主动监测。
 
 请求字段：
 
@@ -1230,7 +1329,7 @@ curl -X POST "http://localhost:8000/api/photos/explain" \
 | --- | --- | --- | --- |
 | user_id | int | 是 | 用户 ID |
 | current_time | string | 是 | ISO 8601 当前时间 |
-| current_location | object | 否 | 当前位置 |
+| current_location | object | 否 | 本次检查的当前位置；未传时读取用户最新位置 |
 
 
 请求体：
@@ -1295,8 +1394,14 @@ Content-Type: application/json
 | weather | 天气提醒 | P1 |
 | rest | 休息提醒 | P1 |
 
+位置选择规则：
 
-### 9.2 GET `/api/reminders`
++ 请求携带 `current_location` 时，本次手动检查优先使用该位置，但不会隐式更新 `users`。
++ 未携带时，读取 `users.latitude`、`users.longitude` 和 `users.location_updated_at`。
++ `location_updated_at` 距检查时间不超过 30 分钟时位置有效。
++ 默认位置、缺失位置或超过 30 分钟的位置均视为不可用，不进行依赖精确起点的路线时间计算；可继续检查时间冲突和天气等不依赖实时位置的风险。
+
+### 10.2 GET `/api/reminders`
 查询提醒列表。
 
 查询参数：
@@ -1334,8 +1439,8 @@ GET /api/reminders?user_id=1&trip_id=1&status=unread
 }
 ```
 
-## 10. 用户偏好接口
-### 10.1 GET `/api/preferences`
+## 11. 用户偏好接口
+### 11.1 GET `/api/preferences`
 查询用户偏好。
 
 查询参数：
@@ -1368,7 +1473,7 @@ GET /api/preferences?user_id=1
 }
 ```
 
-### 10.2 PUT `/api/preferences`
+### 11.2 PUT `/api/preferences`
 更新用户偏好。
 
 请求字段：
@@ -1376,7 +1481,7 @@ GET /api/preferences?user_id=1
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | user_id | int | 是 | 用户 ID |
-| preferences | object | 是 | 完整偏好对象，结构见 3.5 |
+| preferences | object | 是 | 完整偏好对象，结构见 3.6 |
 
 
 请求体：
@@ -1414,8 +1519,8 @@ Content-Type: application/json
 }
 ```
 
-## 11. 用户记忆接口
-### 11.1 POST `/api/memory/summary`
+## 12. 用户记忆接口
+### 12.1 POST `/api/memory/summary`
 根据聊天记录总结用户记忆。MVP 可由后端或 Agent 在合适时机触发，前端不一定直接调用。
 
 请求字段：
@@ -1466,10 +1571,10 @@ Content-Type: application/json
 }
 ```
 
-## 12. Agent 对接约定
+## 13. Agent 对接约定
 后端调用 Agent 时建议统一通过 `agent_service`，不要在 router 中直接调用 LangGraph。
 
-### 12.1 通用 Agent 输入
+### 13.1 通用 Agent 输入
 ```json
 {
   "user_id": 1,
@@ -1486,7 +1591,7 @@ Content-Type: application/json
 }
 ```
 
-### 12.2 通用 Agent 输出
+### 13.2 通用 Agent 输出
 ```json
 {
   "intent": "chat",
@@ -1498,13 +1603,13 @@ Content-Type: application/json
 
 `intent` 由 Agent 根据用户消息识别，当前支持普通对话 `chat` 和改线意图 `replan`。只有 `intent = "replan"` 时才应返回非空的 `action_options`。
 
-### 12.3 后端兜底规则
+### 13.3 后端兜底规则
 + Agent 缺少 `reply` 时，返回固定 fallback 文案。
 + Agent 将请求识别为改线意图但 `action_options` 结构错误时，返回 `5003` 或降级为不带操作选项的自然语言建议。
 + 大模型超时时，优先保证演示链路不断。
 + 后端日志可记录错误类型，但不能记录 API key、token、Cookie。
 
-## 13. 前端 Mock 参考
+## 14. 前端 Mock 参考
 前端 Mock 目录建议：
 
 ```latex
@@ -1524,25 +1629,26 @@ Mock 原则：
 + 响应必须包含 `code`、`message`、`data`。
 + 切换真实 API 前，前端负责人和后端负责人共同确认字段。
 
-## 14. 测试建议
+## 15. 测试建议
 数据库与测试负责人可按以下顺序写接口测试：
 
 1. `/health`。
-2. 创建旅行。
-3. 创建行程日。
-4. 创建行程节点。
-5. 查询旅行详情。
-6. 将旅行移入回收站。
-7. 查询、恢复和永久删除回收站旅行。
-8. 清空回收站并确认不影响正常旅行。
-9. 查询首页今日行程。
-10. 更新用户偏好。
-11. 发送聊天消息。
-12. 查询聊天历史。
-13. 上传图片讲解。
-14. 检查提醒。
-15. 通过聊天识别改线意图并返回行程修改选项。
-16. 选择改线选项后调用行程节点更新接口。
+2. 上传用户位置并验证旧时间戳不能覆盖新位置。
+3. 创建旅行。
+4. 创建行程日。
+5. 创建行程节点。
+6. 查询旅行详情。
+7. 将旅行移入回收站。
+8. 查询、恢复和永久删除回收站旅行。
+9. 清空回收站并确认不影响正常旅行。
+10. 查询首页今日行程。
+11. 更新用户偏好。
+12. 发送聊天消息。
+13. 查询聊天历史。
+14. 上传图片讲解。
+15. 分别使用请求位置、用户最新位置和过期位置检查提醒。
+16. 通过聊天识别改线意图并返回行程修改选项。
+17. 选择改线选项后调用行程节点更新接口。
 
 每个核心接口至少覆盖：
 
