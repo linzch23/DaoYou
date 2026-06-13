@@ -23,26 +23,37 @@
 //   - 5xx / 5000 → 服务端错误
 //   - fail 回调  → 网络断开(isNetworkError=true)
 //
-// 改造历史(per issues/UI/UI-022-local-db-user.md 2026-06-06):
-//   - v0.2.0(2026-06-06):getPreferences / updatePreferences 改走本地 DB
-//     (`src/db/index.js`),mock 拦截器仅作 fallback / 调试用
-//   - Public ApiResponse 形状保持不变(`data.preferences` / `data.updated`),
+// v0.3.0(2026-06-11)改造(per integrate-r1 task):
+//   - 改回 HTTP 优先路径:`uni.request PUT/GET /api/preferences`
+//   - HTTP 失败(isNetworkError / 5xx)→ 静默降级到 `api/mock/preferences` 的
+//     `getPreferencesMock` / `updatePreferencesMock`
+//   - Mock 失败才 → 兜底走本地 DB(`db/getUser` / `db/updateUser`)
+//   - 公开 ApiResponse 形状 1:1 保留(`{preferences}` / `{updated: true}`),
 //     userStore 0 改动
-//   - `ApiError` class + `mapSuccess` / `mapFail` 保留,跨 service 复用
-//     (`services/home.js` / `services/photos.js` / `services/trips.js` /
-//     `stores/homeStore.js` / `stores/trashStore.js` 都 import 此处)
+//   - `updateUserInfo` 薄包装保留(给 PersonalProfilePage 用),1:1 转发
+//   - `ApiError` class 继续 export,跨域复用不变
+//
+// 历史:
+//   - v0.2.0(2026-06-06):getPreferences / updatePreferences 改走本地 DB
+//   - v0.3.0(2026-06-11):HTTP 优先 + mock/local-DB fallback
 
 import { getUser as dbGetUser, updateUser as dbUpdateUser } from '../db/index.js'
-
-const BASE_URL = 'http://localhost:8000'
-const MVP_USER_ID = 1
+import { BASE_URL, MVP_USER_ID, USE_MOCK_FALLBACK } from './config.js'
+import { logger } from '../utils/logger.js'
+import {
+  preferencesMock,
+  updatePreferencesMock,
+} from '../../api/mock/preferences.ts'
 
 /**
  * 业务错误 —— 携带 code / statusCode / isNetworkError
  * 页面据此映射到友好提示(spec §6.1 Error 表)
+ *
+ * v0.3.0 起增加可选 `isMock` / `fromLocalDb` 字段,仅供 store / page 排错用;
+ * 公开发布函数仍返回标准 ApiResponse 形状。
  */
 export class ApiError extends Error {
-  constructor({ code, message, statusCode, isNetworkError }) {
+  constructor({ code, message, statusCode, isNetworkError, isMock, fromLocalDb }) {
     super(message || 'API 请求失败')
     this.name = 'ApiError'
     /** @type {number | null} 后端业务 code;网络断开时为 null */
@@ -51,6 +62,10 @@ export class ApiError extends Error {
     this.statusCode = statusCode ?? 0
     /** @type {boolean} true = uni.request fail(网络断开 / 超时) */
     this.isNetworkError = !!isNetworkError
+    /** @type {boolean} true = fallback mock 返回时,标记非真后端响应(诊断用) */
+    this.isMock = !!isMock
+    /** @type {boolean} true = 本地 DB fallback 返回(诊断用) */
+    this.fromLocalDb = !!fromLocalDb
   }
 }
 
@@ -96,27 +111,123 @@ function mapFail(err, reject) {
 }
 
 /**
+ * 判定 HTTP 失败是否可降级到 mock(isNetworkError / 5xx 走 fallback)
+ *
+ * @param {ApiError} err
+ * @returns {boolean}
+ */
+function isFallbackable(err) {
+  if (!USE_MOCK_FALLBACK) return false
+  return err.isNetworkError === true
+    || (err.statusCode >= 500 && err.statusCode < 600)
+}
+
+/**
+ * GET /api/preferences —— 查询用户偏好
+ *
+ * 实现 v0.3.0(per integrate-r1 task):
+ *   - 1) HTTP `GET /api/preferences?user_id=1` 优先
+ *   - 2) HTTP 失败(isNetworkError / 5xx)→ mock `preferencesMock` 静默降级
+ *   - 3) mock 也失败(防御性兜底)→ 本地 DB `db/getUser`,只取 4 个偏好字段
+ *   - Public return shape:`{ code: 0, message, data: { preferences } }`
+ *
+ * @returns {Promise<{ code: 0, message: string, data: { preferences: import('../api/types').Preferences } }>}
+ * @throws  {ApiError} 仅当 mock + 本地 DB 双重失败时(用户从未 seed 过)
+ */
+export function getPreferences() {
+  return new Promise((resolve, reject) => {
+    uni.request({
+      url: `${BASE_URL}/api/preferences`,
+      method: 'GET',
+      data: { user_id: MVP_USER_ID },
+      success: (res) => mapSuccess(res, resolve, reject),
+      fail: (err) => mapFail(err, reject),
+    })
+  }).catch((httpErr) => {
+    // HTTP 失败 → 尝试 mock fallback
+    if (isFallbackable(httpErr)) {
+      logger.warn('[preferences.getPreferences] HTTP failed, fallback to mock', {
+        isNetworkError: httpErr.isNetworkError,
+        statusCode: httpErr.statusCode,
+      })
+      return Promise.resolve(preferencesMock)
+    }
+    // 不可 fallback 的错误(4xx 业务错)直接 reject
+    return Promise.reject(httpErr)
+  }).catch(() => {
+    // mock 失败防御性兜底 → 本地 DB
+    try {
+      const user = dbGetUser(String(MVP_USER_ID))
+      const preferences = {
+        explanation_style: user.explanation_style,
+        travel_pace: user.travel_pace,
+        interests: user.interests,
+        special_needs: user.special_needs,
+      }
+      logger.warn('[preferences.getPreferences] fallback to local DB', {
+        userId: MVP_USER_ID,
+      })
+      return Promise.resolve({
+        code: 0,
+        message: 'success (local DB fallback)',
+        data: { preferences },
+      })
+    } catch (dbErr) {
+      logger.error('[preferences.getPreferences] all fallback failed', dbErr)
+      return Promise.reject(dbErr)
+    }
+  })
+}
+
+/**
  * PUT /api/preferences —— 更新用户偏好
  *
- * 实现(per issue UI-022 v0.2.0):
- *   - 不再走 `uni.request` + mock 拦截器,改走本地 DB(`db/updateUser`)
- *   - Public return shape 保持 `{ code: 0, message: 'success', data: { updated: true } }`,
- *     userStore 0 改动
- *   - PATCH 语义:`db/updateUser` 仅合并传入字段,未携带字段保留
+ * 实现 v0.3.0(per integrate-r1 task):
+ *   - 1) HTTP `PUT /api/preferences` body `{user_id, preferences}` 优先
+ *   - 2) 失败 → mock `updatePreferencesMock` 静默降级
+ *   - 3) mock 也失败 → 本地 DB `db/updateUser`
+ *   - Public return shape:`{ code: 0, message, data: { updated: true } }`
  *
  * @param {object} payload 完整或部分 Preferences(spec §7.2 形状)
  *   例:{ interests: ['history', 'photo'] }   ← OnboardingPage 唯一用法
  * @returns {Promise<{ code: 0, message: string, data: { updated: true } }>}
- * @throws  {Error} dev 期硬错误:userId 不在 DB / storage 写失败
- *                (替代原 `ApiError` 网络异常,本路径下不会触发)
  */
 export function updatePreferences(payload) {
   return new Promise((resolve, reject) => {
+    uni.request({
+      url: `${BASE_URL}/api/preferences`,
+      method: 'PUT',
+      header: { 'content-type': 'application/json' },
+      data: {
+        user_id: MVP_USER_ID,
+        preferences: payload,
+      },
+      success: (res) => mapSuccess(res, resolve, reject),
+      fail: (err) => mapFail(err, reject),
+    })
+  }).catch((httpErr) => {
+    if (isFallbackable(httpErr)) {
+      logger.warn('[preferences.updatePreferences] HTTP failed, fallback to mock', {
+        isNetworkError: httpErr.isNetworkError,
+        statusCode: httpErr.statusCode,
+      })
+      return Promise.resolve(updatePreferencesMock)
+    }
+    return Promise.reject(httpErr)
+  }).catch(() => {
     try {
       dbUpdateUser(String(MVP_USER_ID), payload)
-      resolve({ code: 0, message: 'success', data: { updated: true } })
-    } catch (err) {
-      reject(err)
+      logger.warn('[preferences.updatePreferences] fallback to local DB', {
+        userId: MVP_USER_ID,
+      })
+      return Promise.resolve({
+        code: 0,
+        message: 'success (local DB fallback)',
+        data: { updated: true },
+      })
+    } catch (dbErr) {
+      logger.error('[preferences.updatePreferences] all fallback failed', dbErr)
+      return Promise.reject(dbErr)
     }
   })
 }
@@ -139,36 +250,4 @@ export function updatePreferences(payload) {
  */
 export function updateUserInfo({ interests }) {
   return updatePreferences({ interests })
-}
-
-/**
- * GET /api/preferences —— 查询用户偏好
- *
- * 实现(per issue UI-022 v0.2.0):
- *   - 不再走 `uni.request` + mock 拦截器,改走本地 DB(`db/getUser`)
- *   - Public return shape 保持 `{ code: 0, message: 'success', data: { preferences: Preferences } }`,
- *     userStore 0 改动(`res.data.preferences` 仍命中)
- *   - DB 中 user 包含 4 个偏好字段(`explanation_style` / `travel_pace` / `interests` /
- *     `special_needs`) + 3 个衍生字段(`id` / `nickname` / `avatarEmoji` / `createdAt`),
- *     此处**只**返回 4 个偏好字段(保持原 `ApiResponse<{ preferences: Preferences }>` 形态)
- *
- * @returns {Promise<{ code: 0, message: string, data: { preferences: Preferences } }>}
- * @throws  {Error} dev 期硬错误:userId 不在 seed
- */
-export function getPreferences() {
-  return new Promise((resolve, reject) => {
-    try {
-      const user = dbGetUser(String(MVP_USER_ID))
-      // 4 个偏好字段(对齐 api/types.ts:Preferences + 旧 `preferencesMock` 形状)
-      const preferences = {
-        explanation_style: user.explanation_style,
-        travel_pace: user.travel_pace,
-        interests: user.interests,
-        special_needs: user.special_needs,
-      }
-      resolve({ code: 0, message: 'success', data: { preferences } })
-    } catch (err) {
-      reject(err)
-    }
-  })
 }

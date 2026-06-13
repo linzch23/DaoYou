@@ -1,16 +1,16 @@
 // frontend/services/trips.js
 // 封装 docs/API接口文档.md §6.1 创建行程 + §6.2 行程列表 + §6.3 行程详情 + §6.4 修改行程 + §6.5 软删除 + §6.10-§6.12 回收站域 + 本地草稿持久化
 //
-//   POST   /api/trips                      → createTrip(req)
-//   GET    /api/trips?user_id=1            → listTrips() [HomePage / EditTripPage]
-//   GET    /api/trash/trips?user_id=1      → listDeletedTrips()                              [TrashPage v0.2.0,后端已支持 deleted_at IS NOT NULL 过滤]
-//   GET    /api/trips/{trip_id}            → getTripDetail(tripId)
-//   PUT    /api/trips/{trip_id}            → updateTrip(tripId, req)        [EditTripPage 落地]
-//   DELETE /api/trips/{trip_id}            → deleteTrip(tripId) [TripDetailPage 软删除,后端置 deleted_at]
-//   POST   /api/trash/trips/{trip_id}/restore → restoreTrashById(tripId)    [TrashPage v0.2.0 落地,后端置 deleted_at = null]
-//   DELETE /api/trash/trips/{trip_id}      → permanentlyDeleteTrip(tripId)  [TrashPage v0.2.0 落地,真删]
-//   草稿 uni.setStorageSync                → saveDraft(draft) / loadDrafts()            [NewTripPage 列表]
-//   编辑草稿 uni.setStorageSync            → saveEditDraft(draft) / loadEditDraft(tripId) / clearEditDraft(tripId)  [EditTripPage 落地]
+//   POST   /api/trips                          → createTrip(req)
+//   GET    /api/trips                          → listTrips() (wrapper → services/home.listTrips,保留为兼容入口)
+//   GET    /api/trash/trips?user_id=1          → listDeletedTrips()
+//   GET    /api/trips/{trip_id}                → getTripDetail(tripId)
+//   PUT    /api/trips/{trip_id}                → updateTrip(tripId, req)        [EditTripPage 落地]
+//   DELETE /api/trips/{trip_id}                → deleteTrip(tripId) [TripDetailPage 软删除,后端置 deleted_at]
+//   POST   /api/trash/trips/{trip_id}/restore  → restoreTrashById(tripId)
+//   DELETE /api/trash/trips/{trip_id}          → permanentlyDeleteTrip(tripId)
+//   草稿 uni.setStorageSync                    → saveDraft(draft) / loadDrafts()            [NewTripPage 列表]
+//   编辑草稿 uni.setStorageSync                → saveEditDraft(draft) / loadEditDraft(tripId) / clearEditDraft(tripId)  [EditTripPage 落地]
 //
 // MVP 约定(见 docs/API接口文档.md §1.3):
 //   - `user_id` 固定为 1,前端不感知
@@ -36,12 +36,49 @@
 //   - 仅 `{ user_id, title?, status? }` 可入参
 //   - city / start_date / end_date / 4 选填字段 **不**在 UpdateTripRequest 中
 //   - 调用方(EditTripPage)负责按 PUT partial-update 语义仅发 changed 字段
+//
+// v0.3.0(2026-06-11)改造(per integrate-r1 task):
+//   - 4 个 HTTP 函数(`createTrip` / `getTripDetail` / `updateTrip` / `deleteTrip`)加 mock fallback
+//     (createTripMock / tripDetailMock / updateTripMock / deleteTripMock)
+//   - 3 个 trash 函数(`listDeletedTrips` / `restoreTrashById` / `permanentlyDeleteTrip`)
+//     **后端无对应端点**(per integrate-r1 task 后端实测),改走本地 DB
+//     (`db/listTrips` / `db/patchTrip` 等),保留函数签名,store 0 改动
+//   - `listTrips` 保留为 wrapper,委托给 `services/home.listTrips`(home.js 迁移过去)
+//   - 草稿函数(`loadDrafts` / `saveDraft` / `loadEditDraft` / `saveEditDraft` / `clearEditDraft`)0 改动
+//   - `updateTrip` 调用方发 `itineraryArrange` 时后端 Pydantic 会忽略 extra 字段(实测 200 OK),不动
+//   - `BASE_URL` / `MVP_USER_ID` 改 import 自 `services/config.js`
+//
+// v0.3.1(2026-06-11)改造(per integrate-r2 task):
+//   - 3 个 trash 函数从「本地 DB-only」改为「HTTP 优先 → 失败降级本地 DB」:
+//     * `listDeletedTrips`     — 1) HTTP GET /api/trash/trips?user_id=1
+//                                2) 失败 → 读 db_trips + 客户端 filter deleted_at != null + sort desc
+//     * `restoreTrashById`     — 1) HTTP POST /api/trash/trips/{id}/restore {user_id}
+//                                2) 失败 → db/patchTrip({deleted_at: null})
+//     * `permanentlyDeleteTrip`— 1) HTTP DELETE /api/trash/trips/{id}?user_id=1
+//                                2) 失败 → db/deleteTrip(tripId) 物理删除
+//   - 函数 JSDoc 顶部的旧 marker 注释已清理(后端 4 trash 端点已实装)
+//   - 公开 ApiResponse 形状 1:1 保留({trips} / {restored:true} / {permanently_deleted:true}),
+//     store 0 改动
+//   - 404(资源不存在)在 listDeletedTrips 视为「空列表」,
+//     在 restoreTrashById / permanentlyDeleteTrip 视为「幂等成功」(tashStore 仍按 404 静默处理)
 
 import { ApiError } from './preferences.js'
 import { logger } from '../utils/logger.js'
+import { BASE_URL, MVP_USER_ID, USE_MOCK_FALLBACK } from './config.js'
+import {
+  createTripMock,
+  tripDetailMock,
+  updateTripMock,
+  deleteTripMock,
+} from '../../api/mock/trips.ts'
+import {
+  getTrip as dbGetTrip,
+  setTrip as dbSetTrip,
+  listTrips as dbListTrips,
+  patchTrip as dbPatchTrip,
+  deleteTrip as dbDeleteTrip,
+} from '../db/index.js'
 
-const BASE_URL = 'http://localhost:8000'
-const MVP_USER_ID = 1
 const DRAFTS_STORAGE_KEY = 'trip_drafts'
 const EDIT_DRAFTS_STORAGE_KEY = 'edit_trip_drafts'
 
@@ -87,7 +124,23 @@ function mapFail(err, reject) {
 }
 
 /**
+ * 判定 HTTP 失败是否可降级到 mock(isNetworkError / 5xx 走 fallback)
+ *
+ * @param {ApiError} err
+ * @returns {boolean}
+ */
+function isFallbackable(err) {
+  if (!USE_MOCK_FALLBACK) return false
+  return err.isNetworkError === true
+    || (err.statusCode >= 500 && err.statusCode < 600)
+}
+
+/**
  * POST /api/trips —— 创建行程
+ *
+ * v0.3.0(per integrate-r1 task):
+ *   - 1) HTTP `POST /api/trips` body `{user_id, title, city, start_date, end_date, [itineraryArrange]}` 优先
+ *   - 2) HTTP 失败(isNetworkError / 5xx)→ 静默降级到 `createTripMock`(返回固定 trip_id=100)
  *
  * 入参只接受后端支持的 5 字段(`title` + `city` + `start_date` + `end_date` +
  * UI-025 `itineraryArrange`,`user_id` 由本服务内部注入),4 选填 client-only 字段
@@ -95,6 +148,7 @@ function mapFail(err, reject) {
  *
  * UI-025:`itineraryArrange: ItineraryItem[]` 是**可选**字段(spec §6.4.x 暂未明确
  * 后端是否落表,前端**默认发送**便于后端补字段时无侵入升级);空数组也合法。
+ * 后端 Pydantic 默认 `extra=ignore`,此字段会被静默忽略,但携带无害。
  *
  * @param {object} req
  * @param {string} req.title  派生自 city + 日期(spec §6.4.4)
@@ -117,23 +171,46 @@ export function createTrip(req) {
         city: req.city,
         start_date: req.start_date,
         end_date: req.end_date,
-        // UI-025 行程安排字段:空数组 fallback,后端 mock 拦截器自动 echo
+        // UI-025 行程安排字段:空数组 fallback,后端 Pydantic 静默 ignore
         ...(Array.isArray(req.itineraryArrange) ? { itineraryArrange: req.itineraryArrange } : {}),
       },
       success: (res) => mapSuccess(res, resolve, reject),
       fail: (err) => mapFail(err, reject),
     })
+  }).catch((httpErr) => {
+    if (isFallbackable(httpErr)) {
+      logger.warn('[trips.createTrip] HTTP failed, fallback to mock', {
+        isNetworkError: httpErr.isNetworkError,
+        statusCode: httpErr.statusCode,
+      })
+      return Promise.resolve(createTripMock)
+    }
+    return Promise.reject(httpErr)
   })
+}
+
+/**
+ * GET /api/trips —— wrapper to services/home.listTrips
+ *
+ * v0.3.0 起 `listTrips` 实际归属移到 `services/home.js`(homeStore 用);
+ * 本函数保留为 wrapper,1:1 转发,避免破坏潜在的 import path
+ * (本文件历史 import 过 listTrips 的页面 / store)
+ *
+ * @returns {Promise<import('../api/types').ApiResponse<{ trips: import('../api/types').TripSummary[] }>>}
+ */
+export function listTrips() {
+  // 动态 import 避免循环依赖(home.js 也 import ApiError from preferences.js)
+  return import('./home.js').then((home) => home.listTrips())
 }
 
 /**
  * GET /api/trips/{trip_id} —— 行程详情(含 days[].items[] 全量)
  *
- * 错误归一(ApiError class 复用,见 services/preferences.js:33-44):
- *   - 4000 / 400     → 参数非法(GET 理论上不会,除非 url 拼错)
- *   - 4001 / 404     → 资源不存在(由调用方判 viewMode='notfound')
- *   - 5000 / 5xx     → 服务端错误
- *   - isNetworkError → 网络断开
+ * v0.3.0(per integrate-r1 task):
+ *   - 1) HTTP `GET /api/trips/{trip_id}?user_id=1` 优先
+ *   - 2) HTTP 失败(isNetworkError / 5xx)→ 静默降级到 `tripDetailMock`
+ *   - 注:mock 端 `tripDetailMock.data` 是固定 `seedTrip`;真实后端响应**无** `user_id` /
+ *     `deleted_at` / `days[].items` 字段(per integrate-r1 后端实测),调用方按 spec 形态兼容
  *
  * @param {number} tripId
  * @returns {Promise<import('../api/types').ApiResponse<import('../api/types').Trip>>}
@@ -148,20 +225,24 @@ export function getTripDetail(tripId) {
       success: (res) => mapSuccess(res, resolve, reject),
       fail: (err) => mapFail(err, reject),
     })
+  }).catch((httpErr) => {
+    if (isFallbackable(httpErr)) {
+      logger.warn('[trips.getTripDetail] HTTP failed, fallback to mock', {
+        isNetworkError: httpErr.isNetworkError,
+        statusCode: httpErr.statusCode,
+      })
+      return Promise.resolve(tripDetailMock)
+    }
+    return Promise.reject(httpErr)
   })
 }
 
 /**
  * DELETE /api/trips/{trip_id} —— 软删除(由后端实现,前端不感知硬/软删)
  *
- * 错误归一(ApiError 复用):
- *   - 4000 / 400     → 参数非法
- *   - 4001 / 404     → 资源不存在(并发删除场景,Toast「删除失败」即可)
- *   - 5000 / 5xx     → 服务端错误
- *   - isNetworkError → 网络断开
- *
- * 注意(spec §6.2):本函数**不**调用方约定 deleteTrip 失败时 viewMode 切换
- * —— TripDetailPage 的删除失败走 Toast(详情仍可看),**不**切到 error 态。
+ * v0.3.0(per integrate-r1 task):
+ *   - 1) HTTP `DELETE /api/trips/{trip_id}` 优先
+ *   - 2) HTTP 失败(isNetworkError / 5xx)→ 静默降级到 `deleteTripMock`
  *
  * @param {number} tripId
  * @returns {Promise<import('../api/types').ApiResponse<{ deleted: true }>>}
@@ -176,38 +257,29 @@ export function deleteTrip(tripId) {
       success: (res) => mapSuccess(res, resolve, reject),
       fail: (err) => mapFail(err, reject),
     })
+  }).catch((httpErr) => {
+    if (isFallbackable(httpErr)) {
+      logger.warn('[trips.deleteTrip] HTTP failed, fallback to mock', {
+        isNetworkError: httpErr.isNetworkError,
+        statusCode: httpErr.statusCode,
+      })
+      return Promise.resolve(deleteTripMock)
+    }
+    return Promise.reject(httpErr)
   })
 }
 
 /**
- * PUT /api/trips/{trip_id} —— 修改行程(specs/EditTripPage.md §6.2 / §7.2 触发,本规格新增)
+ * PUT /api/trips/{trip_id} —— 修改行程
  *
- * 关键约束(per `api/types.ts:174-178` `UpdateTripRequest`):
- *   - 入参**仅**含 `{ user_id, title?, status?, itineraryArrange? }` 3 字段可选
- *   - city / start_date / end_date / 4 选填字段 **不**在 UpdateTripRequest 中
- *   - 调用方(EditTripPage)负责按 PUT partial-update 语义仅发 changed 字段
- *   - city / start_date / end_date 由 EditTripPage 端在 onSave 时阻断(per spec §6.4.1 PD-001)
- *   - UI-025:`itineraryArrange?` 是 EditTripPage 调用方按需携带的字段(仅当与原值不同时),
- *     本服务**不**强制要求
- *
- * 错误归一(ApiError 复用):
- *   - 4000 / 400     → 参数非法
- *   - 4001 / 404     → 资源不存在(并发删除场景 → 视为 notfound,调用方 currentStep='notfound')
- *   - 5000 / 5xx     → 服务端错误
- *   - isNetworkError → 网络断开
+ * v0.3.0(per integrate-r1 task):
+ *   - 1) HTTP `PUT /api/trips/{trip_id}` body `{user_id, [title], [status], [itineraryArrange]}` 优先
+ *   - 2) HTTP 失败(isNetworkError / 5xx)→ 静默降级到 `updateTripMock`
  *
  * @param {number} tripId
- * @param {object} req UpdateTripRequest 形状(`api/types.ts:174-178` + UI-025):
+ * @param {object} req UpdateTripRequest 形状(`api/types.ts:UpdateTripRequest`):
  *   { title?: string, status?: 'draft' | 'active' | 'finished',
  *     itineraryArrange?: ItineraryItem[] }
- *   - title?: 仅当 formData.title !== originalData.title 时携带
- *   - status?: 仅当 formData.status !== originalData.status 时携带
- *   - itineraryArrange?: 仅当 formData.itineraryArrange !== originalData.itineraryArrange 时携带
- *   - **不**含 city / start_date / end_date / 4 选填字段
- *   - 内部 `data: { user_id: MVP_USER_ID, ...req }` 注入 user_id
- *   - TripStatus 3 枚举(per v0.2.0 spec-writer 修订,TrashPage / TripDetailPage spec v0.2.0)
- *   - 'deleted' 语义**不**由 status 表达,由 `deleted_at: string | null` 字段承担
- *   - 恢复软删除的 trip 用 `restoreTrashById`(POST /api/trash/trips/{id}/restore),**不**走 updateTrip
  * @returns {Promise<import('../api/types').ApiResponse<{ updated: true }>>}
  * @throws  {ApiError}
  */
@@ -224,25 +296,55 @@ export function updateTrip(tripId, req) {
       success: (res) => mapSuccess(res, resolve, reject),
       fail: (err) => mapFail(err, reject),
     })
+  }).catch((httpErr) => {
+    if (isFallbackable(httpErr)) {
+      logger.warn('[trips.updateTrip] HTTP failed, fallback to mock', {
+        isNetworkError: httpErr.isNetworkError,
+        statusCode: httpErr.statusCode,
+      })
+      return Promise.resolve(updateTripMock)
+    }
+    return Promise.reject(httpErr)
   })
 }
 
+// ───────────────── Trash 3 函数(HTTP 优先 → 失败降级本地 DB)─────────────────
+//
+// v0.3.1 决策(per integrate-r2 task):
+//   - 后端**已实装** 4 trash 端点(per backend/api/locations.py + backend/api/trash.py
+//     后端实测,见整合 deliverable §3 契约校验):
+//     * GET    /api/trash/trips?user_id=1
+//     * POST   /api/trash/trips/{id}/restore  body {user_id}
+//     * DELETE /api/trash/trips/{id}?user_id=1
+//     * DELETE /api/trash/trips?user_id=1   ← 批量(per trashStore.clearTrash 扩展用)
+//   - 端点契约 1:1 对齐 docs/API接口文档.md §6.10-§6.12
+//   - HTTP 优先(uni.request 真后端) → 失败(isNetworkError / 5xx / 404 资源不存在)→ 静默降级本地 DB
+//   - 404 在 listDeletedTrips 视为「空列表」,在 restoreTrashById / permanentlyDeleteTrip
+//     视为「幂等成功」,与 trashStore 的 404 静默路径对齐
+//   - 公开 ApiResponse 形状 1:1 保留({trips} / {restored:true} / {permanently_deleted:true}),
+//     store 0 改动(沿 v0.3.0 兼容路径)
+//
+// 实现细节:
+//   - HTTP 路径走 `mapSuccess` 统一映射(2xx + code===0 resolve;其它 reject ApiError)
+//   - DB 路径走 `db/listTrips` / `db/patchTrip` / `db/deleteTrip`(v0.3.1 新增)
+//   - listDeletedTrips 的 DB 路径**不**走 mock(同 v0.3.0 决策:trash 不在 mock 范围)
+//   - 失败回退 DB 后,resolve 形态 1:1 保留(消息末尾 '(local DB)' 标识供调试用)
+
+// ─────────── listDeletedTrips ───────────
+
 /**
- * GET /api/trash/trips?user_id=1 —— 拉取已删行程列表(specs/TrashPage.md §6.10 / §6.4.1 触发新增)
+ * GET /api/trash/trips —— 拉取已删行程列表
  *
- * v0.2.0 关键决策(per TrashPage spec §6.4.1 Resolved,后端补 3 trash 域端点):
- *   - 后端 `GET /api/trash/trips` 端点已支持,服务端**只**返回 `deleted_at IS NOT NULL` 的行
- *   - 本函数 URL 改 `/api/trash/trips`(原 `/api/trips` 全量 + JS filter 路径废弃)
- *   - service 层**不**做客户端 filter(后端已过滤);**不**做客户端 sort(后端按 `deleted_at desc` 返回)
- *   - data 形如 `{ trips: TripSummary[] }`(每项含 `deleted_at: string | null` 字段,后端非 null)
- *
- * 错误归一(走既有 mapSuccess):
- *   - 4000 / 400     → 参数非法(GET 理论上不会,除非 url 拼错)
- *   - 5000 / 5xx     → 服务端错误
- *   - isNetworkError → 网络断开
+ * v0.3.1(per integrate-r2 task):
+ *   - 1) HTTP `GET /api/trash/trips?user_id=1` 优先
+ *   - 2) HTTP 失败(isNetworkError / 5xx / 404)→ 静默降级到本地 DB:
+ *     读 `db_trips` 中所有 trip,客户端 filter `deleted_at !== null`,
+ *     按 `deleted_at desc` 排序(对齐 mock `trashListMock` 的 sort 行为)
+ *   - 公开 ApiResponse 形状 1:1 保留:`{trips: TripSummary[]}`,
+ *     trashStore.fetchTrash 0 改动
  *
  * @returns {Promise<import('../api/types').ApiResponse<{ trips: import('../api/types').TripSummary[] }>>}
- * @throws  {ApiError}
+ * @throws  {ApiError} 仅当 HTTP 不可 fallback(4xx 业务错,非 404)+ 本地 DB 损坏时才 reject
  */
 export function listDeletedTrips() {
   return new Promise((resolve, reject) => {
@@ -251,39 +353,109 @@ export function listDeletedTrips() {
       method: 'GET',
       data: { user_id: MVP_USER_ID },
       success: (res) => {
-        const body = res.data
-        if (res.statusCode >= 200 && res.statusCode < 300 && body && body.code === 0) {
-          const deletedTrips = Array.isArray(body.data?.trips) ? body.data.trips : []
-          logger.info('[trips.listDeletedTrips] ok', { deleted: deletedTrips.length })
-          resolve({ ...body, data: { trips: deletedTrips } })
-        } else {
-          // 走既有 mapSuccess 错误归一
-          mapSuccess(res, resolve, reject)
+        // HTTP 404 视为空列表(沿用 trashStore 404 静默语义)
+        if (res.statusCode === 404) {
+          logger.warn('[trips.listDeletedTrips] HTTP 404, fallback to local DB (empty list)')
+          return resolveLocalDbList(resolve, reject)
         }
+        mapSuccess(res, resolve, (err) => {
+          // 不可 fallback 的 HTTP 错误(4xx 业务错,非 404)→ reject
+          reject(err)
+        })
       },
-      fail: (err) => mapFail(err, reject),
+      fail: (err) => {
+        // 网络断开 → 降级本地 DB
+        const apiErr = new ApiError({
+          code: null,
+          message: err?.errMsg || '网络异常,请检查网络连接',
+          statusCode: 0,
+          isNetworkError: true,
+        })
+        if (isFallbackable(apiErr)) {
+          logger.warn('[trips.listDeletedTrips] HTTP network failed, fallback to local DB')
+          return resolveLocalDbList(resolve, reject)
+        }
+        return reject(apiErr)
+      },
     })
+  }).catch((httpErr) => {
+    // mapSuccess 抛出的非 404 4xx / 5xx → 尝试 fallback(同 home.js 模式)
+    if (isFallbackable(httpErr)) {
+      logger.warn('[trips.listDeletedTrips] HTTP failed, fallback to local DB', {
+        isNetworkError: httpErr.isNetworkError,
+        statusCode: httpErr.statusCode,
+      })
+      return Promise.resolve(buildLocalDbListResponse())
+    }
+    return Promise.reject(httpErr)
   })
 }
 
 /**
- * POST /api/trash/trips/{trip_id}/restore —— 恢复已删行程(per docs/API接口文档.md §6.11,TrashPage v0.2.0 落地)
+ * 本地 DB 路径 —— 读 db_trips,filter deleted_at != null,sort desc
+ * @param {(value: any) => void} resolve
+ * @param {(reason: ApiError) => void} reject
+ */
+function resolveLocalDbList(resolve, reject) {
+  try {
+    resolve(buildLocalDbListResponse())
+  } catch (err) {
+    logger.error('[trips.listDeletedTrips] local DB failed', err)
+    reject(new ApiError({
+      code: 5000,
+      message: '本地 DB 不可用,无法读取回收站',
+      statusCode: 500,
+    }))
+  }
+}
+
+/**
+ * 构建本地 DB 列表响应(纯函数,便于复用 / 单测)
+ * @returns {import('../api/types').ApiResponse<{ trips: import('../api/types').TripSummary[] }>}
+ */
+function buildLocalDbListResponse() {
+  const all = dbListTrips()
+  // DB Trip 形状包含全字段;此处投影为 TripSummary(对齐 spec §6.2)
+  const deleted = all
+    .filter((t) => t && t.deleted_at)
+    .map((t) => ({
+      id: typeof t.id === 'string' ? Number(t.id) : t.id,
+      title: t.title,
+      city: t.city,
+      start_date: t.start_date,
+      end_date: t.end_date,
+      status: t.status,
+      deleted_at: t.deleted_at,
+    }))
+    .sort((a, b) => {
+      if (a.deleted_at && b.deleted_at) {
+        return String(b.deleted_at).localeCompare(String(a.deleted_at))
+      }
+      return (b.id || 0) - (a.id || 0)
+    })
+  logger.info('[trips.listDeletedTrips] ok (local DB)', { deleted: deleted.length })
+  return {
+    code: 0,
+    message: 'success (local DB)',
+    data: { trips: deleted },
+  }
+}
+
+// ─────────── restoreTrashById ───────────
+
+/**
+ * POST /api/trash/trips/{id}/restore —— 恢复已删行程
  *
- * v0.2.0 关键决策(per TrashPage spec §6.4.1 Resolved):
- *   - **不**走 v0.1.0 `PUT /api/trips/{id} { status: 'active' }` 路径(原路径依赖 TripStatus 4 枚举含 'deleted',
- *     v0.2.0 TripStatus 缩为 3 枚举后该路径已废弃)
- *   - 后端置 `deleted_at = null`(per API doc §6.11)
- *   - body 仅 `{ user_id }`(无其他字段;user_id 由本服务内部注入)
- *
- * 错误归一(ApiError 复用):
- *   - 4000 / 400     → 参数非法
- *   - 4001 / 404     → 资源不存在(并发删除场景 → 视为 notfound,store 端静默)
- *   - 5000 / 5xx     → 服务端错误
- *   - isNetworkError → 网络断开
+ * v0.3.1(per integrate-r2 task):
+ *   - 1) HTTP `POST /api/trash/trips/{tripId}/restore` body `{user_id: 1}` 优先
+ *   - 2) HTTP 失败(isNetworkError / 5xx)→ 静默降级到本地 DB:
+ *     `db/patchTrip(tripId, {deleted_at: null})` 置 deleted_at = null
+ *   - 公开 ApiResponse 形状 1:1 保留:`{restored: true}`,trashStore.restoreTrashById 0 改动
+ *   - HTTP 404(trip 已被自动清理)→ resolve `{restored: true}` 幂等成功(与 trashStore 404 静默路径对齐)
  *
  * @param {number} tripId
  * @returns {Promise<import('../api/types').ApiResponse<{ restored: true }>>}
- * @throws  {ApiError}
+ * @throws  {ApiError} tripId 在 HTTP 不可 fallback(4xx 业务错,非 404)+ 本地 DB 也无时
  */
 export function restoreTrashById(tripId) {
   return new Promise((resolve, reject) => {
@@ -292,39 +464,182 @@ export function restoreTrashById(tripId) {
       method: 'POST',
       header: { 'content-type': 'application/json' },
       data: { user_id: MVP_USER_ID },
-      success: (res) => mapSuccess(res, resolve, reject),
-      fail: (err) => mapFail(err, reject),
+      success: (res) => {
+        // 404 静默:幂等视为成功(沿 trashStore §5.3.H + AC-06 404 静默语义)
+        if (res.statusCode === 404) {
+          logger.warn('[trips.restoreTrashById] HTTP 404, trip already gone, resolve as success', { tripId })
+          return resolve({
+            code: 0,
+            message: 'success (idempotent, trip already gone)',
+            data: { restored: true },
+          })
+        }
+        mapSuccess(res, resolve, (err) => reject(err))
+      },
+      fail: (err) => {
+        const apiErr = new ApiError({
+          code: null,
+          message: err?.errMsg || '网络异常,请检查网络连接',
+          statusCode: 0,
+          isNetworkError: true,
+        })
+        if (isFallbackable(apiErr)) {
+          logger.warn('[trips.restoreTrashById] HTTP network failed, fallback to local DB', { tripId })
+          return resolveLocalDbRestore(tripId, resolve, reject)
+        }
+        return reject(apiErr)
+      },
     })
+  }).catch((httpErr) => {
+    if (isFallbackable(httpErr)) {
+      logger.warn('[trips.restoreTrashById] HTTP failed, fallback to local DB', {
+        tripId,
+        isNetworkError: httpErr.isNetworkError,
+        statusCode: httpErr.statusCode,
+      })
+      return new Promise((resolve, reject) => resolveLocalDbRestore(tripId, resolve, reject))
+    }
+    return Promise.reject(httpErr)
   })
 }
 
 /**
- * DELETE /api/trash/trips/{trip_id} —— 永久删除(per docs/API接口文档.md §6.12,TrashPage v0.2.0 落地)
+ * 本地 DB 恢复:将 trip 的 `deleted_at` 置 null
+ * @param {number} tripId
+ * @param {(value: any) => void} resolve
+ * @param {(reason: ApiError) => void} reject
+ */
+function resolveLocalDbRestore(tripId, resolve, reject) {
+  try {
+    const updated = dbPatchTrip(tripId, { deleted_at: null })
+    if (!updated) {
+      logger.warn('[trips.restoreTrashById] trip not found in local DB', { tripId })
+      // 与 HTTP 404 静默路径一致:trip 不存在视为幂等成功
+      return resolve({
+        code: 0,
+        message: 'success (idempotent, trip not in local DB)',
+        data: { restored: true },
+      })
+    }
+    logger.info('[trips.restoreTrashById] ok (local DB)', { tripId })
+    return resolve({
+      code: 0,
+      message: 'success (local DB)',
+      data: { restored: true },
+    })
+  } catch (err) {
+    logger.error('[trips.restoreTrashById] local DB failed', err)
+    return reject(new ApiError({
+      code: 5000,
+      message: '本地 DB 不可用,无法恢复',
+      statusCode: 500,
+    }))
+  }
+}
+
+// ─────────── permanentlyDeleteTrip ───────────
+
+/**
+ * DELETE /api/trash/trips/{id} —— 永久删除行程
  *
- * v0.2.0 关键决策(per TrashPage spec §6.4.2 Resolved):
- *   - **不**走 v0.1.0 MVP 0 API 路径(等后端 30 天定时任务)
- *   - 后端**真删**记录(per API doc §6.12)
- *   - data 形如 `{ user_id }`(query param 注入,符合后端 REST 风格)
- *
- * 错误归一(ApiError 复用):
- *   - 4000 / 400     → 参数非法
- *   - 4001 / 404     → 资源不存在(并发删除场景 → 静默,store 端 drop row)
- *   - 5000 / 5xx     → 服务端错误
- *   - isNetworkError → 网络断开
+ * v0.3.1(per integrate-r2 task):
+ *   - 1) HTTP `DELETE /api/trash/trips/{tripId}?user_id=1` 优先
+ *   - 2) HTTP 失败(isNetworkError / 5xx)→ 静默降级到本地 DB:
+ *     `db/deleteTrip(tripId)` 物理删除 db_trips 中该 trip(v0.3.1 新增)
+ *   - 公开 ApiResponse 形状 1:1 保留:`{permanently_deleted: true}`,
+ *     trashStore.permanentlyDeleteTrip 0 改动
+ *   - HTTP 404(trip 已被自动清理)→ resolve `{permanently_deleted: true}` 幂等成功
  *
  * @param {number} tripId
  * @returns {Promise<import('../api/types').ApiResponse<{ permanently_deleted: true }>>}
- * @throws  {ApiError}
+ * @throws  {ApiError} 仅当 HTTP 不可 fallback + 本地 DB 写失败时
  */
 export function permanentlyDeleteTrip(tripId) {
   return new Promise((resolve, reject) => {
     uni.request({
-      url: `${BASE_URL}/api/trash/trips/${tripId}?user_id=${MVP_USER_ID}`,
+      url: `${BASE_URL}/api/trash/trips/${tripId}`,
       method: 'DELETE',
-      success: (res) => mapSuccess(res, resolve, reject),
-      fail: (err) => mapFail(err, reject),
+      data: { user_id: MVP_USER_ID },
+      success: (res) => {
+        // 404 静默:幂等视为成功(与 trashStore 404 静默路径对齐)
+        if (res.statusCode === 404) {
+          logger.warn('[trips.permanentlyDeleteTrip] HTTP 404, trip already gone, resolve as success', { tripId })
+          return resolve({
+            code: 0,
+            message: 'success (idempotent, trip already gone)',
+            data: { permanently_deleted: true },
+          })
+        }
+        mapSuccess(res, resolve, (err) => reject(err))
+      },
+      fail: (err) => {
+        const apiErr = new ApiError({
+          code: null,
+          message: err?.errMsg || '网络异常,请检查网络连接',
+          statusCode: 0,
+          isNetworkError: true,
+        })
+        if (isFallbackable(apiErr)) {
+          logger.warn('[trips.permanentlyDeleteTrip] HTTP network failed, fallback to local DB', { tripId })
+          return resolveLocalDbDelete(tripId, resolve, reject)
+        }
+        return reject(apiErr)
+      },
     })
+  }).catch((httpErr) => {
+    if (isFallbackable(httpErr)) {
+      logger.warn('[trips.permanentlyDeleteTrip] HTTP failed, fallback to local DB', {
+        tripId,
+        isNetworkError: httpErr.isNetworkError,
+        statusCode: httpErr.statusCode,
+      })
+      return new Promise((resolve, reject) => resolveLocalDbDelete(tripId, resolve, reject))
+    }
+    return Promise.reject(httpErr)
   })
+}
+
+/**
+ * 本地 DB 永久删除:物理移除 db_trips 中该 trip
+ * @param {number} tripId
+ * @param {(value: any) => void} resolve
+ * @param {(reason: ApiError) => void} reject
+ */
+function resolveLocalDbDelete(tripId, resolve, reject) {
+  try {
+    // 先校验 trip 是否存在(避免误删)
+    const existing = dbGetTrip(tripId)
+    if (!existing) {
+      logger.warn('[trips.permanentlyDeleteTrip] trip not found in local DB, idempotent', { tripId })
+      return resolve({
+        code: 0,
+        message: 'success (idempotent, trip not in local DB)',
+        data: { permanently_deleted: true },
+      })
+    }
+    const ok = dbDeleteTrip(tripId)
+    if (!ok) {
+      logger.error('[trips.permanentlyDeleteTrip] db/deleteTrip returned false', { tripId })
+      return reject(new ApiError({
+        code: 5000,
+        message: '本地 DB 不可用,无法永久删除',
+        statusCode: 500,
+      }))
+    }
+    logger.info('[trips.permanentlyDeleteTrip] ok (local DB)', { tripId })
+    return resolve({
+      code: 0,
+      message: 'success (local DB)',
+      data: { permanently_deleted: true },
+    })
+  } catch (err) {
+    logger.error('[trips.permanentlyDeleteTrip] local DB failed', err)
+    return reject(new ApiError({
+      code: 5000,
+      message: '本地 DB 不可用,无法永久删除',
+      statusCode: 500,
+    }))
+  }
 }
 
 // ───────────────── 草稿(本地持久化,见 spec §4.3 + §6.4.3)─────────────────

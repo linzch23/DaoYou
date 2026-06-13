@@ -36,6 +36,7 @@
  *   DELETE /api/trip-items/{id}   → deleteTripItemMock
  *   GET  /health                  → healthMock
  *   POST /api/memory/summary      → memorySummaryMock
+ *   PUT  /api/location           → inline {code:0,message:'success',data:{success:true}}  (v0.3.1 新增,per integrate-r2)
  */
 import {
   preferencesMock,
@@ -120,6 +121,17 @@ const ROUTE_TABLE = [
 
   // Health
   { method: 'GET', pattern: /\/health\/?$/, response: () => healthMock },
+
+  // Locations(per v0.3.1 integrate-r2):
+  //   - 后端 PUT /api/location 已实装(router.py:7 prefix="/location" 单数)
+  //   - mock 拦截器直接返回 success,UI 可演示上报流程
+  //   - 形状与后端契约 1:1 对齐:`{code:0, message:'success', data:{success:true}}`
+  //   - orchestrator 1-line fix 2026-06-11 13:26:原写 /api/locations 复数,后端实际单数,改单数
+  {
+    method: 'PUT',
+    pattern: /\/api\/location\/?$/,
+    response: () => ({ code: 0, message: 'success', data: { success: true } }),
+  },
 ]
 
 /**
@@ -227,7 +239,7 @@ export function installMockInterceptor(uniScope) {
     console.info(
       '%c[mockInterceptor] installed',
       'color: #2D6A5E; font-weight: bold;',
-      '— dev only, 19 endpoint covered. set window.__USE_REAL_API__ = true to bypass.'
+      '— dev only, 20 endpoint covered (incl. PUT /api/location v0.3.1). set window.__USE_REAL_API__ = true to bypass.'
     )
   }
 

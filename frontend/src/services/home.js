@@ -20,12 +20,20 @@
 //   - 使用 uni.setStorageSync('favorites', [id1, id2, ...])
 //   - 任何页面 / 任何时刻都从 storage 读,与 store / page 解耦
 //   - 异常(quota 满 / storage 不可用) → 静默降级为内存数组,UI 仍可点击
+//
+// v0.3.0(2026-06-11)改造(per integrate-r1 task):
+//   - 3 个 HTTP 函数(`getToday` / `listTrips` / `listReminders`)各自加 mock fallback
+//   - HTTP 失败(isNetworkError / 5xx)→ 静默降级到 `api/mock/*` 的对应函数
+//   - `loadFavorites` / `saveFavorites` 保留为本地 storage,与后端无关
+//   - `BASE_URL` / `MVP_USER_ID` 改为 import 自 `services/config.js`
 
 import { ApiError } from './preferences.js'
 import { logger } from '../utils/logger.js'
+import { BASE_URL, MVP_USER_ID, USE_MOCK_FALLBACK } from './config.js'
+import { todayHomeMock } from '../../api/mock/home.ts'
+import { tripsMock } from '../../api/mock/trips.ts'
+import { remindersMock } from '../../api/mock/reminders.ts'
 
-const BASE_URL = 'http://localhost:8000'
-const MVP_USER_ID = 1
 const FAVORITES_STORAGE_KEY = 'favorites'
 
 /**
@@ -70,14 +78,31 @@ function mapFail(err, reject) {
 }
 
 /**
+ * 判定 HTTP 失败是否可降级到 mock(isNetworkError / 5xx 走 fallback)
+ *
+ * @param {ApiError} err
+ * @returns {boolean}
+ */
+function isFallbackable(err) {
+  if (!USE_MOCK_FALLBACK) return false
+  return err.isNetworkError === true
+    || (err.statusCode >= 500 && err.statusCode < 600)
+}
+
+/**
  * GET /api/home/today —— 首页今日行程
+ *
+ * v0.3.0(per integrate-r1 task):
+ *   - 1) HTTP `GET /api/home/today` 优先
+ *   - 2) HTTP 失败(isNetworkError / 5xx)→ 静默降级到 `todayHomeMock`
+ *   - 参数兼容:`mock` 是静态 `{trip_id, date, ...}`,无 userId 概念;调用方传 tripId
  *
  * @param {number} tripId  当前 trip id(MVP 阶段由 store 内部从 /api/trips 选)
  * @returns {Promise<import('../api/types').ApiResponse<{
  *   trip_id: number, trip_title: string, city: string, date: string,
  *   today_items: import('../api/types').TripItem[], unread_reminders: number
  * }>>}
- * @throws  {ApiError}
+ * @throws  {ApiError} 不可 fallback 的错误(4xx 业务错)
  */
 export function getToday(tripId) {
   return new Promise((resolve, reject) => {
@@ -91,14 +116,27 @@ export function getToday(tripId) {
       success: (res) => mapSuccess(res, resolve, reject),
       fail: (err) => mapFail(err, reject),
     })
+  }).catch((httpErr) => {
+    if (isFallbackable(httpErr)) {
+      logger.warn('[home.getToday] HTTP failed, fallback to mock', {
+        isNetworkError: httpErr.isNetworkError,
+        statusCode: httpErr.statusCode,
+      })
+      return Promise.resolve(todayHomeMock)
+    }
+    return Promise.reject(httpErr)
   })
 }
 
 /**
  * GET /api/trips —— 行程列表(轻量 TripSummary)
  *
+ * v0.3.0(per integrate-r1 task):
+ *   - 1) HTTP `GET /api/trips` 优先
+ *   - 2) HTTP 失败(isNetworkError / 5xx)→ 静默降级到 `tripsMock`
+ *
  * @returns {Promise<import('../api/types').ApiResponse<{ trips: import('../api/types').TripSummary[] }>>}
- * @throws  {ApiError}
+ * @throws  {ApiError} 不可 fallback 的错误(4xx 业务错)
  */
 export function listTrips() {
   return new Promise((resolve, reject) => {
@@ -109,16 +147,30 @@ export function listTrips() {
       success: (res) => mapSuccess(res, resolve, reject),
       fail: (err) => mapFail(err, reject),
     })
+  }).catch((httpErr) => {
+    if (isFallbackable(httpErr)) {
+      logger.warn('[home.listTrips] HTTP failed, fallback to mock', {
+        isNetworkError: httpErr.isNetworkError,
+        statusCode: httpErr.statusCode,
+      })
+      return Promise.resolve(tripsMock)
+    }
+    return Promise.reject(httpErr)
   })
 }
 
 /**
  * GET /api/reminders —— 提醒列表(本页面**不主动**调,留作其他页面复用)
  *
+ * v0.3.0(per integrate-r1 task):
+ *   - 1) HTTP `GET /api/reminders` 优先
+ *   - 2) HTTP 失败(isNetworkError / 5xx)→ 静默降级到 `remindersMock`
+ *   - status 客户端过滤(后端无 status 参数实测会忽略)
+ *
  * @param {number} tripId
  * @param {'unread' | 'read'} [status='unread']
  * @returns {Promise<import('../api/types').ApiResponse<{ reminders: import('../api/types').Reminder[] }>>}
- * @throws  {ApiError}
+ * @throws  {ApiError} 不可 fallback 的错误(4xx 业务错)
  */
 export function listReminders(tripId, status = 'unread') {
   return new Promise((resolve, reject) => {
@@ -133,6 +185,21 @@ export function listReminders(tripId, status = 'unread') {
       success: (res) => mapSuccess(res, resolve, reject),
       fail: (err) => mapFail(err, reject),
     })
+  }).catch((httpErr) => {
+    if (isFallbackable(httpErr)) {
+      logger.warn('[home.listReminders] HTTP failed, fallback to mock', {
+        isNetworkError: httpErr.isNetworkError,
+        statusCode: httpErr.statusCode,
+      })
+      // 客户端按 status 过滤(后端 mock 端实测 status 参数会被忽略)
+      const all = Array.isArray(remindersMock.data?.reminders) ? remindersMock.data.reminders : []
+      const filtered = status ? all.filter((r) => r.status === status) : all
+      return Promise.resolve({
+        ...remindersMock,
+        data: { reminders: filtered },
+      })
+    }
+    return Promise.reject(httpErr)
   })
 }
 
