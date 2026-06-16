@@ -129,5 +129,38 @@ export function listAllTrips() {
   return Object.values(loadTrips())
 }
 
+/**
+ * 物理删除单个 trip —— 沿 `users.js` 形态,**只**为 trash 永久删除本地 fallback 用
+ *
+ * v0.3.1(2026-06-11,per integrate-r2):
+ *   - 触发原因:后端 `DELETE /api/trash/trips/{id}` 端点已实装但 DB 不通时降级
+ *     到本地,需物理删除 db_trips 中该 trip
+ *   - 沿 `trips.js:readTripById` 的 number/string 双 key 兼容
+ *   - 删除时**不**联动其他 db_ 字段
+ *
+ * @param {string | number} tripId
+ * @returns {boolean} true = 删除成功(或原本就不存在,语义上也是成功)
+ */
+export function deleteTrip(tripId) {
+  if (tripId === null || tripId === undefined || tripId === '') return false
+  const trips = loadTrips()
+  const strKey = String(tripId)
+  // 双 key 兼容(seed 写入是 string;业务调用常用 number)
+  let removed = false
+  if (trips[strKey]) {
+    delete trips[strKey]
+    removed = true
+  }
+  if (trips[/** @type {any} */ (tripId)] && trips[/** @type {any} */ (tripId)] !== trips[strKey]) {
+    delete trips[/** @type {any} */ (tripId)]
+    removed = true
+  }
+  if (!removed) {
+    // 不存在也视为成功(trash 永久删除的幂等语义)
+    return true
+  }
+  return saveTrips(trips)
+}
+
 // 内部 re-export 便于单测 / 调试
 export { readTripById as getTrip, writeTrip as setTrip }

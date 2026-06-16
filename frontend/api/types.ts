@@ -6,6 +6,9 @@
 //   日期：      'YYYY-MM-DD'，例如 '2026-07-01'
 //   时间：      'HH:mm'，     例如 '10:00'         ← TripItem.start_time / end_time
 //   日期时间：  ISO 8601，     例如 '2026-07-01T09:20:00+08:00'  ← ChatMessage/Reminder.created_at
+//
+// v0.3.0(2026-06-11):ChatRequest 补 trip_id + current_location 字段,与后端 ChatRequest 对齐
+// v0.3.1(2026-06-11):新增 LocationUpdate types,与后端 locations.py:UpdateLocationRequest 对齐
 
 // ───────────────── 响应信封 / 错误码 ─────────────────
 
@@ -208,6 +211,10 @@ export interface UpdateTripRequest {
   user_id: number
   title?: string
   status?: TripStatus
+  // UI-025 itineraryArrange 是**可选**字段(per v0.3.0 integrate-r1 实证):
+  //   - 后端 Pydantic 默认 extra=ignore,前端 POST/PUT 携带此字段会被静默忽略
+  //   - 携带无害,前端**默认发送**便于后端补字段时无侵入升级
+  //   - 严格来说 `itineraryArrange` 是 `ItineraryItem[]`(UI-025 客户端类型)
   itineraryArrange?: ItineraryItem[] // UI-025 新增(可选,EditTripPage PUT partial-update)
 }
 
@@ -243,7 +250,34 @@ export interface ChatRequest {
   user_id: number
   trip_id: number
   message: string
+  current_location?: Location // Optional:对齐后端 ChatRequest(per docs/API接口文档.md §7.1);MVP 阶段不传
 }
+
+// ───────────────── LocationUpdate(per v0.3.1 integrate-r2)─────────────────
+//
+// 与后端 `backend/api/locations.py:UpdateLocationRequest` 1:1 对齐。
+//
+// 用途:MVP 阶段由 page 层调 `uni.getLocation` 获取经纬度,经本 service 上报后端,
+// 后端用于行程内推荐 / 安全提醒 / 距离计算等。
+//
+// v0.3.1(2026-06-11,per integrate-r2 task):
+//   - MVP 不接高德 SDK,经纬度精度依赖 `uni.getLocation`(微信小程序 / H5 浏览器 API)
+//   - timestamp 秒级(非毫秒)对齐后端契约
+//   - 后续如需更高精度,IssueManager 提议在 manifest.json 配高德 key + 引入 @dcloudio/uni-amap
+export interface LocationUpdate {
+  user_id: number
+  latitude: number
+  longitude: number
+  timestamp: number
+}
+
+// LocationUpdateResponse —— `ApiResponse<{ success: boolean }>` 形态别名
+//
+// 与后端契约 1:1 对齐:`PUT /api/locations` 成功响应
+//   { code: 0, message: 'success', data: { success: true } }
+//
+// 公开 type 而非 interface,便于调用方直接 import 用作 `Promise<LocationUpdateResponse>`
+export type LocationUpdateResponse = ApiResponse<{ success: boolean }>
 
 export interface PhotoExplainForm {
   user_id: number

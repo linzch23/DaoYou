@@ -33,6 +33,7 @@ import {
   writeTrip,
   patchTrip,
   listAllTrips,
+  deleteTrip as deleteTripImpl,
 } from './trips.js'
 import { DB_STORAGE_KEYS } from './schema.js'
 
@@ -270,6 +271,21 @@ export function updateTrip(tripId, patch) {
  */
 export function listTrips() {
   return listAllTrips()
+}
+
+/**
+ * 物理删除单个 trip —— **只**为 trash 永久删除本地 fallback 用
+ *
+ * v0.3.1(2026-06-11,per integrate-r2):
+ *   - 后端 `DELETE /api/trash/trips/{id}` 不可达时降级到本地,
+ *     物理移除 db_trips 中该 trip
+ *   - 幂等:tripId 不存在也返回 true
+ *
+ * @param {string | number} tripId
+ * @returns {boolean}
+ */
+export function deleteTrip(tripId) {
+  return deleteTripImpl(tripId)
 }
 
 // 内部 re-export 便于单测 / 调试(本任务不引入单测,保留作后续扩展 hook)

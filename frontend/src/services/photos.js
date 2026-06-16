@@ -28,12 +28,19 @@
 //   - 5001                 → LLM 错误(errorLLM,本页面专属)
 //   - fail 回调            → 网络断开(isNetworkError=true,errorNetwork)
 //   - 上传超时(> 30s)     → 由页面 setTimeout 兜底触发,本服务不感知(errorUploadTimeout)
+//
+// v0.3.0(2026-06-11)改造(per integrate-r1 task):
+//   - `explainPhoto(req)` 加 mock fallback → `api/mock/photos` 的 `photoExplainMock`
+//   - HTTP 失败(isNetworkError / 5xx)→ 静默降级到 mock
+//   - 本地缓存函数(`saveGuideResult` / `getGuideResult` / `clearGuideResult` /
+//     `loadGuideResults`)0 改动,继续走 storage
+//   - `BASE_URL` / `MVP_USER_ID` / `UPLOAD_TIMEOUT_MS` 改 import 自 `services/config.js`
 
 import { ApiError } from './preferences.js'
 import { logger } from '../utils/logger.js'
+import { BASE_URL, MVP_USER_ID, USE_MOCK_FALLBACK } from './config.js'
+import { photoExplainMock } from '../../api/mock/photos.ts'
 
-const BASE_URL = 'http://localhost:8000'
-const MVP_USER_ID = 1
 const UPLOAD_TIMEOUT_MS = 30000 // 30s 上传超时,per spec §1 + §5.2 + §6.1
 
 /**
@@ -122,6 +129,13 @@ function mapUploadSuccess(res, resolve, reject) {
 /**
  * POST /api/photos/explain —— 拍照讲解(multipart/form-data)
  *
+ * v0.3.0(per integrate-r1 task):
+ *   - 1) HTTP `uni.uploadFile POST /api/photos/explain` 优先
+ *   - 2) HTTP 失败(isNetworkError / 5xx)→ 静默降级到 `photoExplainMock`
+ *   - 注:mock 端 `photoExplainMock.data` 是固定 4 块演示数据;**不**写真实 image_path,
+ *     调用方 `saveGuideResult` 时按 mock 形态缓存
+ *   - 入参校验失败 → 直接 reject(不走 fallback,沿用 spec §7.3)
+ *
  * 入参(per spec §6.1):
  *   - trip_id: 旅行 id(MVP 允许 =0 表示无 trip 上下文)
  *   - image:   本地图片临时路径(uni.chooseImage 返回的 tempFilePaths[0])
@@ -132,7 +146,7 @@ function mapUploadSuccess(res, resolve, reject) {
  *   - formData 注入 `trip_id` + `style`
  *   - image 走 `uni.uploadFile({ filePath, name: 'image' })` 单独字段
  *   - **不**传 `current_location`(spec §6.3.3)
- *   - **不**传 `history`(spec §6.3.2)
+ *   - **不**传 `history`(spec §6.3.2 追问循环复用 photo_id 关联)
  *   - 30s 上传超时(spec §1 + §5.2)
  *
  * 错误归一(沿用 `services/preferences.ApiError` class):
@@ -150,41 +164,37 @@ function mapUploadSuccess(res, resolve, reject) {
  * @throws  {ApiError}
  */
 export function explainPhoto(req) {
-  return new Promise((resolve, reject) => {
-    // 入参校验(避免 uni.uploadFile 起飞后才报错,减少 30s 浪费)
-    if (!req || typeof req !== 'object') {
-      reject(new ApiError({
-        code: 4000,
-        message: '请求参数不能为空',
-        statusCode: 400,
-      }))
-      return
-    }
-    if (typeof req.image !== 'string' || !req.image) {
-      reject(new ApiError({
-        code: 4000,
-        message: 'image 路径不能为空',
-        statusCode: 400,
-      }))
-      return
-    }
-    if (typeof req.trip_id !== 'number' || !Number.isFinite(req.trip_id)) {
-      reject(new ApiError({
-        code: 4000,
-        message: 'trip_id 必须为有限数字(MVP 允许 0)',
-        statusCode: 400,
-      }))
-      return
-    }
-    if (req.style !== 'professional' && req.style !== 'casual' && req.style !== 'kid') {
-      reject(new ApiError({
-        code: 4000,
-        message: 'style 必须为 professional / casual / kid 之一',
-        statusCode: 400,
-      }))
-      return
-    }
+  // 入参校验(避免 uni.uploadFile 起飞后才报错,减少 30s 浪费)
+  if (!req || typeof req !== 'object') {
+    return Promise.reject(new ApiError({
+      code: 4000,
+      message: '请求参数不能为空',
+      statusCode: 400,
+    }))
+  }
+  if (typeof req.image !== 'string' || !req.image) {
+    return Promise.reject(new ApiError({
+      code: 4000,
+      message: 'image 路径不能为空',
+      statusCode: 400,
+    }))
+  }
+  if (typeof req.trip_id !== 'number' || !Number.isFinite(req.trip_id)) {
+    return Promise.reject(new ApiError({
+      code: 4000,
+      message: 'trip_id 必须为有限数字(MVP 允许 0)',
+      statusCode: 400,
+    }))
+  }
+  if (req.style !== 'professional' && req.style !== 'casual' && req.style !== 'kid') {
+    return Promise.reject(new ApiError({
+      code: 4000,
+      message: 'style 必须为 professional / casual / kid 之一',
+      statusCode: 400,
+    }))
+  }
 
+  return new Promise((resolve, reject) => {
     uni.uploadFile({
       url: `${BASE_URL}/api/photos/explain`,
       filePath: req.image,
@@ -200,6 +210,20 @@ export function explainPhoto(req) {
       success: (res) => mapUploadSuccess(res, resolve, reject),
       fail: (err) => mapUploadError(err, reject),
     })
+  }).catch((httpErr) => {
+    // HTTP 失败 → mock fallback(isNetworkError / 5xx)
+    if (httpErr instanceof ApiError && (
+      httpErr.isNetworkError === true
+      || (httpErr.statusCode >= 500 && httpErr.statusCode < 600)
+    ) && USE_MOCK_FALLBACK) {
+      logger.warn('[photos.explainPhoto] HTTP failed, fallback to mock', {
+        isNetworkError: httpErr.isNetworkError,
+        statusCode: httpErr.statusCode,
+      })
+      return Promise.resolve(photoExplainMock)
+    }
+    // 4xx 业务错或 USE_MOCK_FALLBACK=false → 直接 reject
+    return Promise.reject(httpErr)
   })
 }
 
