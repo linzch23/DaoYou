@@ -31,7 +31,7 @@ import {
   saveTrips,
   readTripById,
   writeTrip,
-  patchTrip,
+  patchTrip as patchTripImpl,
   listAllTrips,
   deleteTrip as deleteTripImpl,
 } from './trips.js'
@@ -261,7 +261,18 @@ export function setTrip(trip) {
  * @returns {import('./schema.js').Trip | null} 更新后的 trip;tripId 不存在返回 null
  */
 export function updateTrip(tripId, patch) {
-  return patchTrip(tripId, patch)
+  return patchTripImpl(tripId, patch)
+}
+
+/**
+ * 部分更新 trip(PATCH 语义)—— 兼容 service 层既有命名
+ *
+ * @param {string | number} tripId
+ * @param {Partial<import('./schema.js').Trip>} patch
+ * @returns {import('./schema.js').Trip | null} 更新后的 trip;tripId 不存在返回 null
+ */
+export function patchTrip(tripId, patch) {
+  return updateTrip(tripId, patch)
 }
 
 /**

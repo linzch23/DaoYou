@@ -17,8 +17,8 @@
 //
 // action
 //   fetchTrips()    : Promise<void>      GET /api/trips
-//   fetchToday()    : Promise<void>      内部依赖 trips 选 trip_id,再 GET /api/home/today
-//   refreshAll()    : Promise<void>      并行 fetchTrips + fetchToday
+//   fetchToday()    : Promise<void>      内部依赖 trips 选 date,再 GET /api/home/today
+//   refreshAll()    : Promise<void>      先刷新 trips,再基于 active trip 拉今日行程
 //   markSpotVisited(itemId) : Promise<void>   乐观更新 status='done'(MVP 不发远端)
 //   clearHome()     : void               登出场景
 //
@@ -109,14 +109,14 @@ export const useHomeStore = defineStore('home', () => {
   }
 
   /**
-   * 筛选 tripId:从 trips 中选 status='active' 且最靠近今天的那条
+   * 筛选 active trip:从 trips 中选 status='active' 且最靠近今天的那条
    * 若 trips 为空 / 无 active → 返回 null(spec §6.4.3)
    *
    * MVP 简化:取 active 列表中 start_date 最近的那条
    *
-   * @returns {number | null}
+   * @returns {TripSummary | null}
    */
-  function pickActiveTripId() {
+  function pickActiveTrip() {
     const activeTrips = trips.value.filter((t) => t.status === 'active')
     if (activeTrips.length === 0) return null
     activeTrips.sort((a, b) => {
@@ -124,7 +124,7 @@ export const useHomeStore = defineStore('home', () => {
       const db = new Date(b.start_date).getTime() || 0
       return da - db
     })
-    return activeTrips[0].id
+    return activeTrips[0]
   }
 
   // ───────── Actions ─────────
@@ -150,7 +150,7 @@ export const useHomeStore = defineStore('home', () => {
   }
 
   /**
-   * 拉取今日行程 —— 内部先确保 trips 已就绪,再选 tripId 调 /api/home/today
+   * 拉取今日行程 —— 内部先确保 trips 已就绪,再选 date 调 /api/home/today
    *
    * 实现说明(spec §6.4.3 / §6.1):
    *   - 若 trips 为空 → short-circuit,today = null,不发起请求
@@ -167,19 +167,19 @@ export const useHomeStore = defineStore('home', () => {
       if (trips.value.length === 0 && !isFetchingTrips.value) {
         await fetchTrips()
       }
-      const tripId = pickActiveTripId()
-      if (tripId === null) {
+      const activeTrip = pickActiveTrip()
+      if (activeTrip === null) {
         today.value = null
         lastFetchedAt.value = new Date().toISOString()
         logger.info('[homeStore.fetchToday] no active trip, short-circuit')
         return
       }
-      const res = await svcGetToday(tripId)
+      const res = await svcGetToday(activeTrip.start_date)
       today.value = res.data
       lastFetchedAt.value = new Date().toISOString()
       error.value = null
       logger.info('[homeStore.fetchToday] ok', {
-        tripId,
+        date: activeTrip.start_date,
         items: res.data.today_items?.length ?? 0,
       })
     } catch (err) {
@@ -191,7 +191,7 @@ export const useHomeStore = defineStore('home', () => {
   }
 
   /**
-   * 并行刷新 trips + today —— 供 onShow / 重试按钮使用
+   * 刷新 trips + today —— 供 onShow / 重试按钮使用
    * 任意一个 reject → 内部消化为 error,页面通过 error 字段决定 viewMode
    * @returns {Promise<void>}
    */
@@ -200,32 +200,18 @@ export const useHomeStore = defineStore('home', () => {
     isFetchingTrips.value = true
     isFetchingToday.value = true
     try {
-      // 并行:先并行拉 trips;trips 完成后并行/串行拉 today(spec §5.4)
-      // 实现:用 Promise.allSettled 包装,任意失败不互相阻塞
-      const results = await Promise.allSettled([
-        svcListTrips().then((r) => {
-          trips.value = r.data.trips || []
-        }),
-        // fetchToday 内部已包含"先 fetchTrips",为避免递归,这里直接基于 svc
-        (async () => {
-          const tripId = pickActiveTripId()
-          if (tripId === null) {
-            today.value = null
-            return
-          }
-          const r = await svcGetToday(tripId)
-          today.value = r.data
-        })(),
-      ])
-      // 任一失败 → 写入 error(取首个 reject)
-      const firstFail = results.find((r) => r.status === 'rejected')
-      if (firstFail) {
-        error.value = buildErrorInfo(
-          /** @type {{ reason: unknown }} */ (firstFail).reason
-        )
+      const tripsRes = await svcListTrips()
+      trips.value = tripsRes.data.trips || []
+
+      const activeTrip = pickActiveTrip()
+      if (activeTrip === null) {
+        today.value = null
       } else {
-        error.value = null
+        const todayRes = await svcGetToday(activeTrip.start_date)
+        today.value = todayRes.data
       }
+
+      error.value = null
       lastFetchedAt.value = new Date().toISOString()
       logger.info('[homeStore.refreshAll] done', {
         trips: trips.value.length,

@@ -1,7 +1,7 @@
 // frontend/services/home.js
 // 封装 docs/API接口文档.md §5.1 / §6.2 / §9.2 + 本地 favorites 持久化
 //
-//   GET /api/home/today      → getToday(tripId)
+//   GET /api/home/today      → getToday(date)
 //   GET /api/trips           → listTrips()
 //   GET /api/reminders       → listReminders(tripId, status)   ← 本页面不主动调,留作复用
 //   favorites 本地存储        → loadFavorites / saveFavorite / removeFavorite
@@ -95,23 +95,23 @@ function isFallbackable(err) {
  * v0.3.0(per integrate-r1 task):
  *   - 1) HTTP `GET /api/home/today` 优先
  *   - 2) HTTP 失败(isNetworkError / 5xx)→ 静默降级到 `todayHomeMock`
- *   - 参数兼容:`mock` 是静态 `{trip_id, date, ...}`,无 userId 概念;调用方传 tripId
+ *   - 参数兼容:`mock` 是静态 `{trip_id, date, ...}`,无 userId 概念;调用方传 date
  *
- * @param {number} tripId  当前 trip id(MVP 阶段由 store 内部从 /api/trips 选)
+ * @param {string} date 查询日期,YYYY-MM-DD(演示场景用行程 start_date)
  * @returns {Promise<import('../api/types').ApiResponse<{
  *   trip_id: number, trip_title: string, city: string, date: string,
  *   today_items: import('../api/types').TripItem[], unread_reminders: number
  * }>>}
  * @throws  {ApiError} 不可 fallback 的错误(4xx 业务错)
  */
-export function getToday(tripId) {
+export function getToday(date) {
   return new Promise((resolve, reject) => {
     uni.request({
       url: `${BASE_URL}/api/home/today`,
       method: 'GET',
       data: {
         user_id: MVP_USER_ID,
-        trip_id: tripId,
+        date,
       },
       success: (res) => mapSuccess(res, resolve, reject),
       fail: (err) => mapFail(err, reject),
