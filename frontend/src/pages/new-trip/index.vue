@@ -4,7 +4,9 @@
   Spec contract: specs/NewTripPage.md v0.1.0
   Route: /pages/new-trip/index
   入口:HomePage BtnAddTrip / EmptyState CTA → uni.navigateTo({url: AppRoutes.NewTrip})
-  出口:POST 成功后 reLaunch 跳 AppRoutes.TripDetail?tripId=xxx
+  出口(fix-trip-bugs-v1 2026-06-18):POST 成功后 reLaunch 跳 AppRoutes.Home
+    (原跳 TripDetailPage 已被废弃 — reLaunch 清空整页栈,TripDetailPage onBack
+     navigateBack 必然失败 → 兜底 reLaunch Home(整页刷新,体验糟))
   
   6 视图态(spec §3.7 / §5):
     input      — 默认(Greeting + textarea + 文件 chips + 取消/确定)
@@ -16,10 +18,10 @@
   
   复用:
     - AppColors(山水日志配色)
-    - AppRoutes.NewTrip / AppRoutes.Home / AppRoutes.TripDetail
+    - AppRoutes.NewTrip / AppRoutes.Home
     - NewTripStrings / NewTripTransportOptions / NewTripNeedsOptions
     - useHomeStore.fetchTrips()(POST 成功后刷新列表)
-    - services/trips.createTrip + saveDraft
+    - services/trips.createTrip + updateTrip + saveDraft
     - _ErrorBanner(3 必填校验失败提示,retryable=false)
   
   不复用:不直接复用 NextButton / SpotDetailSheet(本页面双按钮,非单一 CTA)
@@ -403,7 +405,7 @@ import { NewTripStrings, NewTripTransportOptions, NewTripNeedsOptions } from '..
 import { AppRoutes } from '../../constants/routes.js'
 import { logger } from '../../utils/logger.js'
 import { useHomeStore } from '../../stores/homeStore.js'
-import { createTrip, saveDraft } from '../../services/trips.js'
+import { createTrip, saveDraft, updateTrip } from '../../services/trips.js'
 import { loadTrips } from '../../db/trips.js'
 import ErrorBanner from '../../components/ErrorBanner.vue'
 import DraftConfirmDialog from './components/DraftConfirmDialog.vue'
@@ -888,17 +890,28 @@ async function submitTripRequest(title) {
     logger.info('[NewTripPage] submit ok', { tripId })
 
     // 200ms 后 reLaunch(AC-08:≤ 200ms,避免黑屏)
-    setTimeout(() => {
-      homeStore.fetchTrips()
-        .catch((err) => {
-          // 列表刷新失败不阻塞跳转(spec §5.2 Step 4 备注)
-          logger.warn('[NewTripPage] fetchTrips after submit failed', err)
+    setTimeout(async () => {
+      // fix-trip-bugs-v1:MVP 兜底 — 后端 Trip.status default='draft' + create_trip 不设 status,
+      // 创建后调 PUT /api/trips/{id} 改 status='active'。失败仅 logger.warn,不阻塞 reLaunch
+      try {
+        await updateTrip(tripId, { status: 'active' })
+        logger.info('[NewTripPage] set status active ok', { tripId })
+      } catch (err) {
+        logger.warn('[NewTripPage] set status active failed, trip may stay draft', {
+          tripId,
+          err: err?.message,
         })
+      }
+      // 刷新 HomePage 列表(失败仅 warn,不阻塞 reLaunch)
+      homeStore.fetchTrips()
+        .catch((err) => logger.warn('[NewTripPage] fetchTrips after submit failed', err))
         .finally(() => {
-          uni.reLaunch({
-            url: `${AppRoutes.TripDetail}?tripId=${tripId}`,
-          }).catch((err) => {
-            logger.error('[NewTripPage] reLaunch failed', err)
+          // fix-trip-bugs-v1:创建后直接 reLaunch Home(per user 2026-06-18),
+          // 不走 TripDetail。原因:reLaunch 清空整页栈 → TripDetailPage onBack
+          // navigateBack 必然失败 → 兜底 reLaunch Home(整页刷新,体验糟)。
+          // HomePage onShow 自动 re-fetch,新 trip 出现在 Section 2「行程列表」。
+          uni.reLaunch({ url: AppRoutes.Home }).catch((err) => {
+            logger.error('[NewTripPage] reLaunch Home failed', err)
           })
         })
     }, 200)

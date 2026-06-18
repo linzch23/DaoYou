@@ -317,3 +317,102 @@
     test: Pass                  # 2026-06-10: step-4c test-agent 8 类场景覆盖全过(per spec-auditor attempt 1 报告 + step-2 mock+code deliverable);Happy(GET /api/trash/trips 拉取 + 列表渲染 + 2 操作)/ Boundary(deleted_at 兜底 null/undefined + 0 边界)/ Error(404 静默路径 / 5xx 切 error 态 / network fail 切 error 态)/ Loading(onLoad + onShow 重拉)/ Empty(0 条 trip 切 empty 态)/ Network(fail 回调 isNetworkError=true)/ Retry(error 态点重试 → fetchTrash 闭环)/ Permission(401 → 本页不感知);**0 改动** FinalStatus 路径(per spec-auditor 报告 + ui-reviewer 报告 + test-agent 聚合:5 page 全部 Done 满足状态)
 
   FinalStatus: Done              # 2026-06-10: 3 reviewer 聚合完成(per step-4a ui-reviewer deliverable 7 项 7/7 ✓ + step-4b spec-auditor 5 项 5/5 PASS closure report + step-4c test-agent 8 类场景 0 触发回归);5 个 Done 条件全部满足(Spec=Completed / Arch=Pass / Dev=Completed / Review.{ui,spec,test}=Pass);0 触发 code-writer / spec-writer / issue-manager 复派(3 reviewer 0 失败,0 创建 issues/*);3 reviewer 详细审核见 outputs/step4a-ui-review/deliverable.md + outputs/step4b-spec-audit/deliverable.md(待 14:30 closure)+ outputs/step4c-test-agent/deliverable.md
+
+# ============================================================
+# Cross-Page: disable-mock-default  ── 2026-06-18 fix
+# ============================================================
+- Cross-Page: disable-mock-default
+
+  Spec:
+    status: NotApplicable
+    note: 'Cross-Page 基础设施级 config 变更,无 page 块对应;0 spec 字段变更'
+
+  Architecture:
+    status: NotApplicable
+    note: '0 架构字段变更'
+
+  Development:
+    status: Completed
+    note: '2026-06-18 改 src/services/config.js:36 true→false(1 行),跨页影响 4 service + 13 page 行为;0 spec 字段变 + 0 API 契约变 + 0 新功能'
+
+  Review:
+    ui:   Pass                  # 2026-06-18: fix-only 协议(per AGENTS.md §8.6 + §8.7 + memory §6a)→ 0 spec 字段变更 + 0 API 契约变更 + 0 新功能 → 统一保持 Pass,不走完整 ui-review
+    spec: Pass                  # 2026-06-18: fix-only 协议 → 0 spec 字段变更 + 0 API 契约变更 + 0 新功能 → 统一保持 Pass,不走完整 spec-auditor
+    test: Pass                  # 2026-06-18: fix-only 协议 → 0 spec 字段变更 + 0 API 契约变更 + 0 新功能 → 统一保持 Pass,不走完整 test-agent
+
+  FinalStatus: Done              # 2026-06-18: 5/5 满足(Spec=NotApplicable / Arch=NotApplicable / Dev=Completed / Review.{ui,spec,test}=Pass);fix-only 路径(per AGENTS.md §8.6 + §8.7 + memory §6a):0 spec 字段变更 + 0 API 契约变更 + 0 新功能 → 0 reviewer 触发,3 Review 字段 orchestrator 显式标 Pass;详见 outputs/disable-mock-default-code/deliverable.md
+
+
+# ============================================================
+# Page: ChatPage  ──  2026-06-18 user 直发需求新建(通用聊天页)
+# ============================================================
+# 起源(2026-06-18 user 直发,ask_user popup 已拍板 3 决策):
+#   1. 通用一触即进 chat page,所有模态对话(text/image/voice/photo)放同一 session(用户看起来)
+#   2. 形态仿聊天工具:左 bot 头像+回复 / 右 user 头像+输入(text/image/voice)
+#   3. Header 左「←」返回主页 + 中间固定字样 Roamy(chat 内虚拟形象名,**不**是 brand 替换)
+#   4. 底部 3 段:「+」/ input 或 voice 按钮 / voice↔text 切换(微信式)
+#   5. 3 种入口手势绑「拍照讲解」按钮(点按=拍照 / 长按=录音 / 按住上滑=拉全屏聊天)
+#   6. 语音输入 60s 上限 + 用系统输入法(默认)
+# 决策点(2026-06-18 user 拍板):
+#   - photo-guide / guide-result 关系 = 全部并入 chat page(选 A,替换)
+#   - Roamy 含义 = chat 内虚拟形象名(选 B,Header 中间字样 + 头像标签,DaoYou 仍是项目名)
+#   - chat history 持久化 = 仅后端按 session_id(选 B,GET /api/chat/history 真用上,**不**本地缓存)
+# 软删策略(orchestrator 决策):
+#   - photo-guide / guide-result **不**本任务硬删(避免一次性删 2 个 Done page 触发 review 回归)
+#   - 由 spec-writer 在 specs/ChatPage.md 中详细规划"迁移清单 + 软删路径"
+#   - code-writer 在 ChatPage 落地后,单独 task 触发 photo-guide / guide-result 物理删除
+# ============================================================
+- Page: ChatPage
+
+  Spec:
+    status: NotStarted         # 2026-06-18: 5 字段全 NotStarted 等 spec-writer 写 specs/ChatPage.md v0.1.0
+                                # spec 必含:
+                                #   - 10 章节(背景/特性/AC/视图态/State Flow/API/Store/Component/NFR/PD-001 决策日志)
+                                #   - 决策日志 4 项(替换 photo-guide/guide-result / Roamy 含义 / 仅后端持久 / 软删策略)
+                                #   - 迁移清单:photo-guide 6 视图态(idle/preview/analyzing/result/chatting/error)+ _ChatHistory / _ChatInputBar / _ClearChatConfirmDialog / 30s timeout 复用;guide-result 5 视图态(loading/loaded/chatting/notfound/error)+ page-local mock 复用为真接口
+                                #   - 视图态机:建议 5 枚举(loading/empty/sending/sent/error);error 飞行中态由 _ErrorBanner 内联表达,**不**切全屏 error(per 13 页面惯例)
+                                #   - API 契约扩:POST /api/chat 接 audio_url / image_url 字段(spec-writer 决策与后端沟通);GET /api/chat/history 启用
+                                #   - 60s 录音硬约束(spec §10 NFR):uni.getRecorderManager + setTimeout(60000) 强制 stop
+                                #   - 3 入口手势:外部「拍照讲解」按钮位置(tabBar 第 2 项?浮动按钮?home page?spec-writer 决策)
+
+  Architecture:
+    status: NotStarted
+                                # 2026-06-18: 等 spec-writer 完成 spec 后,派 architecture-reviewer 复核;PD-001 触发 4 项预期:
+                                #   - 后端 audio 端点(POST /api/chat/audio)是否已实装?若无,需 spec-writer 写决策日志(spec/agent-2 跨工种协调,code-writer **不**自行创 endpoint)
+                                #   - 后端 image 端点(POST /api/chat/image)是否复用 /api/photos/explain?
+                                #   - 60s 录音 uni.getRecorderManager 跨端兼容性(H5 50ms 上限?App 60s?微信小程序 60s?)
+                                #   - tabBar 第 2 项「拍照讲解」是否真改成 chat page 入口(spec-writer 决策,与 BottomTabBar spec §8.1 关联)
+
+  Development:
+    status: NotStarted
+                                # 2026-06-18: 等 arch-reviewer Pass 后,派 code-writer;落地文件预期:
+                                #   - src/pages/chat/index.vue(主页面,5 视图态 + Header + 底部 3 段 + 60s 录音 + 3 入口手势分发)
+                                #   - src/services/chat.js(sendMessage + getHistory + 可选 sendAudio / sendImage,复用 ApiError + mapSuccess/mapFail)
+                                #   - src/stores/chatStore.js(messages state + send / loadHistory actions,可选 page-local state)
+                                #   - src/pages/photo-guide/components/ClearChatConfirmDialog.vue 反向 import(沿 §8.4 guide-result → photo-guide _ClearChatConfirmDialog 模式)
+                                #   - src/constants/strings.js 增量 ChatStrings 段
+                                #   - src/pages.json 注册 pages/chat/index 路由
+                                #   - tabBar 改不改(看 spec-writer 决策)
+                                #   - 0 触动 PhotoGuidePage / GuideResultPage 代码(由后续 task 单独删)
+                                # 关键参考(per AGENTS.md):
+                                #   - §8.3 PhotoGuidePage 6 视图态 + _ChatHistory 组件结构
+                                #   - §8.4 GuideResultPage 5 视图态 + page-local mock 决策
+                                #   - §8.6 1 行 routes 登记 + PageStatus 注释模式
+                                #   - §8.7 跨页节流(retro fix 协议,适用 retry emit)
+                                #   - §8.8 私有组件命名去 `_` 前缀(沿 PascalCase)
+                                #   - §8.10 页面私有子组件 import 路径深度 N+1(子组件在 pages/<page>/components/ 用 `../../../`)
+                                #   - §8.11 H5 `<switch>` 嵌 view double-fire bug + v-if + animation 抖动
+                                # 复用既有:
+                                #   - components/_ErrorBanner ⭐ 跨 13 page 复用
+                                #   - services/preferences.js ApiError + mapSuccess/mapFail helper
+                                #   - utils/logger(per AC-N logger 全覆盖,0 console.*)
+                                #   - services/photos.explainPhoto 图片端点(是否复用由 spec-writer 决策)
+
+  Review:
+    ui: Pending
+    spec: Pending
+    test: Pending
+
+  FinalStatus: NotStarted       # 2026-06-18: 5 字段全 NotStarted;等 spec → arch → dev → 3 reviewer 流程
+                                 # 软删关联:PhotoGuidePage / GuideResultPage 2 个 PageStatus 块**不**本任务动
+                                 # 由后续 photo-guide-deprecation / guide-result-deprecation 单独 task 改 FinalStatus

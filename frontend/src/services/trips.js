@@ -251,9 +251,10 @@ export function getTripDetail(tripId) {
 export function deleteTrip(tripId) {
   return new Promise((resolve, reject) => {
     uni.request({
-      url: `${BASE_URL}/api/trips/${tripId}`,
+      // fix-trip-bugs-v1:user_id 改走 query string(后端 delete_trip_endpoint(trip_id, user_id: int) 必填),
+      // 原 data 走 body → 4000;实测 `?user_id=1` → 200 OK
+      url: `${BASE_URL}/api/trips/${tripId}?user_id=${MVP_USER_ID}`,
       method: 'DELETE',
-      data: { user_id: MVP_USER_ID },
       success: (res) => mapSuccess(res, resolve, reject),
       fail: (err) => mapFail(err, reject),
     })

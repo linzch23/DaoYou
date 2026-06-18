@@ -33,4 +33,4 @@ export const MVP_USER_ID = 1
  *   - MVP 演示 / 后端未起 / demo 场景 → 留 true
  *   - 后端已部署且要严格线上行为 → 改 false(或 main.js 关掉 `__USE_REAL_API__`)
  */
-export const USE_MOCK_FALLBACK = true
+export const USE_MOCK_FALLBACK = false

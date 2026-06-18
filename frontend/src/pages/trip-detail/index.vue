@@ -207,7 +207,6 @@
       class="action-bar"
     >
       <view
-        v-if="!isActionsDisabled"
         class="action-bar-btn action-bar-btn-delete"
         role="button"
         :aria-label="strings.btnDelete"
@@ -373,8 +372,11 @@ const progressPercent = computed(() => {
   return Math.max(0, Math.min(100, Math.round((elapsed / total) * 100)))
 })
 
-/** 已结束(finished)→ 按钮置灰不可点(spec §3.4 矩阵 + §5.3.L;UI-024:仅用于隐藏「删除行程」,modify 按钮改走「复制行程」) */
-const isActionsDisabled = computed(() => currentSubStatus.value === 'finished')
+/** 已结束(finished)→ 仅「修改行程」置灰走 copy,「删除 / 复制」**可点**(per fix-trip-bugs-v1 user 2026-06-18) */
+const isModifyDisabled = computed(() => currentSubStatus.value === 'finished')
+
+/** 兼容老 isActionsDisabled 引用 — 等价 isModifyDisabled(per fix-trip-bugs-v1 决定:finished 整组隐藏 → 现改单 modify 隐藏) */
+const isActionsDisabled = isModifyDisabled
 
 /** UI-024:finished 行程 → 复制模式,modify 按钮文案 + 行为切换 */
 const isCopyMode = computed(() => currentSubStatus.value === 'finished')
@@ -755,7 +757,7 @@ async function onRetry() {
  * finished 子态 → 置灰不可点(本路径不可达,但保留 isActionsDisabled 防御)
  */
 function onModifyClick() {
-  if (isActionsDisabled.value) {
+  if (isModifyDisabled.value) {
     logger.info('[TripDetailPage] modify disabled (finished)')
     return
   }
@@ -796,10 +798,7 @@ function onActionClick() {
  * 「删除行程」点击 → 弹 _DeleteConfirmDialog(spec §5.2 Step D + §9 AC-05)
  */
 function onDeleteClick() {
-  if (isActionsDisabled.value) {
-    logger.info('[TripDetailPage] delete disabled (finished)')
-    return
-  }
+  // fix-trip-bugs-v1:finished 行程允许删除(per user 2026-06-18)。原防御拦截已移除
   if (tripId.value === null) return
   dialogVisible.value = true
   logger.info('[TripDetailPage] delete dialog open', { tripId: tripId.value })

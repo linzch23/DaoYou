@@ -18,7 +18,12 @@
     "modules": {},
     "distribute": {
       "android": {
-        "permissions": []
+        "package": "com.daoyou.trip",
+        "permissions": [
+          "<uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>",
+          "<uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\"/>",
+          "<uses-permission android:name=\"android.permission.INTERNET\"/>"
+        ]
       },
       "ios": {},
       "sdkConfigs": {}

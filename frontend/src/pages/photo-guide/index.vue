@@ -687,11 +687,11 @@ async function deriveContext() {
         currentTrip.value = { tripId: trip.id, title: trip.title }
       } else {
         currentTrip.value = null
-        logger.warn('[PhotoGuidePage] trip not found, fallback to trip_id=0', { tripId: currentTripId.value })
+        logger.warn('[PhotoGuidePage] trip not found, fallback to trip context lost', { tripId: currentTripId.value })
       }
     } catch (err) {
       currentTrip.value = null
-      logger.warn('[PhotoGuidePage] fetchTrips failed, fallback to trip_id=0', err)
+      logger.warn('[PhotoGuidePage] fetchTrips failed, fallback to trip context lost', err)
     }
   }
 
@@ -881,9 +881,7 @@ function onConfirmAnalyze() {
 async function doExplainAnalyze() {
   if (!imagePath.value) return
   const req = {
-    trip_id: currentTripId.value === null ? 0 : currentTripId.value,
     image: imagePath.value,
-    style: currentStyle.value,
   }
   try {
     const res = await explainPhoto(req)
@@ -944,9 +942,7 @@ function onSendChat() {
 async function doExplainChat() {
   if (!imagePath.value) return
   const req = {
-    trip_id: currentTripId.value === null ? 0 : currentTripId.value,
     image: imagePath.value,
-    style: currentStyle.value,
   }
   try {
     const res = await explainPhoto(req)

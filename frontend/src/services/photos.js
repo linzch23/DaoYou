@@ -8,12 +8,10 @@
 //   - Base URL 默认为 http://localhost:8000
 //
 // 入参形状(spec §6.1):
-//   { trip_id: number, image: string (本地临时路径), style: 'professional' | 'casual' | 'kid' }
+//   { image: string (本地临时路径) }
 //
 // formData 内部注入(per spec §6.1 + §7.3):
 //   - `user_id = MVP_USER_ID` 服务端识别
-//   - `trip_id = req.trip_id`(MVP 允许 trip_id=0 表示无 trip 上下文)
-//   - `style = req.style` 3 枚举
 //   - `image` 走 `uni.uploadFile({ filePath, name: 'image' })` 单独字段(uni.uploadFile 自动 multipart 编码)
 //
 // 重要不传字段(spec §6.3.2 + §6.3.3):
@@ -59,9 +57,7 @@ const UPLOAD_TIMEOUT_MS = 30000 // 30s 上传超时,per spec §1 + §5.2 + §6.1
 
 /**
  * @typedef {Object} ExplainPhotoRequest
- * @property {number} trip_id   旅行 id(MVP 允许 =0 表示无 trip 上下文)
  * @property {string} image     本地图片临时路径(由 uni.chooseImage 返回的 tempFilePaths[0])
- * @property {'professional' | 'casual' | 'kid'} style  3 风格枚举,1:1 对齐 api/types.ts:144
  */
 
 /**
@@ -137,13 +133,10 @@ function mapUploadSuccess(res, resolve, reject) {
  *   - 入参校验失败 → 直接 reject(不走 fallback,沿用 spec §7.3)
  *
  * 入参(per spec §6.1):
- *   - trip_id: 旅行 id(MVP 允许 =0 表示无 trip 上下文)
  *   - image:   本地图片临时路径(uni.chooseImage 返回的 tempFilePaths[0])
- *   - style:   3 风格枚举(professional | casual | kid)
  *
  * 内部处理:
  *   - formData 注入 `user_id = MVP_USER_ID`(前端不感知,沿用项目 MVP 约定)
- *   - formData 注入 `trip_id` + `style`
  *   - image 走 `uni.uploadFile({ filePath, name: 'image' })` 单独字段
  *   - **不**传 `current_location`(spec §6.3.3)
  *   - **不**传 `history`(spec §6.3.2 追问循环复用 photo_id 关联)
@@ -179,21 +172,6 @@ export function explainPhoto(req) {
       statusCode: 400,
     }))
   }
-  if (typeof req.trip_id !== 'number' || !Number.isFinite(req.trip_id)) {
-    return Promise.reject(new ApiError({
-      code: 4000,
-      message: 'trip_id 必须为有限数字(MVP 允许 0)',
-      statusCode: 400,
-    }))
-  }
-  if (req.style !== 'professional' && req.style !== 'casual' && req.style !== 'kid') {
-    return Promise.reject(new ApiError({
-      code: 4000,
-      message: 'style 必须为 professional / casual / kid 之一',
-      statusCode: 400,
-    }))
-  }
-
   return new Promise((resolve, reject) => {
     uni.uploadFile({
       url: `${BASE_URL}/api/photos/explain`,
@@ -201,9 +179,9 @@ export function explainPhoto(req) {
       name: 'image',
       formData: {
         user_id: MVP_USER_ID,
-        trip_id: req.trip_id,
-        style: req.style,
-        // **不**含 current_location(spec §6.3.3 MVP 不传)
+        // **不**含 trip_id(spec §9.1 后端不接)
+        // **不**含 style(spec §9.1 后端不接)
+        // **不**含 current_location(spec §6.3.3 MVP 不传,接高德 SDK 时再开)
         // **不**含 history(spec §6.3.2 追问循环复用 photo_id 关联)
       },
       timeout: UPLOAD_TIMEOUT_MS,
