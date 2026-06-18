@@ -58,7 +58,7 @@ MVP 暂不实现完整登录注册，默认使用：
 | --- | --- | --- |
 | 0 | 成功 | 请求正常完成 |
 | 4000 | 请求参数错误 | 缺少必填字段、字段类型错误、日期格式错误 |
-| 4001 | 资源不存在 | user、trip、trip_day、trip_item、photo、notification 不存在 |
+| 4001 | 资源不存在 | user、trip、trip_day、trip_item、photo、reminder 不存在 |
 | 4002 | 文件上传失败 | 文件为空、类型不支持、大小超限、保存失败 |
 | 5000 | 后端服务错误 | 未分类服务端异常 |
 | 5001 | 大模型调用失败 | LLM API 超时、限流、鉴权失败 |
@@ -719,7 +719,7 @@ DELETE /api/trips/1?user_id=1
 }
 ```
 
-此接口不修改旅行原有的 `status`，也不删除行程日、行程节点、聊天、照片和提醒数据。已进入回收站的旅行不能继续用于普通业务接口。
+此接口不修改旅行原有的 `status`，也不删除行程日、行程节点和提醒数据；聊天记录和照片讲解记录是用户级历史，本身不依赖旅行删除流程。已进入回收站的旅行不能继续用于普通行程、提醒和改线接口。
 
 ### 7.6 POST `/api/trips/{trip_id}/days`
 创建行程日。
@@ -1016,7 +1016,7 @@ Content-Type: application/json
 ```
 
 #### 7.10.3 DELETE `/api/trash/trips/{trip_id}`
-永久删除回收站中的单条旅行。此操作会删除旅行及其关联的行程日、行程节点、聊天、照片记录、提醒和本地图片文件，且不可恢复。
+永久删除回收站中的单条旅行。此操作会删除旅行及其关联的行程日、行程节点和提醒，且不可恢复。聊天记录和照片讲解记录是用户级历史，不随旅行永久删除。
 
 路径参数：
 
@@ -1091,7 +1091,6 @@ DELETE /api/trash/trips?user_id=1
 
 ```latex
 保存用户消息
-→ 读取行程上下文
 → 读取用户偏好
 → 读取最近聊天历史
 → Agent 识别普通对话或改线意图
@@ -1106,7 +1105,6 @@ DELETE /api/trash/trips?user_id=1
 ```json
 {
   "user_id": 1,
-  "trip_id": 1,
   "message": "下午我想轻松一点，怎么安排？",
   "current_location": {
     "latitude": 38.92,
@@ -1120,7 +1118,6 @@ DELETE /api/trash/trips?user_id=1
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | user_id | int | 是 | 用户 ID |
-| trip_id | int | 是 | 当前旅行 ID |
 | message | string | 是 | 用户输入 |
 | current_location | object | 否 | 当前位置 |
 
@@ -1131,7 +1128,7 @@ DELETE /api/trash/trips?user_id=1
 POST /api/chat
 Content-Type: application/json
 
-{"user_id":1,"trip_id":1,"message":"下午我想轻松一点，怎么安排？","current_location":{"latitude":38.92,"longitude":121.64}}
+{"user_id":1,"message":"下午我想轻松一点，怎么安排？","current_location":{"latitude":38.92,"longitude":121.64}}
 ```
 
 响应示例：
@@ -1225,14 +1222,13 @@ Agent 输出约定：
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | user_id | int | 是 | 用户 ID |
-| trip_id | int | 是 | 当前旅行 ID |
 | limit | int | 否 | 默认 20 |
 
 
 请求示例：
 
 ```latex
-GET /api/chat/history?user_id=1&trip_id=1&limit=20
+GET /api/chat/history?user_id=1&limit=20
 ```
 
 响应示例：
@@ -1275,7 +1271,6 @@ multipart/form-data
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | user_id | int | 是 | MVP 默认 1 |
-| trip_id | int | 是 | 当前旅行 ID |
 | image | file | 是 | 用户上传图片 |
 | current_location | object | 否 | 当前位置，结构与 Chat 接口一致，见 3.4 Location |
 
@@ -1286,7 +1281,6 @@ multipart/form-data
 ```bash
 curl -X POST "http://localhost:8000/api/photos/explain" \
   -F "user_id=1" \
-  -F "trip_id=1" \
   -F "image=@yurenmatou.jpg" \
   -F 'current_location={"latitude":38.92,"longitude":121.64};type=application/json'
 ```
@@ -1575,10 +1569,11 @@ Content-Type: application/json
 后端调用 Agent 时建议统一通过 `agent_service`，不要在 router 中直接调用 LangGraph。
 
 ### 13.1 通用 Agent 输入
+`trip_id` 和 `current_trip` 只在提醒、行程工具、改线等需要行程上下文的场景中传入；普通聊天和拍照讲解按用户级上下文运行。
+
 ```json
 {
   "user_id": 1,
-  "trip_id": 1,
   "user_message": "下午我想轻松一点",
   "current_trip": {},
   "current_location": {

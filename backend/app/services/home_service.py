@@ -4,7 +4,7 @@ from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
-from app.models.notification import Notification
+from app.models.reminder import Reminder
 from app.models.trip import Trip, TripDay, TripItem
 from app.services.resource_service import require_user
 from app.services.serializers import serialize_trip_item
@@ -48,10 +48,10 @@ def get_today_home(
         else []
     )
     unread_reminders = db.scalar(
-        select(func.count(Notification.id)).where(
-            Notification.user_id == user_id,
-            Notification.trip_id == trip.id,
-            Notification.status == "unread",
+        select(func.count(Reminder.id)).where(
+            Reminder.user_id == user_id,
+            Reminder.trip_id == trip.id,
+            Reminder.status == "unread",
         )
     )
     return {

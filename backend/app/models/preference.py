@@ -1,7 +1,7 @@
 from datetime import datetime
 from decimal import Decimal
 
-from sqlalchemy import DateTime, ForeignKey, Numeric, String
+from sqlalchemy import JSON, DateTime, ForeignKey, Numeric, String
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -14,7 +14,7 @@ class UserPreference(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     preference_key: Mapped[str] = mapped_column(String(100))
-    preference_value: Mapped[dict] = mapped_column(JSONB)
+    preference_value: Mapped[dict] = mapped_column(JSONB().with_variant(JSON(), "sqlite"))
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
 
@@ -25,7 +25,6 @@ class UserMemory(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
     memory_type: Mapped[str] = mapped_column(String(50))
     memory_key: Mapped[str] = mapped_column(String(100))
-    memory_value: Mapped[dict] = mapped_column(JSONB)
+    memory_value: Mapped[dict] = mapped_column(JSONB().with_variant(JSON(), "sqlite"))
     confidence: Mapped[Decimal] = mapped_column(Numeric(4, 3), default=1)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-

@@ -2,9 +2,7 @@ import pytest
 from pydantic import ValidationError
 
 from app.main import app
-from app.models.chat import ChatMessage
-from app.models.notification import Notification
-from app.models.photo import PhotoRecord
+from app.models.reminder import Reminder
 from app.models.trip import Trip, TripDay, TripItem
 from app.schemas.trips import UpdateTripRequest
 
@@ -36,11 +34,13 @@ def test_trip_related_foreign_keys_use_delete_cascade() -> None:
     foreign_key_columns = [
         TripDay.__table__.c.trip_id,
         TripItem.__table__.c.trip_day_id,
-        ChatMessage.__table__.c.trip_id,
-        PhotoRecord.__table__.c.trip_id,
-        Notification.__table__.c.trip_id,
+        Reminder.__table__.c.trip_id,
     ]
 
     for column in foreign_key_columns:
         foreign_key = next(iter(column.foreign_keys))
         assert foreign_key.ondelete == "CASCADE"
+
+
+def test_reminder_model_uses_reminders_table() -> None:
+    assert Reminder.__tablename__ == "reminders"

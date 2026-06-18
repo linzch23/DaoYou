@@ -1,5 +1,3 @@
-from datetime import date
-
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -63,21 +61,10 @@ def test_reminder_current_time_requires_timezone() -> None:
 
 def test_chat_replan_returns_action_options(db: Session) -> None:
     db.add(User(id=1, nickname="演示用户"))
-    db.flush()
-    db.add(
-        Trip(
-            user_id=1,
-            title="大连三日游",
-            start_date=date(2026, 7, 1),
-            end_date=date(2026, 7, 3),
-            status="active",
-        )
-    )
     db.commit()
     response = send_chat_message(
         ChatRequest(
             user_id=1,
-            trip_id=1,
             message="我累了，不想去下一个景点，帮我换一个轻松点的安排。",
             current_location=Location(latitude=38.92, longitude=121.64),
         ),
