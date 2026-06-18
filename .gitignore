@@ -36,6 +36,8 @@ backend/uploads/audio/*
 .DS_Store
 .idea/
 .vscode/
+.opencode/
+.mavis/
 
 # AI
 CLAUDE.md
