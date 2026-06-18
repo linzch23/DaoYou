@@ -16,8 +16,7 @@ def chat(payload: ChatRequest, db: DbSession) -> dict[str, object]:
 @router.get("/history")
 def history(
     user_id: int,
-    trip_id: int,
     db: DbSession,
     limit: int = 20,
 ) -> dict[str, object]:
-    return success(get_chat_history(user_id=user_id, trip_id=trip_id, limit=limit, db=db))
+    return success(get_chat_history(user_id=user_id, limit=limit, db=db))

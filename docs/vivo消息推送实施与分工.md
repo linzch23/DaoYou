@@ -36,7 +36,7 @@ reminder-worker 定时执行
 计算建议出发时间和天气风险
         |
         v
-写入 notifications，使用 dedup_key 去重
+写入 reminders，使用 dedup_key 去重
         |
         v
 调用受保护的 uniCloud 推送云函数
@@ -303,7 +303,7 @@ MVP 优先支持：
 
 ### 5.4 去重与推送状态
 
-建议在 `notifications` 中增加：
+建议在 `reminders` 中增加：
 
 ```text
 dedup_key
@@ -343,7 +343,7 @@ cancelled
   "title": "建议提前出发",
   "content": "前往星海广场预计需要 40 分钟，请于 14:05 出发。",
   "payload": {
-    "notification_id": 23,
+    "reminder_id": 23,
     "trip_id": 1,
     "trip_item_id": 8,
     "type": "departure_reminder"
@@ -419,7 +419,7 @@ reminder-worker
     +--> route adapter
     |
     v
-notifications(pending)
+reminders(pending)
     |
     v
 push service
@@ -430,9 +430,9 @@ uniCloud function
     v
 UniPush/vivo
     |
-    +--> 成功：notifications.sent
+    +--> 成功：reminders.sent
     |
-    +--> 临时失败：notifications.failed，按策略重试
+    +--> 临时失败：reminders.failed，按策略重试
     |
     +--> CID 无效：禁用 device_push_tokens
 ```
@@ -481,7 +481,7 @@ UniPush/vivo
 2. 实现路线时间 Adapter。
 3. 实现建议出发时间计算。
 4. 实现 `dedup_key`。
-5. 写入 `notifications`。
+5. 写入 `reminders`。
 6. 增加规则单元测试。
 
 ### 阶段六：定时执行

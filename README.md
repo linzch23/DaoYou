@@ -15,10 +15,21 @@
 ## 当前进展
 
 - 前端已形成 UniApp + Vue3 v1，包含首页、新建/编辑行程、拍照讲解、个人中心、回收站等页面，并保留本地 Mock 和草稿存储能力。
-- 后端已完成 FastAPI 分层骨架、SQLAlchemy 模型、Alembic 初始迁移、演示种子数据和统一响应合同。
+- 后端已完成 FastAPI 分层骨架、SQLAlchemy 模型、Alembic 迁移、演示种子数据和统一响应合同；聊天、照片讲解、偏好和提醒命名已接入真实数据库。
 - Agent 已完成 LangGraph 第一阶段工作流；地图、天气、视觉、OCR 和记忆更新目前仍以 Mock 或 fallback 为主。
 - 动态改线统一通过 `POST /api/chat` 返回受控 `action_options`，用户确认后调用 `PUT /api/trip-items/{item_id}`。
-- 前端分支仍需按最新 API 合同清理 `Trip.city`、`status=deleted` 和旧改线 Mock 等兼容差异。
+- 聊天记录和照片讲解记录为用户级历史，不再绑定 `trip_id`；业务提醒表统一命名为 `reminders`。
+- Docker Compose 启动后端时会自动执行 `alembic upgrade head`。
+
+## Docker 一键启动
+
+在仓库根目录执行：
+
+```bash
+docker compose up -d --build
+```
+
+该命令会启动 PostgreSQL 和后端服务。后端容器启动时会先执行 Alembic 迁移，迁移成功后再启动 FastAPI。
 
 ## 后端本地启动
 
@@ -44,6 +55,28 @@ curl http://localhost:8000/health
     "status": "ok"
   }
 }
+```
+
+## 前端本地启动
+
+首次进入前端目录安装依赖：
+
+```bash
+cd frontend
+npm install
+```
+
+启动 H5 调试：
+
+```bash
+npm run dev:h5
+```
+
+其他端调试命令：
+
+```bash
+npm run dev:mp-weixin
+npm run dev:app
 ```
 
 ## 常用检查

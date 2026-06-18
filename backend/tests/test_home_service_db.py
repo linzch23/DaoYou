@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
-from app.models.notification import Notification
+from app.models.reminder import Reminder
 from app.models.trip import Trip, TripDay, TripItem
 from app.models.user import User
 from app.services.home_service import get_today_home
@@ -39,14 +39,14 @@ def test_today_home_returns_items_and_unread_reminder_count(db: Session) -> None
                 title="上午行程",
                 start_time=time(9, 0),
             ),
-            Notification(
+            Reminder(
                 user_id=1,
                 trip_id=trip.id,
                 type="departure",
                 content="该出发了",
                 status="unread",
             ),
-            Notification(
+            Reminder(
                 user_id=1,
                 trip_id=trip.id,
                 type="departure",

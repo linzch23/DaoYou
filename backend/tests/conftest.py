@@ -5,7 +5,10 @@ from sqlalchemy import create_engine, event
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool
 
-from app.models.notification import Notification
+from app.models.chat import ChatMessage
+from app.models.photo import PhotoRecord
+from app.models.preference import UserMemory, UserPreference
+from app.models.reminder import Reminder
 from app.models.trip import Trip, TripDay, TripItem
 from app.models.user import User
 
@@ -30,7 +33,11 @@ def db() -> Generator[Session, None, None]:
         Trip.__table__,
         TripDay.__table__,
         TripItem.__table__,
-        Notification.__table__,
+        ChatMessage.__table__,
+        PhotoRecord.__table__,
+        Reminder.__table__,
+        UserPreference.__table__,
+        UserMemory.__table__,
     ]:
         table.create(engine)
 

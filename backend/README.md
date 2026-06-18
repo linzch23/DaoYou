@@ -15,7 +15,7 @@
 uv sync
 ```
 
-## 启动后端
+## 本地启动后端
 
 ```bash
 uv run uvicorn app.main:app --reload
@@ -27,6 +27,30 @@ uv run uvicorn app.main:app --reload
 - Swagger：`http://localhost:8000/docs`
 - ReDoc：`http://localhost:8000/redoc`
 
+## Docker 启动后端和数据库
+
+在仓库根目录执行：
+
+```bash
+docker compose up -d --build
+```
+
+当前 `docker-compose.yml` 会先启动 `postgres`，等待数据库健康检查通过后启动 `backend`。`backend` 容器启动时会自动执行：
+
+```bash
+uv run --no-sync alembic upgrade head
+```
+
+迁移成功后才会启动 FastAPI 服务。因此协作者拉取最新代码后，用 Docker 启动后端时通常不需要再手动执行 `alembic upgrade head`。
+
+如果只需要启动数据库，可以执行：
+
+```bash
+docker compose up -d postgres
+```
+
+如果修改了后端代码、迁移文件、依赖或 Dockerfile，建议使用 `--build` 重新构建镜像，避免容器继续使用旧代码。
+
 ## 运行检查
 
 ```bash
@@ -36,7 +60,11 @@ uv run ruff check .
 
 ## 初始化数据库
 
-PostgreSQL 通过 Docker Compose 运行，不需要在本机单独安装 PostgreSQL。先在仓库根目录启动数据库：
+PostgreSQL 通过 Docker Compose 运行，不需要在本机单独安装 PostgreSQL。
+
+如果使用上面的 `docker compose up -d --build` 启动完整服务，数据库迁移会由 `backend` 容器自动执行。
+
+如果你只启动数据库并在本机运行后端，则先在仓库根目录启动数据库：
 
 ```bash
 docker compose up -d postgres
