@@ -20,6 +20,17 @@ class Settings(BaseSettings):
     vivo_base_url: str = "https://api-ai.vivo.com.cn"
     vivo_completions_uri: str = "/vivogpt/completions"
     vivo_model: str = "vivo-BlueLM-TB"
+    amap_api_key: str = ""
+    amap_base_url: str = "https://restapi.amap.com"
+    amap_timeout_seconds: float = 10.0
+    vision_provider: str = "mock"
+    qwen_api_key: str = ""
+    qwen_base_url: str = "https://dashscope.aliyuncs.com"
+    qwen_vision_model: str = "qwen-vl-plus"
+    qwen_timeout_seconds: float = 30.0
+    ocr_provider: str = "mock"
+    vivo_ocr_uri: str = "/ocr/general_recognition"
+    vivo_ocr_timeout_seconds: float = 20.0
 
     model_config = SettingsConfigDict(env_file="../.env", env_file_encoding="utf-8", extra="ignore")
 

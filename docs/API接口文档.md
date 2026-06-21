@@ -1271,6 +1271,7 @@ multipart/form-data
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | user_id | int | 是 | MVP 默认 1 |
+| trip_id | int | 否 | 当前旅行 ID；传入时 Agent 可结合当前行程生成讲解，不传时按用户级拍照讲解运行 |
 | image | file | 是 | 用户上传图片 |
 | current_location | object | 否 | 当前位置，结构与 Chat 接口一致，见 3.4 Location |
 
@@ -1281,6 +1282,7 @@ multipart/form-data
 ```bash
 curl -X POST "http://localhost:8000/api/photos/explain" \
   -F "user_id=1" \
+  -F "trip_id=1" \
   -F "image=@yurenmatou.jpg" \
   -F 'current_location={"latitude":38.92,"longitude":121.64};type=application/json'
 ```
@@ -1569,7 +1571,7 @@ Content-Type: application/json
 后端调用 Agent 时建议统一通过 `agent_service`，不要在 router 中直接调用 LangGraph。
 
 ### 13.1 通用 Agent 输入
-`trip_id` 和 `current_trip` 只在提醒、行程工具、改线等需要行程上下文的场景中传入；普通聊天和拍照讲解按用户级上下文运行。
+`trip_id` 和 `current_trip` 主要在提醒、行程工具、改线等需要行程上下文的场景中传入；拍照讲解默认按用户级上下文运行，也可通过可选 `trip_id` 注入当前旅行上下文。
 
 ```json
 {

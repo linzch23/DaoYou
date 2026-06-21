@@ -1,26 +1,57 @@
+from datetime import date, time
+
 from sqlalchemy.orm import Session
 
 from app.models.chat import ChatMessage
+from app.models.trip import Trip, TripDay, TripItem
 from app.models.user import User
 from app.schemas.chat import ChatRequest
 from app.services.chat_service import get_chat_history, send_chat_message
 
 
-def seed_user(db: Session) -> None:
+def seed_user(db: Session) -> int:
     db.add(User(id=1, nickname="演示用户"))
+    db.flush()
+    trip = Trip(
+        user_id=1,
+        title="大连三日游",
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 3),
+        status="active",
+    )
+    db.add(trip)
+    db.flush()
+    day = TripDay(
+        trip_id=trip.id,
+        day_index=1,
+        trip_date=date(2026, 7, 1),
+    )
+    db.add(day)
+    db.flush()
+    db.add(
+        TripItem(
+            trip_day_id=day.id,
+            city="大连",
+            title="贝壳博物馆",
+            start_time=time(14, 30),
+            end_time=time(16, 0),
+            status="planned",
+        )
+    )
     db.commit()
+    return trip.id
 
 
 def test_chat_request_and_model_are_user_scoped() -> None:
-    assert "trip_id" not in ChatRequest.model_fields
+    assert "trip_id" in ChatRequest.model_fields
     assert "trip_id" not in ChatMessage.__table__.columns
 
 
 def test_send_chat_message_saves_user_and_assistant_messages(db: Session) -> None:
-    seed_user(db)
+    trip_id = seed_user(db)
 
     result = send_chat_message(
-        ChatRequest(user_id=1, message="下午想轻松一点，怎么安排？"),
+        ChatRequest(user_id=1, trip_id=trip_id, message="下午想轻松一点，怎么安排？"),
         db=db,
     )
 

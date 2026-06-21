@@ -17,7 +17,19 @@ PHOTO_EXPLAIN_PROMPT = """
 1. 先说明识别结果及不确定性。
 2. 讲解要自然，不要像百科复制。
 3. 根据用户偏好调整风格。
-4. 输出 JSON，字段为 recognition_result、explanation、follow_up_questions。
+4. 只输出一个 JSON 对象，不要输出解释文字，不要使用 Markdown 代码块，不要使用 ```json 包裹。
+5. JSON 字段固定为 recognition_result、explanation、follow_up_questions。
+6. follow_up_questions 必须是字符串数组。
+
+输出示例：
+{
+  "recognition_result": "可能是大连渔人码头，识别存在一定不确定性。",
+  "explanation": "这张图可能拍的是大连渔人码头。这里适合慢节奏散步，可以观察海港和建筑层次。",
+  "follow_up_questions": [
+    "这里怎么拍照好看？",
+    "附近适合休息的地方有哪些？"
+  ]
+}
 """
 
 REMINDER_PROMPT = """
@@ -28,7 +40,21 @@ REMINDER_PROMPT = """
 1. 不制造焦虑。
 2. 说明为什么提醒。
 3. 给出明确行动建议。
-4. 输出 JSON，字段为 has_risk、reminder。
+4. 只输出一个 JSON 对象，不要输出解释文字，不要使用 Markdown 代码块，不要使用 ```json 包裹。
+5. JSON 字段固定为 has_risk、reminder。
+6. has_risk 为布尔值；无风险时 reminder 为 null。
+7. 有风险时 reminder 必须包含 id、type、content、status。
+
+输出示例：
+{
+  "has_risk": true,
+  "reminder": {
+    "id": 1,
+    "type": "departure",
+    "content": "距离下一站约 40 分钟，建议现在出发，路上会更从容。",
+    "status": "unread"
+  }
+}
 """
 
 REPLAN_PROMPT = """
