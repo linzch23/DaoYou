@@ -11,6 +11,7 @@ from app.models.photo import PhotoRecord
 from app.schemas.common import Location
 from app.services.preference_service import get_preferences
 from app.services.resource_service import require_user
+from app.services.trip_service import get_trip_detail
 
 ALLOWED_IMAGE_TYPES = {
     "image/jpeg": ".jpg",
@@ -54,6 +55,7 @@ def _save_image(image: UploadFile, suffix: str) -> tuple[Path, str]:
 def explain_photo(
     user_id: int,
     image: UploadFile,
+    trip_id: int | None = None,
     current_location: Location | None = None,
     *,
     db: Session,
@@ -63,15 +65,22 @@ def explain_photo(
     saved_path, image_path = _save_image(image, suffix)
     # 成员 C 接入点：图片路径、文件名和定位信息会进入 Agent 的拍照讲解链路。
     try:
+        current_trip = (
+            get_trip_detail(user_id=user_id, trip_id=trip_id, db=db)
+            if trip_id is not None
+            else {}
+        )
         agent_result = run_agent(
             {
                 "user_id": user_id,
+                "trip_id": trip_id,
                 "intent_hint": "photo_explain",
                 "current_location": current_location.model_dump() if current_location else {},
-                "current_trip": {},
+                "current_trip": current_trip,
                 "user_preferences": get_preferences(user_id=user_id, db=db)["preferences"],
                 "image_info": {
                     "image_path": image_path,
+                    "saved_path": str(saved_path),
                     "filename": image.filename or saved_path.name,
                     "content_type": image.content_type,
                 },

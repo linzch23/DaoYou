@@ -1,3 +1,5 @@
+from datetime import date, time
+
 import pytest
 from fastapi import HTTPException
 from pydantic import ValidationError
@@ -5,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.api.photos import parse_location_form
 from app.main import app
-from app.models.trip import Trip, TripItem
+from app.models.trip import Trip, TripDay, TripItem
 from app.models.user import User
 from app.schemas.chat import ChatRequest
 from app.schemas.common import Location
@@ -61,10 +63,37 @@ def test_reminder_current_time_requires_timezone() -> None:
 
 def test_chat_replan_returns_action_options(db: Session) -> None:
     db.add(User(id=1, nickname="演示用户"))
+    db.flush()
+    trip = Trip(
+        user_id=1,
+        title="大连三日游",
+        start_date=date(2026, 7, 1),
+        end_date=date(2026, 7, 3),
+        status="active",
+    )
+    db.add(trip)
+    db.flush()
+    day = TripDay(
+        trip_id=trip.id,
+        day_index=1,
+        trip_date=date(2026, 7, 1),
+    )
+    db.add(day)
+    db.flush()
+    item = TripItem(
+        trip_day_id=day.id,
+        city="大连",
+        title="贝壳博物馆",
+        start_time=time(14, 30),
+        end_time=time(16, 0),
+        status="planned",
+    )
+    db.add(item)
     db.commit()
     response = send_chat_message(
         ChatRequest(
             user_id=1,
+            trip_id=trip.id,
             message="我累了，不想去下一个景点，帮我换一个轻松点的安排。",
             current_location=Location(latitude=38.92, longitude=121.64),
         ),
@@ -74,6 +103,7 @@ def test_chat_replan_returns_action_options(db: Session) -> None:
     assert response["intent"] == "replan"
     assert response["action_options"]
     assert response["action_options"][0]["operation"] == "update_trip_item"
+    assert response["action_options"][0]["item_id"] == item.id
 
 
 def test_photo_location_uses_shared_location_shape() -> None:

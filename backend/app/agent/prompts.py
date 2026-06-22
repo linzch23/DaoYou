@@ -17,7 +17,19 @@ PHOTO_EXPLAIN_PROMPT = """
 1. 先说明识别结果及不确定性。
 2. 讲解要自然，不要像百科复制。
 3. 根据用户偏好调整风格。
-4. 输出 JSON，字段为 recognition_result、explanation、follow_up_questions。
+4. 只输出一个 JSON 对象，不要输出解释文字，不要使用 Markdown 代码块，不要使用 ```json 包裹。
+5. JSON 字段固定为 recognition_result、explanation、follow_up_questions。
+6. follow_up_questions 必须是字符串数组。
+
+输出示例：
+{
+  "recognition_result": "可能是大连渔人码头，识别存在一定不确定性。",
+  "explanation": "这张图可能拍的是大连渔人码头。这里适合慢节奏散步，可以观察海港和建筑层次。",
+  "follow_up_questions": [
+    "这里怎么拍照好看？",
+    "附近适合休息的地方有哪些？"
+  ]
+}
 """
 
 REMINDER_PROMPT = """
@@ -28,7 +40,21 @@ REMINDER_PROMPT = """
 1. 不制造焦虑。
 2. 说明为什么提醒。
 3. 给出明确行动建议。
-4. 输出 JSON，字段为 has_risk、reminder。
+4. 只输出一个 JSON 对象，不要输出解释文字，不要使用 Markdown 代码块，不要使用 ```json 包裹。
+5. JSON 字段固定为 has_risk、reminder。
+6. has_risk 为布尔值；无风险时 reminder 为 null。
+7. 有风险时 reminder 必须包含 id、type、content、status。
+
+输出示例：
+{
+  "has_risk": true,
+  "reminder": {
+    "id": 1,
+    "type": "departure",
+    "content": "距离下一站约 40 分钟，建议现在出发，路上会更从容。",
+    "status": "unread"
+  }
+}
 """
 
 REPLAN_PROMPT = """
@@ -39,5 +65,25 @@ REPLAN_PROMPT = """
 1. 只生成草案，不直接修改数据库。
 2. 说明调整理由。
 3. 新增行程项字段兼容前端：title、item_type、start_time、end_time、address、notes。
-4. 输出 JSON，字段为 draft_id、summary、reason、new_items、removed_item_ids。
+4. 只输出一个 JSON 对象，不要输出解释文字，不要使用 Markdown 代码块，不要使用 ```json 包裹。
+5. JSON 字段固定为 draft_id、summary、reason、new_items、removed_item_ids。
+6. new_items 至少包含 title、item_type、start_time、end_time、address、notes。
+
+输出示例：
+{
+  "draft_id": "draft_llm_001",
+  "summary": "建议取消较远的户外景点，改为附近咖啡馆休息。",
+  "reason": "用户表达疲惫，希望减少步行和远距离移动。",
+  "new_items": [
+    {
+      "title": "附近咖啡馆休息",
+      "item_type": "rest",
+      "start_time": "14:30",
+      "end_time": "15:30",
+      "address": "当前位置附近",
+      "notes": "减少步行，适合恢复体力"
+    }
+  ],
+  "removed_item_ids": [3]
+}
 """

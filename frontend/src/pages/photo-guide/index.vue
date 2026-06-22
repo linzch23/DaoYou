@@ -882,6 +882,7 @@ async function doExplainAnalyze() {
   if (!imagePath.value) return
   const req = {
     image: imagePath.value,
+    tripId: currentTripId.value || undefined,
   }
   try {
     const res = await explainPhoto(req)
@@ -943,6 +944,7 @@ async function doExplainChat() {
   if (!imagePath.value) return
   const req = {
     image: imagePath.value,
+    tripId: currentTripId.value || undefined,
   }
   try {
     const res = await explainPhoto(req)

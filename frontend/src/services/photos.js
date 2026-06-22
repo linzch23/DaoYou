@@ -8,7 +8,7 @@
 //   - Base URL 默认为 http://localhost:8000
 //
 // 入参形状(spec §6.1):
-//   { image: string (本地临时路径) }
+//   { image: string (本地临时路径), tripId?: number }
 //
 // formData 内部注入(per spec §6.1 + §7.3):
 //   - `user_id = MVP_USER_ID` 服务端识别
@@ -58,6 +58,7 @@ const UPLOAD_TIMEOUT_MS = 30000 // 30s 上传超时,per spec §1 + §5.2 + §6.1
 /**
  * @typedef {Object} ExplainPhotoRequest
  * @property {string} image     本地图片临时路径(由 uni.chooseImage 返回的 tempFilePaths[0])
+ * @property {number=} tripId   可选当前旅行 ID,用于后端 Agent 注入行程上下文
  */
 
 /**
@@ -134,6 +135,7 @@ function mapUploadSuccess(res, resolve, reject) {
  *
  * 入参(per spec §6.1):
  *   - image:   本地图片临时路径(uni.chooseImage 返回的 tempFilePaths[0])
+ *   - tripId:  可选当前旅行 ID,不传时按用户级拍照讲解运行
  *
  * 内部处理:
  *   - formData 注入 `user_id = MVP_USER_ID`(前端不感知,沿用项目 MVP 约定)
@@ -173,17 +175,20 @@ export function explainPhoto(req) {
     }))
   }
   return new Promise((resolve, reject) => {
+    const formData = {
+      user_id: MVP_USER_ID,
+      // **不**含 style(spec §9.1 后端不接)
+      // **不**含 current_location(spec §6.3.3 MVP 不传,接高德 SDK 时再开)
+      // **不**含 history(spec §6.3.2 追问循环复用 photo_id 关联)
+    }
+    if (Number.isFinite(req.tripId) && req.tripId > 0) {
+      formData.trip_id = req.tripId
+    }
     uni.uploadFile({
       url: `${BASE_URL}/api/photos/explain`,
       filePath: req.image,
       name: 'image',
-      formData: {
-        user_id: MVP_USER_ID,
-        // **不**含 trip_id(spec §9.1 后端不接)
-        // **不**含 style(spec §9.1 后端不接)
-        // **不**含 current_location(spec §6.3.3 MVP 不传,接高德 SDK 时再开)
-        // **不**含 history(spec §6.3.2 追问循环复用 photo_id 关联)
-      },
+      formData,
       timeout: UPLOAD_TIMEOUT_MS,
       success: (res) => mapUploadSuccess(res, resolve, reject),
       fail: (err) => mapUploadError(err, reject),

@@ -6,6 +6,7 @@ from app.models.chat import ChatMessage
 from app.schemas.chat import ChatRequest
 from app.services.preference_service import get_preferences
 from app.services.resource_service import require_user
+from app.services.trip_service import get_trip_detail
 
 
 def _serialize_message(message: ChatMessage) -> dict[str, object]:
@@ -50,11 +51,16 @@ def send_chat_message(payload: ChatRequest, *, db: Session) -> dict[str, object]
     agent_result = run_agent(
         {
             "user_id": payload.user_id,
+            "trip_id": payload.trip_id,
             "user_message": payload.message,
             "current_location": (
                 payload.current_location.model_dump() if payload.current_location else {}
             ),
-            "current_trip": {},
+            "current_trip": get_trip_detail(
+                user_id=payload.user_id,
+                trip_id=payload.trip_id,
+                db=db,
+            ),
             "user_preferences": get_preferences(user_id=payload.user_id, db=db)["preferences"],
             "chat_history": [
                 _serialize_message(message)
