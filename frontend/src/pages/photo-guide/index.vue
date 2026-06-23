@@ -523,7 +523,7 @@ function mapChatError(err) {
 
 /** @type {import('vue').Ref<number | null>} URL ?fromSpot 解析结果 */
 const fromSpotId = ref(null)
-/** @type {import('vue').Ref<number | null>} URL ?tripId 解析结果(null → 后端 trip_id=0) */
+/** @type {import('vue').Ref<number | null>} URL ?tripId 解析结果(null 时不允许发起讲解请求) */
 const currentTripId = ref(null)
 /** @type {import('vue').Ref<{ tripId: number; title: string } | null>} ?tripId 携带时找 homeStore.trips 派生 */
 const currentTrip = ref(null)
@@ -708,6 +708,16 @@ async function deriveContext() {
 }
 
 /**
+ * 当前后端要求拍照讲解必须绑定旅行。
+ * @returns {number | null}
+ */
+function requireCurrentTripId() {
+  return typeof currentTripId.value === 'number' && currentTripId.value > 0
+    ? currentTripId.value
+    : null
+}
+
+/**
  * onLoadPage 入口
  * @param {Record<string, string | undefined> | undefined} query
  */
@@ -880,9 +890,19 @@ function onConfirmAnalyze() {
  */
 async function doExplainAnalyze() {
   if (!imagePath.value) return
+  const tripId = requireCurrentTripId()
+  if (tripId === null) {
+    if (analyzingTimerId.value !== null) {
+      clearTimeout(analyzingTimerId.value)
+      analyzingTimerId.value = null
+    }
+    analyzeError.value = PhotoGuideStrings.errorNoTrip
+    currentStep.value = 'error'
+    return
+  }
   const req = {
     image: imagePath.value,
-    tripId: currentTripId.value || undefined,
+    tripId,
   }
   try {
     const res = await explainPhoto(req)
@@ -927,6 +947,10 @@ function onSendChat() {
   const content = chatInputDraft.value.trim()
   if (!content) return
   if (currentStep.value === 'chatting') return
+  if (requireCurrentTripId() === null) {
+    chatError.value = PhotoGuideStrings.errorNoTrip
+    return
+  }
   // push user msg
   chatHistory.value = [...chatHistory.value, { role: 'user', content }]
   chatInputDraft.value = ''
@@ -942,9 +966,15 @@ function onSendChat() {
  */
 async function doExplainChat() {
   if (!imagePath.value) return
+  const tripId = requireCurrentTripId()
+  if (tripId === null) {
+    chatError.value = PhotoGuideStrings.errorNoTrip
+    currentStep.value = 'result'
+    return
+  }
   const req = {
     image: imagePath.value,
-    tripId: currentTripId.value || undefined,
+    tripId,
   }
   try {
     const res = await explainPhoto(req)

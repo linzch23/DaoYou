@@ -42,9 +42,9 @@ def seed_user(db: Session) -> int:
     return trip.id
 
 
-def test_chat_request_and_model_are_user_scoped() -> None:
+def test_chat_request_and_model_are_trip_scoped() -> None:
     assert "trip_id" in ChatRequest.model_fields
-    assert "trip_id" not in ChatMessage.__table__.columns
+    assert "trip_id" in ChatMessage.__table__.columns
 
 
 def test_send_chat_message_saves_user_and_assistant_messages(db: Session) -> None:
@@ -59,16 +59,41 @@ def test_send_chat_message_saves_user_and_assistant_messages(db: Session) -> Non
     assert result["intent"] == "chat"
     assert result["reply"]
     assert [message.role for message in messages] == ["user", "assistant"]
+    assert [message.trip_id for message in messages] == [trip_id, trip_id]
     assert messages[0].content == "下午想轻松一点，怎么安排？"
     assert messages[1].content == result["reply"]
 
 
 def test_get_chat_history_returns_recent_messages_in_chronological_order(db: Session) -> None:
-    seed_user(db)
+    trip_id = seed_user(db)
+    other_trip = Trip(
+        user_id=1,
+        title="北京两日游",
+        start_date=date(2026, 8, 1),
+        end_date=date(2026, 8, 2),
+        status="active",
+    )
+    db.add(other_trip)
+    db.flush()
     for index in range(3):
-        db.add(ChatMessage(user_id=1, role="user", content=f"问题{index}"))
+        db.add(
+            ChatMessage(
+                user_id=1,
+                trip_id=trip_id,
+                role="user",
+                content=f"问题{index}",
+            )
+        )
+    db.add(
+        ChatMessage(
+            user_id=1,
+            trip_id=other_trip.id,
+            role="user",
+            content="其他旅行问题",
+        )
+    )
     db.commit()
 
-    result = get_chat_history(user_id=1, limit=2, db=db)
+    result = get_chat_history(user_id=1, trip_id=trip_id, limit=2, db=db)
 
     assert [message["content"] for message in result["messages"]] == ["问题1", "问题2"]

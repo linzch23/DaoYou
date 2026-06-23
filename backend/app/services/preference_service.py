@@ -62,7 +62,7 @@ def update_preferences(payload: UpdatePreferencesRequest, *, db: Session) -> dic
 def summarize_memory(payload: MemorySummaryRequest, *, db: Session) -> dict[str, object]:
     require_user(db, payload.user_id)
     trip = require_owned_trip(db, payload.user_id, payload.trip_id)
-    source_text = _memory_source_text(payload.user_id, db=db)
+    source_text = _memory_source_text(payload.user_id, payload.trip_id, db=db)
     memories = _build_memory_summaries(trip_title=trip.title, source_text=source_text)
 
     for memory in memories:
@@ -91,16 +91,16 @@ def summarize_memory(payload: MemorySummaryRequest, *, db: Session) -> dict[str,
     return {"updated": True, "memories": memories}
 
 
-def _memory_source_text(user_id: int, *, db: Session) -> str:
+def _memory_source_text(user_id: int, trip_id: int, *, db: Session) -> str:
     chat_messages = db.scalars(
         select(ChatMessage)
-        .where(ChatMessage.user_id == user_id)
+        .where(ChatMessage.user_id == user_id, ChatMessage.trip_id == trip_id)
         .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
         .limit(20)
     ).all()
     photo_records = db.scalars(
         select(PhotoRecord)
-        .where(PhotoRecord.user_id == user_id)
+        .where(PhotoRecord.user_id == user_id, PhotoRecord.trip_id == trip_id)
         .order_by(PhotoRecord.created_at.desc(), PhotoRecord.id.desc())
         .limit(10)
     ).all()

@@ -16,10 +16,31 @@
 
 - 前端已形成 UniApp + Vue3 v1，包含首页、新建/编辑行程、拍照讲解、个人中心、回收站等页面，并保留本地 Mock 和草稿存储能力。
 - 后端已完成 FastAPI 分层骨架、SQLAlchemy 模型、Alembic 迁移、演示种子数据和统一响应合同；聊天、照片讲解、偏好和提醒命名已接入真实数据库。
-- Agent 已完成 LangGraph 第一阶段工作流；地图、天气、视觉、OCR 和记忆更新目前仍以 Mock 或 fallback 为主。
+- Agent 已完成 LangGraph 对话、拍照讲解、提醒和改线主流程；LLM 与 Qwen 视觉已通过 `.env` 配置完成真实调用验证，地图、天气、OCR 和记忆更新仍保留 fallback 或待继续完善。
 - 动态改线统一通过 `POST /api/chat` 返回受控 `action_options`，用户确认后调用 `PUT /api/trip-items/{item_id}`。
-- 聊天记录和照片讲解记录为用户级历史，不再绑定 `trip_id`；业务提醒表统一命名为 `reminders`。
-- Docker Compose 启动后端时会自动执行 `alembic upgrade head`。
+- 聊天记录和照片讲解记录重新绑定 `trip_id`，前端按“每个旅程一个对话页面”组织上下文；业务提醒表统一命名为 `reminders`。
+- Docker Compose 启动后端时会读取根目录 `.env`，自动执行 `alembic upgrade head` 并运行演示种子数据。
+
+## 环境变量
+
+根目录 `.env.example` 是模板，真实密钥写入根目录 `.env`。当前 `docker-compose.yml` 的后端服务通过 `env_file: .env` 注入环境变量，`.env` 不应提交到 Git。
+
+常用外部能力配置：
+
+```bash
+LLM_PROVIDER=openai
+LLM_BASE_URL=https://api.deepseek.com/v1
+LLM_API_KEY=...
+LLM_MODEL=deepseek-v4-flash
+
+VISION_PROVIDER=qwen
+QWEN_API_KEY=...
+QWEN_VISION_MODEL=qwen-vl-plus
+
+OCR_PROVIDER=vivo
+VIVO_APP_ID=...
+VIVO_APP_KEY=...
+```
 
 ## Docker 一键启动
 
@@ -85,6 +106,19 @@ npm run dev:app
 cd backend
 uv run pytest
 uv run ruff check .
+```
+
+真实 Agent 链路可用以下命令快速验证：
+
+```bash
+curl -X POST "http://localhost:8000/api/chat" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id":1,"trip_id":1,"message":"请结合当前行程给一个轻松安排建议"}'
+
+curl -X POST "http://localhost:8000/api/photos/explain" \
+  -F "user_id=1" \
+  -F "trip_id=1" \
+  -F "image=@frontend/static/tabbar/camera.png;type=image/png"
 ```
 
 ## 文档入口

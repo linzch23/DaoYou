@@ -21,7 +21,7 @@ services:
       context: ./backend
     container_name: daoyou-backend
     env_file:
-      - .env.example
+      - .env
     environment:
       DATABASE_URL: postgresql+psycopg://daoyou:daoyou@postgres:5432/daoyou
     ports:

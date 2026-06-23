@@ -43,8 +43,8 @@ def seed_trip(db: Session) -> int:
     return trip.id
 
 
-def test_photo_record_is_user_scoped() -> None:
-    assert "trip_id" not in PhotoRecord.__table__.columns
+def test_photo_record_is_trip_scoped() -> None:
+    assert "trip_id" in PhotoRecord.__table__.columns
 
 
 @pytest.mark.parametrize("content_type", ["image/jpeg", "image/png"])
@@ -55,6 +55,7 @@ def test_explain_photo_saves_upload_and_photo_record(
     content_type: str,
 ) -> None:
     seed_user(db)
+    trip_id = seed_trip(db)
     monkeypatch.setattr("app.services.photo_service.settings.upload_dir", str(tmp_path))
     upload = UploadFile(
         filename="yurenmatou.jpg",
@@ -62,18 +63,19 @@ def test_explain_photo_saves_upload_and_photo_record(
         headers={"content-type": content_type},
     )
 
-    result = explain_photo(user_id=1, image=upload, db=db)
+    result = explain_photo(user_id=1, trip_id=trip_id, image=upload, db=db)
 
     record = db.query(PhotoRecord).one()
     saved_path = tmp_path / "images" / result["image_path"].split("/")[-1]
     assert result["photo_id"] == record.id
     assert result["image_path"] == record.image_path
+    assert record.trip_id == trip_id
     assert saved_path.read_bytes() == b"fake image bytes"
     assert record.recognition_result
     assert record.explanation
 
 
-def test_explain_photo_passes_optional_trip_context(
+def test_explain_photo_passes_required_trip_context(
     db: Session,
     tmp_path,
     monkeypatch,
@@ -106,11 +108,12 @@ def test_explain_photo_passes_optional_trip_context(
     assert captured["trip_id"] == trip_id
     assert captured["current_trip"]["id"] == trip_id
     assert captured["current_trip"]["days"][0]["items"][0]["title"] == "渔人码头"
-    assert "trip_id" not in PhotoRecord.__table__.columns
+    assert db.query(PhotoRecord).one().trip_id == trip_id
 
 
 def test_explain_photo_rejects_non_image_upload(db: Session, tmp_path, monkeypatch) -> None:
     seed_user(db)
+    trip_id = seed_trip(db)
     monkeypatch.setattr("app.services.photo_service.settings.upload_dir", str(tmp_path))
     upload = UploadFile(
         filename="note.txt",
@@ -119,4 +122,4 @@ def test_explain_photo_rejects_non_image_upload(db: Session, tmp_path, monkeypat
     )
 
     with pytest.raises(AppError):
-        explain_photo(user_id=1, image=upload, db=db)
+        explain_photo(user_id=1, trip_id=trip_id, image=upload, db=db)

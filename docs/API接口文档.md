@@ -72,6 +72,17 @@ MVP 暂不实现完整登录注册，默认使用：
 + 删除字段、字段改名、字段类型变化必须同步前端、后端、Agent、测试负责人。
 + 涉及数据库字段的 API 变化必须同步数据库负责人。
 
+### 1.7 外部能力与环境变量
+根目录 `.env.example` 是模板，真实密钥写入根目录 `.env`。当前 Docker Compose 后端服务通过 `env_file: .env` 注入环境变量；修改 `.env` 后需要重新创建后端容器。
+
+已验证的真实链路：
+
++ `LLM_PROVIDER=openai`、`LLM_BASE_URL=https://api.deepseek.com/v1`、`LLM_API_KEY`、`LLM_MODEL` 配置后，`POST /api/chat` 可返回非固定 LLM 回复。
++ `VISION_PROVIDER=qwen`、`QWEN_API_KEY` 配置后，`POST /api/photos/explain` 可识别测试图片主体；未配置时会回退到固定演示识别结果。
++ vivo 相关 `VIVO_APP_ID`、`VIVO_APP_KEY` 已可由配置读取；OCR 调用失败时返回空文本 fallback。
+
+外部能力失败时，后端仍应返回结构稳定的业务响应或明确错误码，不能把原始异常透传给前端。
+
 ## 2. 接口总览
 | 模块 | 方法 | 路径 | 说明 | 前端直接调用 | 调用 Agent |
 | --- | --- | --- | --- | --- | --- |
@@ -719,7 +730,7 @@ DELETE /api/trips/1?user_id=1
 }
 ```
 
-此接口不修改旅行原有的 `status`，也不删除行程日、行程节点和提醒数据；聊天记录和照片讲解记录是用户级历史，本身不依赖旅行删除流程。已进入回收站的旅行不能继续用于普通行程、提醒和改线接口。
+此接口不修改旅行原有的 `status`，也不删除行程日、行程节点、聊天记录、照片讲解记录和提醒数据。已进入回收站的旅行不能继续用于普通行程、聊天、拍照讲解、提醒和改线接口。
 
 ### 7.6 POST `/api/trips/{trip_id}/days`
 创建行程日。
@@ -1016,7 +1027,7 @@ Content-Type: application/json
 ```
 
 #### 7.10.3 DELETE `/api/trash/trips/{trip_id}`
-永久删除回收站中的单条旅行。此操作会删除旅行及其关联的行程日、行程节点和提醒，且不可恢复。聊天记录和照片讲解记录是用户级历史，不随旅行永久删除。
+永久删除回收站中的单条旅行。此操作会删除旅行及其关联的行程日、行程节点、聊天记录、照片讲解记录和提醒数据库记录，且不可恢复。
 
 路径参数：
 
@@ -1105,6 +1116,7 @@ DELETE /api/trash/trips?user_id=1
 ```json
 {
   "user_id": 1,
+  "trip_id": 1,
   "message": "下午我想轻松一点，怎么安排？",
   "current_location": {
     "latitude": 38.92,
@@ -1118,6 +1130,7 @@ DELETE /api/trash/trips?user_id=1
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | user_id | int | 是 | 用户 ID |
+| trip_id | int | 是 | 当前旅行 ID；聊天和改线都基于该旅行上下文 |
 | message | string | 是 | 用户输入 |
 | current_location | object | 否 | 当前位置 |
 
@@ -1128,7 +1141,7 @@ DELETE /api/trash/trips?user_id=1
 POST /api/chat
 Content-Type: application/json
 
-{"user_id":1,"message":"下午我想轻松一点，怎么安排？","current_location":{"latitude":38.92,"longitude":121.64}}
+{"user_id":1,"trip_id":1,"message":"下午我想轻松一点，怎么安排？","current_location":{"latitude":38.92,"longitude":121.64}}
 ```
 
 响应示例：
@@ -1222,13 +1235,14 @@ Agent 输出约定：
 | 参数 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | user_id | int | 是 | 用户 ID |
+| trip_id | int | 是 | 当前旅行 ID；只返回该旅行的聊天历史 |
 | limit | int | 否 | 默认 20 |
 
 
 请求示例：
 
 ```latex
-GET /api/chat/history?user_id=1&limit=20
+GET /api/chat/history?user_id=1&trip_id=1&limit=20
 ```
 
 响应示例：
@@ -1271,7 +1285,7 @@ multipart/form-data
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | user_id | int | 是 | MVP 默认 1 |
-| trip_id | int | 否 | 当前旅行 ID；传入时 Agent 可结合当前行程生成讲解，不传时按用户级拍照讲解运行 |
+| trip_id | int | 是 | 当前旅行 ID；拍照讲解基于该旅行上下文并保存到该旅行历史 |
 | image | file | 是 | 用户上传图片 |
 | current_location | object | 否 | 当前位置，结构与 Chat 接口一致，见 3.4 Location |
 
@@ -1571,7 +1585,7 @@ Content-Type: application/json
 后端调用 Agent 时建议统一通过 `agent_service`，不要在 router 中直接调用 LangGraph。
 
 ### 13.1 通用 Agent 输入
-`trip_id` 和 `current_trip` 主要在提醒、行程工具、改线等需要行程上下文的场景中传入；拍照讲解默认按用户级上下文运行，也可通过可选 `trip_id` 注入当前旅行上下文。
+`trip_id` 和 `current_trip` 在聊天、拍照讲解、提醒、行程工具和改线等需要行程上下文的场景中传入。`POST /api/chat`、`GET /api/chat/history` 和 `POST /api/photos/explain` 都要求前端提供当前旅行 ID。
 
 ```json
 {
@@ -1603,7 +1617,7 @@ Content-Type: application/json
 ### 13.3 后端兜底规则
 + Agent 缺少 `reply` 时，返回固定 fallback 文案。
 + Agent 将请求识别为改线意图但 `action_options` 结构错误时，返回 `5003` 或降级为不带操作选项的自然语言建议。
-+ 大模型超时时，优先保证演示链路不断。
++ 大模型、Qwen 视觉、OCR 或地图调用失败时，优先保证演示链路不断；chat/photo 已验证在配置真实密钥后会返回非固定结果。
 + 后端日志可记录错误类型，但不能记录 API key、token、Cookie。
 
 ## 14. 前端 Mock 参考
@@ -1646,6 +1660,7 @@ Mock 原则：
 15. 分别使用请求位置、用户最新位置和过期位置检查提醒。
 16. 通过聊天识别改线意图并返回行程修改选项。
 17. 选择改线选项后调用行程节点更新接口。
+18. 配置真实 `LLM_API_KEY` 和 `QWEN_API_KEY` 后，分别用 curl 验证 chat 和 photo 返回非固定 fallback 内容。
 
 每个核心接口至少覆盖：
 

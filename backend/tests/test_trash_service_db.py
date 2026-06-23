@@ -73,15 +73,16 @@ def test_empty_trash_only_deletes_current_users_trips(db: Session) -> None:
     assert db.scalar(select(Trip).where(Trip.id == other_trip_id)) is not None
 
 
-def test_permanent_trip_delete_keeps_user_scoped_chat_and_photos(db: Session) -> None:
+def test_permanent_trip_delete_cascades_trip_scoped_chat_and_photos(db: Session) -> None:
     db.add(User(id=1, nickname="用户一"))
     db.commit()
     trip = create_deleted_trip(db, user_id=1, title="待永久删除旅行")
     db.add_all(
         [
-            ChatMessage(user_id=1, role="user", content="这里有什么故事？"),
+            ChatMessage(user_id=1, trip_id=trip.id, role="user", content="这里有什么故事？"),
             PhotoRecord(
                 user_id=1,
+                trip_id=trip.id,
                 image_path="uploads/images/demo.jpg",
                 recognition_result="演示识别结果",
                 explanation="演示讲解",
@@ -92,5 +93,5 @@ def test_permanent_trip_delete_keeps_user_scoped_chat_and_photos(db: Session) ->
 
     permanently_delete_trashed_trip(user_id=1, trip_id=trip.id, db=db)
 
-    assert db.scalar(select(ChatMessage).where(ChatMessage.user_id == 1)) is not None
-    assert db.scalar(select(PhotoRecord).where(PhotoRecord.user_id == 1)) is not None
+    assert db.scalar(select(ChatMessage).where(ChatMessage.user_id == 1)) is None
+    assert db.scalar(select(PhotoRecord).where(PhotoRecord.user_id == 1)) is None

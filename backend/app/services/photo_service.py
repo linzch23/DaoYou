@@ -54,8 +54,8 @@ def _save_image(image: UploadFile, suffix: str) -> tuple[Path, str]:
 
 def explain_photo(
     user_id: int,
+    trip_id: int,
     image: UploadFile,
-    trip_id: int | None = None,
     current_location: Location | None = None,
     *,
     db: Session,
@@ -65,11 +65,7 @@ def explain_photo(
     saved_path, image_path = _save_image(image, suffix)
     # 成员 C 接入点：图片路径、文件名和定位信息会进入 Agent 的拍照讲解链路。
     try:
-        current_trip = (
-            get_trip_detail(user_id=user_id, trip_id=trip_id, db=db)
-            if trip_id is not None
-            else {}
-        )
+        current_trip = get_trip_detail(user_id=user_id, trip_id=trip_id, db=db)
         agent_result = run_agent(
             {
                 "user_id": user_id,
@@ -93,6 +89,7 @@ def explain_photo(
     structured_data = dict(agent_result.get("structured_data") or {})
     record = PhotoRecord(
         user_id=user_id,
+        trip_id=trip_id,
         image_path=image_path,
         recognition_result=structured_data.get("recognition_result", ""),
         explanation=structured_data.get("explanation", agent_result["reply"]),

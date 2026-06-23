@@ -10,7 +10,7 @@ router = APIRouter()
 USER_ID_FORM = Form(...)
 IMAGE_FILE = File(...)
 CURRENT_LOCATION_FORM = Form(default=None)
-TRIP_ID_FORM = Form(default=None)
+TRIP_ID_FORM = Form(...)
 
 
 def parse_location_form(raw_location: str | None) -> Location | None:
@@ -29,7 +29,7 @@ def parse_location_form(raw_location: str | None) -> Location | None:
 def explain(
     db: DbSession,
     user_id: int = USER_ID_FORM,
-    trip_id: int | None = TRIP_ID_FORM,
+    trip_id: int = TRIP_ID_FORM,
     image: UploadFile = IMAGE_FILE,
     current_location: str | None = CURRENT_LOCATION_FORM,
 ) -> dict[str, object]:
