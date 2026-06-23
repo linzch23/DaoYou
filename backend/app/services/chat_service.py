@@ -21,6 +21,7 @@ def _serialize_message(message: ChatMessage) -> dict[str, object]:
 def _load_recent_messages(
     *,
     user_id: int,
+    trip_id: int,
     limit: int,
     db: Session,
 ) -> list[ChatMessage]:
@@ -29,6 +30,7 @@ def _load_recent_messages(
             select(ChatMessage)
             .where(
                 ChatMessage.user_id == user_id,
+                ChatMessage.trip_id == trip_id,
             )
             .order_by(ChatMessage.created_at.desc(), ChatMessage.id.desc())
             .limit(limit)
@@ -39,8 +41,10 @@ def _load_recent_messages(
 
 def send_chat_message(payload: ChatRequest, *, db: Session) -> dict[str, object]:
     require_user(db, payload.user_id)
+    current_trip = get_trip_detail(user_id=payload.user_id, trip_id=payload.trip_id, db=db)
     user_message = ChatMessage(
         user_id=payload.user_id,
+        trip_id=payload.trip_id,
         role="user",
         content=payload.message,
     )
@@ -56,16 +60,13 @@ def send_chat_message(payload: ChatRequest, *, db: Session) -> dict[str, object]
             "current_location": (
                 payload.current_location.model_dump() if payload.current_location else {}
             ),
-            "current_trip": get_trip_detail(
-                user_id=payload.user_id,
-                trip_id=payload.trip_id,
-                db=db,
-            ),
+            "current_trip": current_trip,
             "user_preferences": get_preferences(user_id=payload.user_id, db=db)["preferences"],
             "chat_history": [
                 _serialize_message(message)
                 for message in _load_recent_messages(
                     user_id=payload.user_id,
+                    trip_id=payload.trip_id,
                     limit=20,
                     db=db,
                 )
@@ -75,6 +76,7 @@ def send_chat_message(payload: ChatRequest, *, db: Session) -> dict[str, object]
     db.add(
         ChatMessage(
             user_id=payload.user_id,
+            trip_id=payload.trip_id,
             role="assistant",
             content=agent_result["reply"],
         )
@@ -90,10 +92,12 @@ def send_chat_message(payload: ChatRequest, *, db: Session) -> dict[str, object]
 
 def get_chat_history(
     user_id: int,
+    trip_id: int,
     limit: int = 20,
     *,
     db: Session,
 ) -> dict[str, list[dict[str, object]]]:
     require_user(db, user_id)
-    messages = _load_recent_messages(user_id=user_id, limit=limit, db=db)
+    get_trip_detail(user_id=user_id, trip_id=trip_id, db=db)
+    messages = _load_recent_messages(user_id=user_id, trip_id=trip_id, limit=limit, db=db)
     return {"messages": [_serialize_message(message) for message in messages]}

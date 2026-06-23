@@ -98,12 +98,24 @@ def test_summarize_memory_persists_detected_user_memories(db: Session) -> None:
             status="active",
         )
     )
+    db.flush()
     db.add_all(
         [
-            ChatMessage(user_id=1, role="user", content="下午想轻松一点，我有点累，想少走路。"),
-            ChatMessage(user_id=1, role="user", content="这里有没有适合拍照出片的位置？"),
+            ChatMessage(
+                user_id=1,
+                trip_id=1,
+                role="user",
+                content="下午想轻松一点，我有点累，想少走路。",
+            ),
+            ChatMessage(
+                user_id=1,
+                trip_id=1,
+                role="user",
+                content="这里有没有适合拍照出片的位置？",
+            ),
             PhotoRecord(
                 user_id=1,
+                trip_id=1,
                 image_path="uploads/images/yurenmatou.jpg",
                 recognition_result="图片可能是大连渔人码头。",
                 explanation="这里适合慢节奏散步和拍照。",
@@ -135,7 +147,8 @@ def test_summarize_memory_updates_existing_memory_without_duplicates(db: Session
             status="active",
         )
     )
-    db.add(ChatMessage(user_id=1, role="user", content="想找适合拍照的海边机位。"))
+    db.flush()
+    db.add(ChatMessage(user_id=1, trip_id=1, role="user", content="想找适合拍照的海边机位。"))
     db.commit()
 
     summarize_memory(MemorySummaryRequest(user_id=1, trip_id=1), db=db)

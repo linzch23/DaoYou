@@ -9,10 +9,7 @@
 //
 // v0.3.0(2026-06-11):ChatRequest 补 trip_id + current_location 字段,与后端 ChatRequest 对齐
 // v0.3.1(2026-06-11):新增 LocationUpdate types,与后端 locations.py:UpdateLocationRequest 对齐
-// 2026-06-19:b60dc3c 文档修订后删除 3 处死字段 —
-//   - ChatRequest.trip_id(后端 chat.py 不接)
-//   - PhotoExplainForm.trip_id / PhotoExplainForm.style(后端 photos.py:27-41 不接,FastAPI extra='ignore' 静默丢)
-//   - ReminderCheckRequest.trip_id(docs §10.1 L1320-1327 不要求)
+// 2026-06-23:chat/photo 恢复 trip_id 必填,与每个旅程一个对话页面的前端逻辑对齐。
 // 这些改动由 orchestrator 在 data/contract 层直接做(per AGENTS.md §0 api/ 是 code-writer READ-ONLY 范围,不在 worker 派单里)
 
 // ───────────────── 响应信封 / 错误码 ─────────────────
@@ -253,9 +250,9 @@ export interface UpdateTripItemRequest {
 
 export interface ChatRequest {
   user_id: number
+  trip_id: number
   message: string
-  current_location?: Location // Optional:对齐后端 ChatRequest(per docs/API接口文档.md §8.1 L1122);MVP 阶段不传
-  // 2026-06-19: 删除 trip_id 字段(per b60dc3c 文档修订,后端 chat.py 不再接收 trip_id)
+  current_location?: Location // Optional:对齐后端 ChatRequest(per docs/API接口文档.md §8.1)
 }
 
 // ───────────────── LocationUpdate(per v0.3.1 integrate-r2)─────────────────
@@ -286,9 +283,9 @@ export type LocationUpdateResponse = ApiResponse<{ success: boolean }>
 
 export interface PhotoExplainForm {
   user_id: number
+  trip_id: number
   image: File | Blob
   current_location?: string // JSON 字符串："{ latitude, longitude }"
-  // 2026-06-19: 删除 trip_id + style 字段(per b60dc3c 文档修订 + backend/app/api/photos.py:27-41 实际只接 user_id/image/current_location)
 }
 
 export interface ReminderCheckRequest {

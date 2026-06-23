@@ -43,6 +43,14 @@ uv run --no-sync alembic upgrade head
 
 迁移成功后才会启动 FastAPI 服务。因此协作者拉取最新代码后，用 Docker 启动后端时通常不需要再手动执行 `alembic upgrade head`。
 
+后端容器通过仓库根目录 `.env` 读取外部能力配置；`.env.example` 仅作为模板。修改 `.env` 后需要重新创建后端容器：
+
+```bash
+docker compose up -d --force-recreate backend
+```
+
+如果修改了依赖、Dockerfile 或镜像内代码，再使用 `--build`。
+
 如果只需要启动数据库，可以执行：
 
 ```bash
