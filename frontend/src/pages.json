@@ -61,9 +61,9 @@
       }
     },
     {
-      "path": "pages/photo-guide/index",
+      "path": "pages/guide-result/index",
       "style": {
-        "navigationBarTitleText": "拍照讲解",
+        "navigationBarTitleText": "讲解结果",
         "navigationStyle": "custom",
         "navigationBarTextStyle": "black",
         "navigationBarBackgroundColor": "#FDFBF7",
@@ -71,9 +71,9 @@
       }
     },
     {
-      "path": "pages/guide-result/index",
+      "path": "pages/chat/index",
       "style": {
-        "navigationBarTitleText": "讲解结果",
+        "navigationBarTitleText": "智能对话",
         "navigationStyle": "custom",
         "navigationBarTextStyle": "black",
         "navigationBarBackgroundColor": "#FDFBF7",
@@ -185,12 +185,6 @@
         "text": "首页",
         "iconPath": "static/tabbar/home.png",
         "selectedIconPath": "static/tabbar/home-active.png"
-      },
-      {
-        "pagePath": "pages/photo-guide/index",
-        "text": "拍照讲解",
-        "iconPath": "static/tabbar/camera.png",
-        "selectedIconPath": "static/tabbar/camera-active.png"
       },
       {
         "pagePath": "pages/my/index",

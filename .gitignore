@@ -41,3 +41,6 @@ backend/uploads/audio/*
 
 # AI
 CLAUDE.md
+
+# mavis team plan bundles (debug artifacts)
+plan-*.yaml

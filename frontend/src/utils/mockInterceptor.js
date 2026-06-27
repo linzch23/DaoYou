@@ -28,8 +28,6 @@
  *   DELETE /api/trips/{id}        → deleteTripMock
  *   POST /api/photos/explain      → photoExplainMock
  *   POST /api/chat                → chatMock
- *   POST /api/trips/{id}/replan   → replanMock
- *   POST /api/trips/{id}/apply-plan → applyPlanMock
  *   POST /api/trips/{id}/days     → createTripDayMock
  *   POST /api/trip-items          → createTripItemMock
  *   PUT  /api/trip-items/{id}     → updateTripItemMock
@@ -55,8 +53,6 @@ import {
   trashRestoreMock,
   trashPermanentDeleteMock,
   photoExplainMock,
-  replanMock,
-  applyPlanMock,
   createTripDayMock,
   createTripItemMock,
   updateTripItemMock,
@@ -92,8 +88,6 @@ const ROUTE_TABLE = [
   { method: 'GET', pattern: /\/api\/trips\/\d+\/?$/, response: () => tripDetailMock },
   { method: 'PUT', pattern: /\/api\/trips\/\d+\/?$/, response: () => updateTripMock },
   { method: 'DELETE', pattern: /\/api\/trips\/\d+\/?$/, response: () => deleteTripMock },
-  { method: 'POST', pattern: /\/api\/trips\/\d+\/replan\/?$/, response: () => replanMock },
-  { method: 'POST', pattern: /\/api\/trips\/\d+\/apply-plan\/?$/, response: () => applyPlanMock },
   { method: 'POST', pattern: /\/api\/trips\/\d+\/days\/?$/, response: () => createTripDayMock },
 
   // Trash (per docs/API接口文档.md §6.10-§6.12,TrashPage v0.2.0 新增)

@@ -28,6 +28,7 @@ export const AppRoutes = {
   // 业务子页
   SpotDetailSheet: '/pages/spot-detail-sheet/index',
   PhotoGuide: '/pages/photo-guide/index',
+  Chat: '/pages/chat/index',  // 2026-06-24 Fix B 新增,行程列表 chat 入口跳此页
   GuideResult: '/pages/guide-result/index',
 
   // 鉴权

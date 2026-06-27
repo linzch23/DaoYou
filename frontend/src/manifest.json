@@ -15,7 +15,9 @@
       "autoclose": true,
       "delay": 0
     },
-    "modules": {},
+    "modules": {
+      "Amap": {}
+    },
     "distribute": {
       "android": {
         "package": "com.daoyou.trip",
@@ -26,7 +28,12 @@
         ]
       },
       "ios": {},
-      "sdkConfigs": {}
+      "sdkConfigs": {
+        "amap": {
+          "appid_android": "36ba3568b272a457c300b90a23b3d57e",
+          "appid_ios": ""
+        }
+      }
     }
   },
   "quickapp": {},

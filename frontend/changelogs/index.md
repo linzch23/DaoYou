@@ -1399,3 +1399,173 @@ onUnmounted:
 - 不触发 spec-writer 修订流程(spec-writer 越权边界,retro fix 注释显式登记)
 - 不触发 review 重审(ssp-arch §6 反模式防御)
 - **0 task 偏差** + **0 spec 笔误**(task 字面 + spec 字面 + 实际字面 100% 一致,retro fix 仅补 1 line 路由注册,无字段冲突)
+
+---
+
+## ChatPage — 2026-06-25 — v0.2.0
+
+拍照讲解入口 + UX fix + 拍照 tabBar 入口废弃(spec-writer 修订 v0.2.0 → code-writer 落地)
+
+### Implemented
+
+#### 1. 拍照讲解入口(per spec §3.10/§3.11/§3.12 + §5.5)
+- 加 `_PhotoActionButton`(88rpx 圆形 + 🖼 emoji + surfaceWarm 背景)— `pages/chat/components/PhotoActionButton.vue` 137 行
+- 加 `_PhotoActionSheet`(2 选项 modal:拍照/相册 + 取消按钮;fadeIn + slideUp 动效)— `pages/chat/components/PhotoActionSheet.vue` 196 行
+- 加 `_MessageImage`(inline 缩略图 + tap emit;maxWidth rpx 圆角 12rpx;load failed 占位)— `pages/chat/components/MessageImage.vue` 130 行
+- 加 `_ImagePreviewModal`(全屏黑底 + ✕ 按钮 + fit:contain 居中)— `pages/chat/components/ImagePreviewModal.vue` 134 行
+- 4 子组件均 PascalCase 无 `_` 前缀(per AGENTS.md §8.8 修复后命名),0 console.*
+- 4 子组件均 0 业务逻辑泄漏,emit only 模式,父 page chat/index.vue 派生所有 handler
+
+#### 2. chatStore.sendPhotoMessage action(per spec §7.1.1)
+- 扩 `stores/chatStore.js`:`import { explainPhoto as svcExplainPhoto } from '../services/photos.js'`(跨 service 复用 per spec §6.4 决策 #5)
+- 新增 sendPhotoMessage action:入参校验 + tripId 派生(无 active trip → 抛 ApiError 4000)+ append user msg + 调 svcExplainPhoto + append assistant msg + 失败回退 user msg + rethrow
+- assistant msg content 字段 = `${data.recognition_result}\n\n${data.explanation}`(per spec §6.5 Response 字段映射)
+- `MessageBubbleData` JSDoc 扩 `image?: string` + `image_failed?: boolean` 字段(spec §4.1 备注)
+- `ChatIntent` JSDoc 扩 `photo-guide`(4 枚举,spec §3.5)
+- action 扩到 3 个(fetchHistory / sendMessage / sendPhotoMessage);state 4 字段不变
+
+#### 3. UX fix 1:移除「我 / AI」label(per spec §3.4 备注 5)
+- L122-124 删除 `<text class="message-role">{{ msg.role === 'user' ? ChatPageStrings.roleUser : ChatPageStrings.roleAssistant }}</text>` 整段
+- L164 删除 typing indicator 内的 `<text class="message-role">{{ ChatPageStrings.roleAssistant }}</text>`
+- CSS `.message-role`(L1129-1136)整段删除;视觉由 emoji avatar(🧑/🤖)区分
+- `roleUser` / `roleAssistant` 字符串保留供 aria-label 使用(spec §10 NFR)
+
+#### 4. UX fix 2:输入框立即清空(per spec §3.5 + §5.2 Step 2)
+- `onSendTap` 改造:`draftMessage.value = ''` 移至 await **之前**(L698)
+- 注释 + 备注段说明 retry 时 draftMessage 已清空,用户需手动重输
+- JSDoc 关键 UX 决策段加:用户视觉看到"已发送"状态 = input 空 + typing indicator
+
+#### 5. page-local state 扩 4 字段(spec §4.1)
+- 加 `actionSheetVisible: boolean`(默认 false)— L533
+- 加 `imagePreviewVisible: boolean`(默认 false)— L535
+- 加 `imagePreviewSrc: string | null`(默认 null)— L537
+- 加 `photoOptions` computed(拍照/相册 2 选项)— L548
+
+#### 6. 5 新 handlers(spec §5.5 Step A/B/D)
+- `onPhotoTap()`:sending 态禁用 → 弹 actionSheet — L808
+- `onPhotoOptionSelect(value)`:uni.chooseImage({count:1, sourceType:[value]}) + 成功 → doSendPhotoMessage + 失败/取消处理 — L822
+- `onPhotoSheetCancel()`:蒙层 / 取消按钮 → actionSheetVisible=false — L858
+- `doSendPhotoMessage(imagePath)`:失败 toast「图片发送失败」+ viewMode 回退到 prev(不切 error,per spec §5.3 V)— L872
+- `onMessageImageTap(msg)` / `onImagePreviewClose()`:全屏放大开关 — L906 / L916
+
+#### 7. 7 关键事件 logger 覆盖(per spec §10.9)
+- photo action sheet open / choose image start / choose image success / choose image cancelled / choose image failed
+- photo send start / photo send ok / photo send failed
+- image preview open / image preview close
+- chat page 总计 45 个 logger.* 关键事件(原 30 → 45 净增 15 关键事件;0 console.*)
+
+#### 8. 8 字符串键新增(spec §4.4 + per task 字面 9 键)
+- `btnPhotoAria` / `actionSheetTitle` / `actionSheetCamera` / `actionSheetAlbum` / `actionSheetCancel`(拍照入口段)
+- `imageMessageTag`(user msg 图片占位)
+- `errorPhotoSend` / `errorPhotoChoose` / `errorImageLoad`(photo 错误兜底)
+- ChatPageStrings 总计 24 → 33 键(净增 9 键);0 触动既有 24 键
+
+### Supporting infrastructure
+
+- `pages/chat/index.vue` 1333 → 1514 行(净增 181 行)
+- `stores/chatStore.js` 232 → 374 行(净增 142 行)
+- `constants/strings.js` 1532 → 1547 行(净增 15 行 + 1 段注释)
+- `pages.json` 213 → 203 行(净减 10 行:删 1 个 page entry + 删 1 个 tabBar entry)
+- `static/tabbar/camera.png` + `camera-active.png` 已 mavis-trash(2 文件)
+- 4 新私有子组件:PhotoActionButton 137 行 + PhotoActionSheet 196 行 + MessageImage 130 行 + ImagePreviewModal 134 行 = 597 行
+
+### State composition(5 视图态 v0.2.0 严格保持)
+
+| 视图态 | 触发 | v0.2.0 行为 |
+|---|---|---|
+| `loading` | onLoad fetchHistory 飞行中 | 不变 |
+| `idle` | fetchHistory 完成 + messages 空 | 不变 |
+| `sending` | sendMessage / sendPhotoMessage 飞行中 | **复用** photo 飞行中(spec §3.14),不新增第 6 枚举 |
+| `chatting` | sendMessage / sendPhotoMessage 成功 | 不变 |
+| `error` | fetchHistory / sendMessage 失败 | 不变;photo 失败**不**切此态(per spec §5.3 V) |
+
+### 复用决策(spec §3.12 + §10 + AGENTS.md §8)
+
+- 复用 `services/photos.explainPhoto`(跨 service,per spec §6.4 决策 #5)— `chatStore.sendPhotoMessage` 内部直接 import,page 层 0 业务逻辑泄漏
+- 复用 `services/preferences.ApiError`(跨 service,从 `services/chat.js` re-export)
+- 复用 `useHomeStore().currentTripId`(per 2026-06-24 修复 Q1)— `sendPhotoMessage` action 内部派生
+- 复用 `OnboardingStrings.errorNetwork` / `errorServer` / `errorFallback` / `retry` 4 键
+- 复用 `components/ErrorBanner`(跨 13 page 共享)— 4 子组件**不**依赖,纯 emit 模式
+- **不**新建 `services/chat-photo.js`(跨服务复用原则)
+- **不**抽跨页公共 modal(MVP YAGNI,沿 ClearChatConfirmDialog 私形态模式)
+- **不**新建独立 chatPhotoStore / photoStore(MVP YAGNI)
+
+### Key contracts(spec §7.1.1)
+
+```yaml
+chatStore:
+  state:                # 0 改动
+    messages: MessageBubbleData[]
+    isLoading: boolean
+    error: ApiError | null
+    currentIntent: 'replan' | 'apply-plan' | 'chat' | 'photo-guide' | null  # JSDoc 扩 'photo-guide'
+  actions:
+    fetchHistory(): Promise<void>                         # 0 改
+    sendMessage(text, options?): Promise<void>            # 0 改
+    sendPhotoMessage(imagePath, options?): Promise<void>  # v0.2.0 新增(spec §7.1.1)
+      入参: imagePath: string + options?: { currentLocation?: LocationResult }
+      行为: append user msg(image: imagePath, content: '[图片]')
+            → 调 services/photos.explainPhoto({image: imagePath, tripId, currentLocation})
+            → Success: append assistant msg(content: recognition_result + '\n\n' + explanation
+                                            + follow_up_questions)
+            → Failure: splice(userMsgIndex, 1) + error = err + rethrow
+```
+
+### AC anchors(spec §9)
+
+- AC-04 sendMessage 0 改(原始 spec 不变)
+- **AC-13 v0.2.0 新增**:拍照按钮 input 左侧 88rpx 圆形 — ✓(PhotoActionButton min-height 88rpx)
+- **AC-14 v0.2.0 新增**:ActionSheet 弹窗 2 选项 + 取消按钮 + 蒙层 = 取消 — ✓(PhotoActionSheet @cancel 3 路径)
+- **AC-15 v0.2.0 新增**:选完图 → POST `/api/photos/explain` → chat 流 user/assistant msg — ✓(chatStore.sendPhotoMessage)
+- **AC-16 v0.2.0 新增**:拍照失败 → user msg 标 ❌ + toast「图片发送失败」+ viewMode 不切 error — ✓(doSendPhotoMessage try/catch + uni.showToast + viewMode 回退 prev)
+- **AC-17 v0.2.0 新增**:图片放大:点 user msg 缩略图 → 全屏 modal + 蒙层关闭 — ✓(ImagePreviewModal)
+- **AC-18 v0.2.0 新增**:5 视图态保持,photo 飞行中复用 sending — ✓(grep `"v-if=\"viewMode === 'sending' || viewMode === 'chatting'\""` 1 命中,无新增第 6 枚举)
+- **AC-19 v0.2.0 新增**:移除「我/AI」label — ✓(`.message-role` CSS 删除 + template 删除 2 处 `<text class="message-role">`)
+- **AC-20 v0.2.0 新增**:输入框立即清空 — ✓(onSendTap 中 `draftMessage.value = ''` 在 await 之前)
+- **AC-21 v0.2.0 新增**:跨 service 复用 services/photos.explainPhoto — ✓(chatStore.js `import { explainPhoto as svcExplainPhoto } from '../services/photos.js'`)
+- AC-11 NFR 44pt 触达:PhotoActionButton 88rpx + PhotoActionSheet 3 按钮 88rpx + ImagePreviewModal ✕ 88rpx — ✓ 全部 min-height: 88rpx
+
+### PageStatus
+
+- `Spec.status: NotStarted → NotStarted(spec v0.2.0 已写,等待 spec-writer 聚合后改 Completed;本任务期间 0 改动 spec 状态)
+- `Architecture.status: NotStarted → NotStarted(spec-writer v0.2.0 修订时已 arch 复核,本任务 0 触发新 arch 流程)
+- `Development.status: NotStarted → Completed(本任务 v0.2.0 落地所有代码改动)
+- `Review.{ui,spec,test}: Pending → Pending(本任务重置 per AGENT_CONTRACTS §4.3 invariant 2)
+- `FinalStatus: NotStarted → ReadyForReview(本任务完成后 3 reviewer 并行)
+
+### Reverse grep verification(代码落地后)
+
+| grep 模式 | 文件 | 应得 | 实得 |
+|---|---|---|---|
+| `message-role.*你\|message-role.*AI` | chat/index.vue | 0 | 0 ✓ |
+| `console\.(log\|info\|warn\|error\|debug)` | chat/index.vue + 4 子组件 + chatStore.js | 0 | 0 ✓ |
+| `logger\.(info\|warn\|error\|debug)` | chat/index.vue | ≥ 17 | 45 ✓ |
+| `AppRoutes.PhotoGuide\|photo-guide` | pages.json | 0 | 0 ✓ |
+| `static/tabbar/camera*.png` | fs ls | 0 文件 | 0 文件 ✓ |
+| `^export function sendPhotoMessage` | chatStore.js | ≥ 1 | 1 ✓ |
+| `PhotoActionButton\|PhotoActionSheet\|MessageImage\|ImagePreviewModal` | chat/index.vue | ≥ 4 | 4(import) + 3(usage) ✓ |
+| `btnPhotoAria\|actionSheetTitle\|actionSheetCamera\|actionSheetAlbum` | constants/strings.js | ≥ 4 | 4 ✓ |
+| `draftMessage.value = ''` | chat/index.vue | ≥ 2 | 2(code) + 1(comment) ✓ |
+
+### 1 元决策登记(spec ↔ task 字面偏差)
+
+- task 字面列 8 字符串键 + 1 段("// 拍照按钮 / // 图片消息 / // 错误兜底" 共 9 键字面),本任务严格按 task 字面落地 **9 键**;spec §4.4 列出 10 键(`photoButtonAria` 等),其中 `photoTypeErrorUploadTimeout` / `imagePreviewAria` / `imagePreviewCloseAria` / `photoTypingIndicator` 4 键 task **未要求**(本任务 MVP 简化;ImagePreviewModal ✕ 按钮 aria-label 走 page-local const `CLOSE_ARIA = '关闭'`,不污染 strings.js)
+- spec ↔ task 字面差异属 spec-writer 修订范围(spec-writer 越权边界),**不**触发 spec-writer 重写;task 字面优先(spec §10.4 + AGENTS.md §2)
+- per spec §7.1.1 store action contract + per task 实现 100% 对齐:`sendPhotoMessage(imagePath, options?)` 入参 + 6 行为步骤
+- per spec §3.14 + task "拍照失败 → 不切 error 态":doSendPhotoMessage catch 块 `viewMode.value = prevViewMode === 'sending' ? 'chatting' : prevViewMode`(严格按 spec §5.3 V 实现,失败回退 chatting 不留 sending)
+- per spec §5.5 Step A:`pendingImage` 字段定义但 MVP 简化不持有(选完图直接调 doSendPhotoMessage,沿 task 字面;spec §4.1 备注"可选实现")
+- per user 2026-06-25 答:"代码看情况复用保留" → **不**改 `pages/photo-guide/` + `pages/guide-result/` + `components/SpotDetailSheet.vue`;photo-guide 代码保留作历史,不删 route(避免破坏向后兼容)
+
+### 0 越权边界(per AGENTS.md §6)
+
+- **不**改 `specs/ChatPage.md`(spec-writer 域)— 本任务期间 0 触动
+- **不**改 `specs/HomePage.md` / `PhotoGuidePage.md` / `GuideResultPage.md` / `SpotDetailSheet.md`(其它 spec,跨页越权)
+- **不**改 `pages/home/index.vue`(user 2026-06-25 17:48 答:SpotDetailSheet "AI 讲解"按钮保留)
+- **不**改 `pages/photo-guide/` + `pages/guide-result/` 代码(per user 答)
+- **不**改 `services/chat.js`(chat 接口不扩,photo 走独立接口)
+- **不**改 `services/photos.js`(沿用既有 explainPhoto)
+- **不**改 `api/types.ts`(READ-ONLY,READ-ONLY)
+- **不**改 `api/mock/*`(READ-ONLY)
+- **不**改 `backend/**`(不在 frontend 范围)
+- **不**改 `docs/**`(orchestrator 1-line 决策保留)
+- **不**关任何 Issue(由 reviewer 关闭)

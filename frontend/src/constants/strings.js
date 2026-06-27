@@ -134,7 +134,55 @@ export const HomeStrings = {
   reminderDeparture: '出发',
   reminderConflict: '冲突',
   reminderRest: '休息',
+
+  // ReminderBanner(per v0.4.0 spec §6.5.8,v0.4.0 新增,HomePage 顶部智能提醒横幅)
+  reminderBannerDeparture: '即将出发',
+  reminderBannerConflict: '行程冲突',
+  reminderBannerWeather: '天气提醒',
+  reminderBannerRest: '休息提醒',
+  reminderClose: '关闭',
+
+  // 行程列表 chat 入口(2026-06-24 新增,per task「每个行程有独立 chatSession」)
+  // 沿 AGENTS.md §8.6 13 页面惯例:每个 user-facing 文案键必带 aria 标签
+  // button label 用 emoji 💬(icon 简写,沿 follow-up chip 模式)
+  // aria 模板带 {title} 占位(运行时插值,无障碍读屏更准)
+  btnChatTrip: '💬',
+  btnChatTripAria: '打开「{title}」的智能对话',
+
+  // Section 1 今日无行程占位(2026-06-24 Fix A 新增,per user 报「再次进入时 Section 1 消失」)
+  // Section 1 永远保留:有 today_items 渲染 <HomeDiary>;无 today_items 渲染 <EmptyTodayState>
+  emptyTodayTitle: '今日无行程',
+  emptyTodaySubtitle: '休息一下,或者点右下角 + 新建一个',
+  emptyTodayEmoji: '🌙',
+
+  // 行程卡片删除入口(2026-06-24 UserRound2-001 §3 Bug C 新增)
+  // 沿 AGENTS.md §8.6 13 页面惯例:每个 user-facing 文案键必带 aria 标签
+  // 状态门控:仅 draft / finished trip 显示删除按钮(active 引导走回收站,见 deleteActiveTripToast)
+  btnDeleteTrip: '删除',
+  btnDeleteTripAria: '删除「{title}」',
+  deleteConfirmTitle: '删除行程?',
+  deleteConfirmMessage: '删除后可在「我的-回收站」中恢复',
+  deleteConfirmConfirm: '删除',
+  deleteConfirmCancel: '取消',
+  deleteSuccessToast: '已删除',
+  deleteFailToast: '删除失败',
+  deleteActiveTripToast: '进行中的行程请走「我的-回收站」',
 }
+
+/**
+ * Reminder type → emoji 映射(per spec v0.4.0 §6.5.8.1)
+ *
+ * 1:1 对齐 `api/types.ts:141` `ReminderType` 4 枚举 + `api/mock/reminders.ts:16` reminderCheckMock;
+ * 调用方 `HomeReminderTypeEmoji[reminder.type] || '🔔'` 兜底,本页面挂载在 ReminderBanner.vue。
+ *
+ * @type {Readonly<Record<import('../api/types').ReminderType, string>>}
+ */
+export const HomeReminderTypeEmoji = Object.freeze({
+  departure: '🚗',
+  conflict: '⚠️',
+  weather: '☔',
+  rest: '😴',
+})
 
 /**
  * SpotDetailSheet 专用文案(specs/SpotDetailSheet.md §10 R-1)
@@ -209,12 +257,26 @@ export const HomeItemStatusLabel = Object.freeze({
  *   - 但 `deleted` 键**仍保留**作为显示别名:TrashPage 列表徽章固定展示「已结束」文案
  *     (由 TrashPageStrings.statusLabel 显式传 HomeTripStatusLabel.deleted,语义稳定)
  *   - 实际 TripStatus 走 'finished' 枚举 + deleted_at 字段表达删除状态
- * @type {Readonly<Record<import('../api/types').TripStatus | 'deleted', string>>}
+ * v0.6.1.1 修订(per fix-trip-status-machine v0.6.1 状态机重写 + verifier feedback):
+ *   - 新增 `inProgress` 键:对应 `utils/tripStatus.js:computeEffectiveStatus` v0.6.1
+ *     返回值 'inProgress' 字段(完整行程 + today <= end_date)
+ *   - **核心 bug 修复 2**(per user 19:46 期望「草稿能转进行中」):
+ *     DB `status='draft'` 但 4 字段全有(itinerary_count >= 1)的 trip,v0.6.1 helper
+ *     返回 'inProgress';旧 v0.5.0 fallback chain `HomeTripStatusLabel[effectiveStatus]
+ *     || HomeTripStatusLabel[trip.status]` 会回退到 'draft' = 「草稿」,导致核心
+ *     bug 修复 2 名存实亡。加 `inProgress` 键后,label 走「进行中」,语义正确
+ *   - 复用 `HomeStrings.tripStatusActive`(= '进行中')作为 inProgress 文案,
+ *     与 `TripDetailStatusLabel.inProgress` 文案 1:1 对齐(避免新增 i18n 字符串)
+ *   - 不删 `active` 键:作为 `trip.status='active'` 字面值的后备显示(虽然
+ *     v0.6.1 helper 已不再返回 'active',但旧 mock 数据 + 边界场景仍可能)
+ * @type {Readonly<Record<import('../api/types').TripStatus | 'inProgress' | 'deleted', string>>}
  */
 export const HomeTripStatusLabel = Object.freeze({
   draft: HomeStrings.tripStatusDraft,
   active: HomeStrings.tripStatusActive,
   finished: HomeStrings.tripStatusFinished,
+  // v0.6.1.1 新增:helper 派生 'inProgress' 时的徽章文案(完整行程 + today <= end_date)
+  inProgress: HomeStrings.tripStatusActive,
   // 显示别名(TrashPage 复用,非 TripStatus enum value)
   deleted: HomeStrings.tripStatusFinished,
 })
@@ -264,34 +326,16 @@ export const NewTripStrings = {
   formHintCopyPrefix: '复制自「',
   formHintCopySuffix: '」,可修改字段后保存为新行程',
 
-  // 7 字段 label(spec §3.5)
+  // 4 字段 label(spec §3.5,v0.4.0 TripCreateEditFix-001 移除 3 字段:
+  //   city / companions / budget / transport / needs;保留 title + start_date + end_date)
   fieldTitle: '行程标题', // spec EditTripPage §10 C-3 触发新增
-  fieldCity: '目的地',
   fieldStartDate: '出发日期',
   fieldEndDate: '返回日期',
-  fieldCompanions: '同行成员',
-  fieldBudget: '预算范围',
-  fieldTransport: '交通偏好',
-  fieldNeeds: '特殊需求',
+  fieldItineraryDate: '日期',  // v0.4.0 行程安排字段内 date picker label(复用)
 
   // 字段 placeholder
-  placeholderCity: '例如:大连',
   placeholderStartDate: '请选择出发日期',
   placeholderEndDate: '请选择返回日期',
-  placeholderCompanions: '逗号分隔,如 老婆,孩子',
-  placeholderBudget: '例如:3000-5000',
-
-  // 交通偏好 4 chips(spec §4.1 transport_preference 4 枚举)
-  transportFlight: '飞机',
-  transportTrain: '火车',
-  transportCar: '自驾',
-  transportWalk: '步行',
-
-  // 特殊需求 4 chips(spec §4.1 special_needs 4 枚举,本页面自定义)
-  needLessWalking: '少步行',
-  needWithChildren: '带儿童',
-  needWithElderly: '带老人',
-  needAccessible: '无障碍',
 
   // 提交按钮
   btnCancel: '取消',
@@ -323,36 +367,18 @@ export const NewTripStrings = {
   draftSave: '保存草稿',
   draftSavedToast: '已保存到草稿箱',
   draftSaveFailedToast: '草稿保存失败,内容已保留在页面',
+  draftNoDatesToast: '未选择日期,无法保存为草稿', // v0.5.1(per user 19:37 bug)无日期守卫
 
   // H5 aria(spec §10 可访问性)
   textareaAria: '行程内容输入框',
 }
 
 /**
- * 交通偏好 4 选项(spec §3.5 Field 6 + §4.1 transport_preference 4 枚举)
- * 与 `api/types.ts` 的 SpecialNeed 不同(本页面自定义枚举,client-only)
- * @type {ReadonlyArray<{ value: 'flight' | 'train' | 'car' | 'walk', label: string }>}
+ * v0.4.0(2026-06-23 per TripCreateEditFix-001):NewTripTransportOptions + NewTripNeedsOptions
+ * 整段删除。原因:user 2026-06-19 自报「service 和 store 只是调用 API,具体操作仅由后端执行」,
+ * 4 选填 client-only 字段(transport / needs)UI 字段一起移除(spec §6.4.2 PD-001 决策);
+ * 4 选填枚举沿用 post-mortem 不需单独保留,改由 user 后端业务侧管。
  */
-export const NewTripTransportOptions = Object.freeze([
-  { value: 'flight', label: NewTripStrings.transportFlight },
-  { value: 'train',  label: NewTripStrings.transportTrain },
-  { value: 'car',    label: NewTripStrings.transportCar },
-  { value: 'walk',   label: NewTripStrings.transportWalk },
-])
-
-/**
- * 特殊需求 4 选项(spec §3.5 Field 7 + §4.1 special_needs 4 枚举)
- * UI 标签"少步行 / 带儿童 / 带老人 / 无障碍"与 api/types.ts SpecialNeed
- * 3 枚举(less_walking / less_queue / accessible)不 1:1,按 PD-001 走
- * "客户端 UI 简化"路径(spec §6.4.2),仅作 UI 展示,POST 不传后端
- * @type {ReadonlyArray<{ value: 'less_walking' | 'with_children' | 'with_elderly' | 'accessible', label: string }>}
- */
-export const NewTripNeedsOptions = Object.freeze([
-  { value: 'less_walking',  label: NewTripStrings.needLessWalking },
-  { value: 'with_children', label: NewTripStrings.needWithChildren },
-  { value: 'with_elderly',  label: NewTripStrings.needWithElderly },
-  { value: 'accessible',    label: NewTripStrings.needAccessible },
-])
 
 /**
  * TripDetailPage 专用文案(specs/TripDetailPage.md §10 C-1 强约束,~36 键)
@@ -480,13 +506,10 @@ export const EditTripStrings = {
 
   // 表单头(spec §3.5 + §4.5)
   formTitle: '编辑行程信息',               // _FormHeader 标题
-  formHint: '点击底部「保存」即可生效;城市/日期暂不支持修改', // 副提示
-
-  // 字段 8 状态(spec §3.4 Field 8 + §4.5)
-  fieldStatus: '状态',                     // 状态字段 label
-  statusLabelDraft: '草稿',                // 3 chips 之一
-  statusLabelActive: '进行中',
-  statusLabelFinished: '已结束',
+  // v0.4.0(2026-06-23 per TripCreateEditFix-001):简化 formHint
+  //   原:「点击底部「保存」即可生效;城市/日期暂不支持修改」(city/dates 后端不支持,UI 字段移除后不再需要此说明)
+  //   改为:「点击底部「保存」即可生效;仅支持修改标题与行程安排」
+  formHint: '点击底部「保存」即可生效;仅支持修改标题与行程安排', // 副提示
 
   // 提交按钮(spec §3.3 + §4.5)
   btnSave: '保存',                         // 主 CTA
@@ -501,18 +524,24 @@ export const EditTripStrings = {
   // Toast(spec §4.5)
   saveSuccessToast: '修改成功',            // PUT 成功后短暂 Toast(短版)
   saveFailToast: '修改失败,请稍后重试',
-  cityOrDateNotModifiableToast: '暂不支持修改城市/日期,请创建新行程', // AC-07
+
+  // v0.5.0(2026-06-25 per UserRound2-001 Bug A):行程 item CRUD Toast 6 键
+  //   - 由 EditTripPage.onAddItem / onUpdateItem / onRemoveItem 触发
+  //   - 6 字面值简短一致(「已 X」+「X 失败」),与既有 saveSuccessToast / saveFailToast 对齐
+  itemAddedToast: '已新增行程项',
+  itemAddFailToast: '新增失败,请重试',
+  itemUpdatedToast: '已更新',
+  itemUpdateFailToast: '更新失败,请重试',
+  itemDeletedToast: '已删除',
+  itemDeleteFailToast: '删除失败,请重试',
 
   // 草稿恢复(spec §4.5 + §5.3.H)
   draftRestoredToast: '已恢复上次编辑的草稿', // 短暂 Toast 提示
 
-  // 草稿模式(per issues/UI/UI-023-draft-page-prefill.md §4)—— mode='draft' 入口
-  // formHintDraftPrefix: 草稿行程标题前缀
-  // formHintDraftSuffix: 草稿行程标题后缀 + 「首次创建于 Y」副提示
-  // 整体形态:「继续编辑草稿「X」 · 首次创建于 Y」
-  formHintDraftPrefix: '继续编辑草稿「', // 「继续编辑草稿「X」」前半段
-  formHintDraftMiddle: '」 · 首次创建于 ', // 中间连接段(中间用 · separator,UI 友好)
-  formHintDraftSuffix: '', // 末尾空字符串(避免半截文案)
+  // v0.4.0(2026-06-23 per TripCreateEditFix-001):移除 status / formHintDraftXxx / cityOrDateNotModifiableToast
+  //   - status 字段 UI 移除(spec §3.4 Field 8 删除,后端 status 不在前端编辑范围)
+  //   - formHintDraftXxx 草稿模式文案(spec §3.4 移除 draft mode entry,本页面统一走 edit mode)
+  //   - cityOrDateNotModifiableToast UI 字段已移除,toast 不再触发
 
   // 不可用占位(_NotFoundOverlay,spec §3.7 + §4.5)
   // 复用 TripDetailStrings.errorNotFoundXxx 即可;本段为安全兜底,如 TripDetailStrings 改 key 名可独立
@@ -533,20 +562,11 @@ export const EditTripStrings = {
 }
 
 /**
- * EditTripStatusOptions 3 状态选项(spec §3.4 Field 8 + §4.6 + §10 C-2)
- *
- * 1:1 对齐 `api/types.ts` TripStatus 4 枚举(`draft` / `active` / `finished` / `deleted`)
- * 减去 `deleted`(`deleted` 由软删除触发,不开放编辑页改)
- *
- * 复用 `EditTripStrings.statusLabelXxx`,不重复定义字面值
- *
- * @type {ReadonlyArray<{ value: 'draft' | 'active' | 'finished', label: string }>}
+ * v0.4.0(2026-06-23 per TripCreateEditFix-001):EditTripStatusOptions 整段删除
+ * 原因:status 字段 UI 移除,EditTripStatusOptions 3 chips 不再被引用,保留会成 dead code。
+ * 状态徽章仍由 `tripStatusBadge` + `tripStatusBadgeClass` computed 派生 trip.status 显示在
+ * _FormHeader(只读展示),走 TripDetailStatusLabel 复用,**不**通过 EditTripStatusOptions。
  */
-export const EditTripStatusOptions = Object.freeze([
-  { value: 'draft',    label: EditTripStrings.statusLabelDraft },     // '草稿'
-  { value: 'active',   label: EditTripStrings.statusLabelActive },    // '进行中'
-  { value: 'finished', label: EditTripStrings.statusLabelFinished }, // '已结束'
-])
 
 /**
  * PhotoGuidePage 专用文案(specs/PhotoGuidePage.md §10 C-1 强约束,~45 键)
@@ -611,18 +631,15 @@ export const PhotoGuideStrings = {
   // 追问循环(spec §3.5 _ChatInputBar)
   chatInputPlaceholder: '继续问点什么...',
   btnSend: '发送',
-  btnClearChat: '清空对话',
   chatTyping: 'AI 正在思考...',
   chatRoleUser: '你',
   chatRoleAssistant: 'AI',
   chatUserAvatar: '👤',
   chatAssistantAvatar: '🤖',
 
-  // 清空弹窗(spec §3.6 _ClearChatConfirmDialog)
-  clearDialogTitle: '清空对话?',
-  clearDialogMessage: '将清除当前讲解卡 + 所有追问记录,且不可恢复。',
-  clearDialogCancel: '取消',
-  clearDialogConfirm: '清空',
+  // 2026-06-24 Fix D 移除:btnClearChat + clearDialogTitle/Message/Cancel/Confirm 5 键
+  // (per user 报「清空回话记录后端无接口,该逻辑需清除」;整段清空弹窗触发链移除,
+  //  strings key 同步清理,避免无用代码)
 
   // 错误兜底(spec §6.1 Error 表 + §4.4 错误兜底)
   // 4 个复用 NewTripStrings 同字面(spec §10 R-2);2 个本页面专属;1 个 trip 关联弱化提示
@@ -975,6 +992,23 @@ export const TrashPageStrings = {
 
   // H5 aria(spec §4.4 H5 aria)
   pageAria: '回收站页',             // page root aria-label
+
+  // ───────── v0.3.0 emptyTrash 增量(spec §11.4.4 8 键,per docs/API-前端一致性审计-v2.md §2.3 + §7.10.4)─────────
+  // 顶栏入口按钮(_EmptyTrashButton,per spec §11.3 视觉决策:左对齐 + 撑满容器 + Danger 描边 1.5px)
+  btnEmptyTrash: '清空回收站',                 // _EmptyTrashButton 主文案
+  btnEmptyTrashAria: '清空回收站,共 N 条已删行程',  // 按钮 aria-label(动态 N 值由 page 端 template 渲染,per §11.10.2 可访问性)
+  btnEmptyTrashLoading: '清空中…',              // clearingAll=true 时按钮文案(替代 btnEmptyTrash)
+
+  // 清空弹窗(_EmptyTrashConfirmDialog,沿 §8.2 _PermanentDeleteConfirmDialog 形态)
+  emptyTrashDialogTitle: '清空回收站?',         // 弹窗标题
+  emptyTrashDialogMessage: '将永久删除全部 {N} 条已删行程,此操作不可恢复',  // 弹窗正文 template(N = trashedTrips.length)
+  emptyTrashDialogCancel: '取消',               // 取消按钮文案
+  emptyTrashDialogConfirm: '清空回收站',        // 确认按钮文案(红色 Danger 配色,操作不可逆)
+
+  // 清空成功(per §11.5.2 Step 8 success 分支)
+  emptyTrashSuccessToast: '已清空回收站',       // 成功后 Toast(icon: 'success', duration: 1500)
+
+  // 错误兜底(errorNetwork / errorServer / errorFallback)沿用 §4.4 既有 3 键引用,不在本节重复定义
 }
 
 /**
@@ -1391,12 +1425,19 @@ export const AboutInfoCards = Object.freeze([
  *   - 0 API / 0 新建 store(行程安排是 form 内字段,沿用 formData 状态)
  *   - 0 抽公共 components/(沿项目惯例 _DraftConfirmDialog 私有)
  *   - 跨页反向 import pages/edit-trip → pages/new-trip/components/ItineraryArrangeField.vue
- *     (沿 §8.4 guide-result → photo-guide _ClearChatConfirmDialog 反向 import 模式)
+ *     (沿 §8.4 guide-result → photo-guide 私有 dialog 反向 import 模式)
  */
 export const ItineraryArrangeStrings = {
   // 字段 label/hint(spec §3.5 Field 6 + §4.4)
   fieldLabel: '行程安排',         // form 字段 label(Noto Sans SC 14px 500)
-  fieldHint: '长按卡片可拖动调整顺序;可点击右上角 ✕ 删除或 + 添加', // form 字段 hint(Noto Sans SC 12px,inkMuted)
+  // v0.4.0(2026-06-23 per TripCreateEditFix-001):fieldHint 改写提及日期选择
+  //   原:「长按卡片可拖动调整顺序;可点击右上角 ✕ 删除或 + 添加」
+  //   改为:「选日期 + 时间,长按卡片拖动排序;点右上角 ✕ 删除或 + 添加」
+  // v0.6.0(2026-06-26 per user-round4-2026-06-26):删掉「长按卡片拖动排序」提示
+  //   原:「选日期 + 时间,长按卡片拖动排序;点右上角 ✕ 删除或 + 添加」
+  //   改为:「选日期 + 时间,点右上角 ✕ 删除或 + 添加」
+  //   原因:user 报「不支持拖动卡片排序」,MVP 不实现拖动 UI
+  fieldHint: '选日期 + 时间,点右上角 ✕ 删除或 + 添加', // form 字段 hint
 
   // 5 类型短标签(per ui/types.ts:37 ItemType 5 枚举,1:1 对齐)
   typeLabelAttraction: '景点',   // 'attraction'
@@ -1406,6 +1447,8 @@ export const ItineraryArrangeStrings = {
   typeLabelOther: '其他',        // 'other'(UI-025 新增)
 
   // 时间输入 placeholder
+  // v0.4.0:新增 placeholderDate(在 date picker 上方)
+  placeholderDate: '请选择日期',
   placeholderStartTime: '开始时间',
   placeholderEndTime: '结束时间',
   placeholderTitle: '请输入地点名称',
@@ -1417,8 +1460,10 @@ export const ItineraryArrangeStrings = {
   // 删除按钮
   btnRemoveAria: '删除该行程项',
 
-  // 拖动状态提示
-  dragHint: '拖动调整顺序',
+  // v0.6.0(2026-06-26 per user-round4-2026-06-26):删掉 dragHint
+  //   原:「拖动调整顺序」已无对应 UI(MVP 不实现拖动)
+  //   引用方 0 命中(grep 验证:仅 ItineraryArrangeField.vue L133 一处,同步删除)
+  //   整段删除字段(沿 §6.4.5b 决策树)
 }
 
 /**
@@ -1444,3 +1489,80 @@ export const ItineraryArrangeItemTypeOptions = Object.freeze([
   { value: 'rest',       label: ItineraryArrangeStrings.typeLabelRest,       emoji: '😴' },
   { value: 'other',      label: ItineraryArrangeStrings.typeLabelOther,      emoji: '📍' },
 ])
+
+/**
+ * ChatPage 专用文案(specs/ChatPage.md §4.4,~25 键)
+ *
+ * 字段分类:
+ *   顶栏(2) + 加载(1) + Idle(3) + Sending(1) + Chatting(4) + 3 modal(13) + 错误兜底(3) + H5 aria(1)
+ *
+ * 复用约定(spec §3.7 + §4.4 备注 + §10.4 i18n 纪律):
+ *   - 顶栏 `backAria: '返回'` 与 StyleSettingStrings.backAria / PersonalProfileStrings.backAria
+ *     / TripDetailStrings.backAria / PhotoGuideStrings.backAria **字面相同但本页面**不**复用既有段** —
+ *     保持各 page 字符串段独立(per spec-writer-patterns §13「各 page 独立 strings 段」决策)
+ *   - 错误兜底 3 键(`errorBadRequest` / `errorLLM` / `errorTripNotFound`)是**本页面独有**(per spec §4.4 备注,
+ *     字面与 `OnboardingStrings.errorXxx` / `EditTripStrings.errorXxx` / `NewTripStrings.errorXxx` **不**完全一致)
+ *   - 通用错误兜底 3 键(`errorNetwork` / `errorServer` / `errorFallback`)**复用**既有段字面值
+ *   - 「重试」按钮文案走 `OnboardingStrings.retry`,**不**在本段重复
+ *   - 「🗑」清空按钮 + dialog 已于 2026-06-24 Fix D 移除(后端无对应端点)
+ */
+export const ChatPageStrings = {
+  // 顶栏(spec §3.2 + §4.4)
+  backAria: '返回',                       // Header「←」aria-label(H5 可访问性)
+  title: '智能对话',                       // 顶栏标题(与 pages.json navigationBarTitleText 对齐)
+
+  // 加载(spec §3.3 _LoadingPanel + §4.4)
+  loadingText: '正在加载对话...',          // viewMode='loading' 提示语
+
+  // Idle(spec §3.3 _IdlePanel + §4.4)
+  idleIcon: '💬',                         // _IdlePanel 装饰 emoji
+  idleHint: '开始与 AI 导游对话',          // _IdlePanel 主提示语
+  idleHintSub: '支持行程规划 / 改线 / 实时问答', // _IdlePanel 副提示语
+
+  // Sending(spec §3.3 _SendingPanel + §4.4)
+  typingIndicator: 'AI 正在思考...',      // _TypingIndicator 占位文字
+
+  // Chatting(spec §3.4 _MessageList + §3.5 _InputBar + §4.4)
+  inputPlaceholder: '说点什么...',         // _InputBar text-input placeholder
+  btnSend: '发送',                        // _InputBar 主按钮文案
+  roleUser: '你',                         // chat bubble 角色名(无障碍可读)
+  roleAssistant: 'AI',                    // chat bubble 角色名(无障碍可读)
+
+  // 改线弹窗(spec §3.9 ActionOptionsModal + §4.4)
+  actionOptionsTitle: '为你推荐以下改线方案',
+  actionOptionsCancel: '取消',
+  actionOptionsConfirm: '应用此方案',
+  actionOptionsComingSoon: '该功能即将上线',
+
+  // ApplyPlan 弹窗(spec §3.10 ApplyPlanConfirmDialog + §4.4)
+  applyPlanTitle: '确认应用改线方案?',
+  applyPlanMessage: '将应用 AI 推荐的改线方案,可能影响当前行程安排。',
+  applyPlanCancel: '取消',
+  applyPlanConfirm: '确认',
+  applyPlanComingSoon: '改线应用功能即将上线',
+
+  // 错误兜底(spec §3.7 Error 表 + §4.4)
+  // 3 键本页面独有(spec §4.4 备注:与 OnboardingStrings.errorXxx / NewTripStrings.errorXxx 字面**不**完全一致)
+  errorBadRequest: '消息内容不合法,请重新输入',
+  errorLLM: 'AI 暂不可用,请稍后重试',
+  errorTripNotFound: '行程不存在,改线失败',
+  // 「重试」按钮文案走 OnboardingStrings.retry,**不**在本段重复(per §10.4 i18n 纪律)
+
+  // 拍照按钮(ChatPage v0.2.0 §3.5 _InputBar 扩 + §3.10 PhotoActionSheet)
+  btnPhotoAria: '拍照或选择图片',          // _PhotoActionButton aria-label
+  actionSheetTitle: '选择图片来源',         // _PhotoActionSheet 标题
+  actionSheetCamera: '拍照',               // 拍照选项文案
+  actionSheetAlbum: '从相册选择',          // 相册选项文案
+  actionSheetCancel: '取消',               // 取消按钮文案
+
+  // 图片消息(ChatPage v0.2.0 §3.4 _MessageImage)
+  imageMessageTag: '[图片]',               // user msg content 占位(纯文本展示时使用)
+
+  // 错误兜底(ChatPage v0.2.0 §5.3 photo state machine failure)
+  errorPhotoSend: '图片发送失败,请重试',   // photo 飞行失败 toast
+  errorPhotoChoose: '图片选择失败',        // uni.chooseImage fail toast
+  errorImageLoad: '图片加载失败',           // MessageImage src 加载失败占位
+
+  // H5 aria(spec §10 可访问性)
+  pageAria: '智能对话页',                 // page root aria-label
+}
