@@ -5,8 +5,8 @@
 //   GET    /api/trips/{trip_id}        → tripDetailMock   (Trip, 含 days)
 //   PUT    /api/trips/{trip_id}        → updateTripMock
 //   DELETE /api/trips/{trip_id}        → deleteTripMock
-//   POST   /api/trips/{trip_id}/replan     → 见 mock/replan.ts
-//   POST   /api/trips/{trip_id}/apply-plan → 见 mock/replan.ts
+// (注:`/api/trips/{trip_id}/replan` + `/apply-plan` 已合并到 §8.1 /api/chat 改线意图路径,
+//   mock/replan.ts 已删除 — per 2026-06-24 审计清理)
 
 import type { ApiResponse, Trip, TripSummary } from '../types'
 import { seedTrip, seedTripSummaries } from './_seed'

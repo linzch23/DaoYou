@@ -167,6 +167,11 @@ export function listTrips() {
  *   - 2) HTTP 失败(isNetworkError / 5xx)→ 静默降级到 `remindersMock`
  *   - status 客户端过滤(后端无 status 参数实测会忽略)
  *
+ * 注:本注释是 `listReminders` (`GET /api/reminders`) 的说明,**不**是
+ *   `POST /api/reminders/check`(`services/reminders.js:checkReminders`)。
+ *   两者是不同的端点(`/reminders` 列表 vs `/reminders/check` 触发检查)。
+ *   2026-06-24 trip_id 一致性审计 §3.5 主动补位,避免后人误读。
+ *
  * @param {number} tripId
  * @param {'unread' | 'read'} [status='unread']
  * @returns {Promise<import('../api/types').ApiResponse<{ reminders: import('../api/types').Reminder[] }>>}

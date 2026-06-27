@@ -19,22 +19,24 @@
 //   - 5xx / 5000 → 服务端错误
 //   - fail 回调  → 网络断开(isNetworkError=true)
 //
-// v0.3.1(2026-06-11)新增(per integrate-r2 task):
-//   - 1) HTTP `PUT /api/locations` body `{user_id, latitude, longitude, timestamp}` 优先
-//   - 2) HTTP 失败(isNetworkError / 5xx)→ 静默降级到 `mockInterceptor` 拦截的 mock
-//     (`PUT /api/locations` mock handler 已在 mockInterceptor.js 注册,返回
-//     `{code:0, message:'success', data:{success:true}}`)
-//   - 3) 公开 ApiResponse 形状 1:1 与后端契约对齐:
-//     `{code:0, message:'success', data:{success:true}}`
-//   - 注:本 service **不**直接 import mock(沿 `services/trips.js` / `services/preferences.js`
-//     惯例:mock 由 mockInterceptor 自动拦截 uni.request,service 层不感知)
+// v0.5.0(2026-06-25)改造(per Cross-Page issue location-real-fix-v2-2026-06-25 §2.2):
+//   - **删除** mock fallback:`PUT /api/locations` HTTP 失败(isNetworkError / 5xx)
+//     不再静默降级到 `{code:0, message:'success (mock fallback)', data:{success:true}}`
+//   - 失败一律抛 ApiError,由 page / store 层 best-effort 处理
+//   - 删除 `isFallbackable()` 辅助函数(本服务不再需要 fallback 判定)
+//   - 注:`USE_MOCK_FALLBACK` import 保留(从 services/config.js 导出,可能其他 helper 引用),
+//     但本服务**不再使用**它做 fallback 决策
+//   - 真接入高德(per cross-page issue §2.1):`utils/location.js` v0.4.1 显式条件编译 +
+//     `manifest.modules.Amap: {}` + `sdkConfigs.amap.appid_android` 让 HBuilderX 云打包
+//     时动态 bundle 高德 AAR,JS 层不感知
 //
 // 历史:
 //   - v0.3.1(2026-06-11):新建(per integrate-r2)
+//   - v0.5.0(2026-06-25):删 mock fallback(per Cross-Page issue location-real-fix-v2)
 
 import { ApiError } from './preferences.js'
 import { logger } from '../utils/logger.js'
-import { BASE_URL, MVP_USER_ID, USE_MOCK_FALLBACK } from './config.js'
+import { BASE_URL, MVP_USER_ID } from './config.js'
 
 /**
  * 将 uni.request 回调统一映射为 (resolve, reject) 形态
@@ -78,41 +80,24 @@ function mapFail(err, reject) {
 }
 
 /**
- * 判定 HTTP 失败是否可降级到 mock(isNetworkError / 5xx 走 fallback)
- *
- * 5xx 触发 mock fallback 是**显式策略**:后端 PUT /api/locations 当前**未 mount** 到
- * router(per integrate-r2 后端实测),MVP 阶段 dev 模式下 mock 拦截器会接住
- * PUT /api/locations → 返回 `{success:true}`,**不**走 404 路径(因为 mock 拦在
- * HTTP 之前,根本不打后端);prod 模式下 `USE_MOCK_FALLBACK=false` + 后端实装后
- * `__USE_REAL_API__` escape hatch 启用 → 走真后端,5xx/网络错仍走 fallback 链
- *
- * @param {ApiError} err
- * @returns {boolean}
- */
-function isFallbackable(err) {
-  if (!USE_MOCK_FALLBACK) return false
-  return err.isNetworkError === true
-    || (err.statusCode >= 500 && err.statusCode < 600)
-}
-
-/**
  * PUT /api/locations —— 上报用户位置
  *
- * v0.3.1(per integrate-r2 task):
- *   - 1) HTTP `PUT /api/locations` body `{user_id, latitude, longitude, timestamp}` 优先
- *   - 2) HTTP 失败(isNetworkError / 5xx)→ 静默降级到 mock(mockInterceptor 拦截)
+ * v0.5.0(per Cross-Page issue location-real-fix-v2-2026-06-25 §2.2):
+ *   - HTTP `PUT /api/locations` body `{user_id, latitude, longitude, timestamp}` 直发
+ *   - **失败不 mock fallback**(per user 2026-06-25 16:12 硬要求「坚决不能 mock 兜底」)
+ *     - isNetworkError → reject ApiError(由 page / store best-effort 处理)
+ *     - 5xx / 4xx     → reject ApiError
  *   - 公开 ApiResponse 形状 1:1 与后端契约对齐:`{code, message, data:{success}}`
  *
  * **定位能力不在本 service 内**(per integrate-r2 task 决策):
  *   - 本函数**只**接受 page 层已经获取到的 {latitude, longitude} 数字
- *   - 真正的定位能力由 page 层调 `uni.getLocation` / 未来高德 SDK 获取
- *   - MVP 阶段**不**接高德 SDK(per hard constraint)
- *   - 若未来需更高精度,IssueManager 提议在 manifest.json 配高德 key +
- *     引入 `@dcloudio/uni-amap` 插件
+ *   - 真正的定位能力由 page 层调 `uni.getLocation` / 高德 SDK 获取
+ *   - 高德 Android SDK 由 `manifest.modules.Amap: {}` + `sdkConfigs.amap.appid_android`
+ *     在 HBuilderX 云打包时动态 bundle,JS 层不感知(per cross-page issue §2.1)
  *
  * @param {object} payload
- * @param {number} payload.latitude   维度(WGS-84)
- * @param {number} payload.longitude  经度(WGS-84)
+ * @param {number} payload.latitude   维度(WGS-84 / GCJ-02,看平台)
+ * @param {number} payload.longitude  经度(WGS-84 / GCJ-02,看平台)
  * @param {number} [payload.timestamp] 秒级时间戳(不传则内部用 Math.floor(Date.now()/1000))
  * @returns {Promise<import('../api/types').LocationUpdateResponse>}
  * @throws  {ApiError}
@@ -149,22 +134,8 @@ export function updateLocation(payload) {
       success: (res) => mapSuccess(res, resolve, reject),
       fail: (err) => mapFail(err, reject),
     })
-  }).catch((httpErr) => {
-    // 不可 fallback 的错误(4xx 业务错)直接 reject
-    if (!isFallbackable(httpErr)) {
-      return Promise.reject(httpErr)
-    }
-    // 降级到 mock(mvp 阶段 mock 拦截器会接住 PUT /api/locations → 返 {success:true};
-    // 如果拦截器没装(USE_MOCK_FALLBACK=false),isFallbackable 已在上一步返回 false)
-    logger.warn('[locations.updateLocation] HTTP failed, fallback to mock', {
-      isNetworkError: httpErr.isNetworkError,
-      statusCode: httpErr.statusCode,
-    })
-    // 显式构造 mock 响应(若拦截器未装 + 5xx 双重降级,此处兜底)
-    return Promise.resolve({
-      code: 0,
-      message: 'success (mock fallback)',
-      data: { success: true },
-    })
   })
+  // 注:v0.5.0 起删除 .catch((httpErr) => { mock fallback }) 段
+  // HTTP 失败由 uni.request 回调内 mapFail / mapSuccess 内部 reject ApiError,
+  // Promise 链无后续处理,调用方 page / store 需 best-effort 处理(isNetworkError 不静默)。
 }

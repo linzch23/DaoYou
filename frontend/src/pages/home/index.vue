@@ -75,17 +75,28 @@
 
         <!-- 正常态:Section 1 + Section 2 并存 + Empty 兜底(per spec §3.7.2) -->
         <template v-else>
-          <!-- Section 1:今日行程(per spec §3.7 + §1 + AC-02/AC-03) -->
+          <!-- Section 1:今日行程(per spec §3.7 + §1 + AC-02/AC-03 + 2026-06-24 Fix A) -->
+          <!-- v0.2.1 修订:Section 1 永远保留,有 active trip 即渲染;内部按 hasTodayItems 派生:
+               - 有 today_items → 渲染 <HomeDiary>
+               - 无 today_items → 渲染 <EmptyTodayState> 占位
+               (per user 报「Section 1 为假」+「再次进入时消失」) -->
           <view
             v-if="sectionVisibility.showDiary"
             class="section section-diary"
           >
             <HomeDiary
+              v-if="hasTodayItems"
               :today="store.today"
               :favorites="favoriteIds"
               @select-spot="onSelectSpot"
               @view-full-trip="onViewFullTrip"
               @reminder-tap="onReminderTap"
+            />
+            <EmptyTodayState
+              v-else
+              :title="strings.emptyTodayTitle"
+              :subtitle="strings.emptyTodaySubtitle"
+              :emoji="strings.emptyTodayEmoji"
             />
           </view>
 
@@ -100,6 +111,8 @@
             <TripList
               :trips="sortedTrips"
               @select-trip="onSelectTrip"
+              @chat="onChatTrip"
+              @delete="onDeleteTrip"
             />
           </view>
 
@@ -145,6 +158,17 @@
       @guide="onGuide"
       @toggle-favorite="onToggleFavorite"
     />
+
+    <!-- 删除确认弹窗(2026-06-24 UserRound2-001 §3 Bug C 新增) -->
+    <DeleteConfirmDialog
+      :visible="deleteConfirmVisible"
+      :title="deleteConfirmTitle"
+      :message="deleteConfirmMessage"
+      :btn-confirm-label="deleteConfirmConfirm"
+      :btn-cancel-label="deleteConfirmCancel"
+      @confirm="onDeleteConfirm"
+      @cancel="onDeleteCancel"
+    />
   </view>
 </template>
 
@@ -163,6 +187,9 @@ import EmptyState from '../../components/EmptyState.vue'
 import SpotDetailSheet from '../../components/SpotDetailSheet.vue'
 import ErrorBanner from '../../components/ErrorBanner.vue'
 import UnreadBadge from '../../components/UnreadBadge.vue'
+import EmptyTodayState from './components/EmptyTodayState.vue'
+// 2026-06-24 UserRound2-001 §3 Bug C 新增:删除确认弹窗(私有子组件,沿 TrashPage PermanentDeleteConfirmDialog 同形态)
+import DeleteConfirmDialog from './components/DeleteConfirmDialog.vue'
 
 const strings = HomeStrings
 
@@ -180,6 +207,24 @@ const favoriteIds = ref([])
 const viewMode = ref('loading')
 /** @type {import('vue').Ref<boolean>} */
 const hasFetchedOnce = ref(false)
+/**
+ * 2026-06-24 UserRound2-001 §3 Bug C 新增:删除确认弹窗可见性
+ * (per AGENTS.md §0 modal 用 v-if 不 v-show,避免占位节点)
+ * @type {import('vue').Ref<boolean>}
+ */
+const deleteConfirmVisible = ref(false)
+/**
+ * 2026-06-24 UserRound2-001 §3 Bug C 新增:待删除 trip 引用
+ * (modal 显示期间持有 trip 引用,confirm 时直接用)
+ * @type {import('vue').Ref<import('../../api/types').TripSummary | null>}
+ */
+const pendingDeleteTrip = ref(null)
+
+// 2026-06-24 UserRound2-001 §3 Bug C 新增:删除弹窗文案(走 HomeStrings 集中管理)
+const deleteConfirmTitle = computed(() => strings.deleteConfirmTitle)
+const deleteConfirmMessage = computed(() => strings.deleteConfirmMessage)
+const deleteConfirmConfirm = computed(() => strings.deleteConfirmConfirm)
+const deleteConfirmCancel = computed(() => strings.deleteConfirmCancel)
 
 // ──────────── Computed ────────────
 
@@ -235,6 +280,18 @@ const sortedTrips = computed(() => {
 const addTripAria = computed(() => strings.addTripAria)
 
 /**
+ * 2026-06-24 Fix A 新增:Section 1 永远保留判定
+ * 派生:`store.today !== null`(即有 active trip),Section 1 永远渲染
+ * 内部:`hasTodayItems` 决定渲染 <HomeDiary> vs <EmptyTodayState>
+ * @returns {boolean}
+ */
+const hasTodayItems = computed(() =>
+  !!store.today
+  && Array.isArray(store.today.today_items)
+  && store.today.today_items.length > 0
+)
+
+/**
  * v0.2.0 新增:sectionVisibility 计算属性(spec §3.7.2)
  * 实际 v-if 渲染的决定源,取代 v0.1.0 viewMode 互斥链
  * 4 字段(showError/showDiary/showTrips/showEmpty)互斥决策:
@@ -242,6 +299,9 @@ const addTripAria = computed(() => strings.addTripAria)
  *   - loading 全空白:未首次拉完 + isFetching
  *   - 双空 → empty 兜底
  *   - 任一非空 → 对应 section 渲染(可同时)
+ *
+ * v0.2.1(2026-06-24)修订:showDiary 改用 hasActiveOrUpcomingTrip(有 active trip 即显示),
+ * 内部 hasTodayItems 决定 HomeDiary vs EmptyTodayState,避免「今日无行程时整段消失」。
  */
 const sectionVisibility = computed(() => {
   const today = store.today
@@ -260,8 +320,9 @@ const sectionVisibility = computed(() => {
     return { showError: false, showDiary: false, showTrips: false, showEmpty: false }
   }
 
-  // 正常态:两段独立决定(per v0.2.0 修订核心)
-  const showDiary = today !== null && today.today_items.length > 0
+  // 正常态:v0.2.1 修订 — showDiary = today !== null(有 active trip 即显示),
+  // 内部 hasTodayItems 决定 <HomeDiary> vs <EmptyTodayState> 占位
+  const showDiary = today !== null
   const showTrips = trips.length > 0
   const showEmpty = !showDiary && !showTrips
 
@@ -410,6 +471,68 @@ function onSelectTrip(trip) {
       logger.warn('[HomePage] navigateTo(TripDetail) fail', err)
       uni.showToast({ title: strings.toastPageJumpFail, icon: 'none', duration: 1500 })
     })
+}
+
+/**
+ * TripCard.chat emit → ChatPage(2026-06-24 Fix B)
+ * 跳 AppRoutes.Chat 携带 tripId query(每行程独立 chat session,per task「每行程有独立 chatSession」)
+ * chat page 内部从 homeStore.currentTripId 派生(沿 Q1 决策,chatStore 自动从 homeStore 拿)
+ */
+function onChatTrip(trip) {
+  if (!trip) return
+  logger.info('[HomePage] chat tap', { tripId: trip.id })
+  uni.navigateTo({ url: `${AppRoutes.Chat}?tripId=${trip.id}` })
+    .catch((err) => {
+      logger.warn('[HomePage] navigateTo(Chat) fail', err)
+      uni.showToast({ title: strings.toastPageJumpFail, icon: 'none', duration: 1500 })
+    })
+}
+
+/**
+ * TripCard.delete emit → DeleteConfirmDialog(2026-06-24 UserRound2-001 §3 Bug C)
+ * 门控:active trip 不允许在首页直接删,引导走回收站(per HomeStrings.deleteActiveTripToast);
+ * 其他状态(draft / finished)→ 弹 DeleteConfirmDialog 二次确认。
+ */
+function onDeleteTrip(trip) {
+  if (!trip) return
+  if (trip.status === 'active') {
+    logger.info('[HomePage] delete trip blocked (active)', { tripId: trip.id })
+    uni.showToast({ title: strings.deleteActiveTripToast, icon: 'none', duration: 1500 })
+    return
+  }
+  logger.info('[HomePage] delete trip tap', { tripId: trip.id, status: trip.status })
+  pendingDeleteTrip.value = trip
+  deleteConfirmVisible.value = true
+}
+
+/**
+ * DeleteConfirmDialog:确认删除 → 调 homeStore.deleteTrip + refreshAll
+ * store action 只做"删"一件事,page 层显式调 refreshAll 重拉(per AGENTS.md §5 store 纪律)
+ */
+async function onDeleteConfirm() {
+  const trip = pendingDeleteTrip.value
+  if (!trip) return
+  deleteConfirmVisible.value = false
+  pendingDeleteTrip.value = null
+  logger.info('[HomePage] delete trip start', { tripId: trip.id })
+  try {
+    await store.deleteTrip(trip.id)
+    await store.refreshAll()
+    uni.showToast({ title: strings.deleteSuccessToast, icon: 'success', duration: 1500 })
+    logger.info('[HomePage] delete trip ok', { tripId: trip.id })
+  } catch (err) {
+    logger.error('[HomePage] delete trip failed', err)
+    uni.showToast({ title: strings.deleteFailToast, icon: 'none', duration: 1500 })
+  }
+}
+
+/**
+ * DeleteConfirmDialog:取消/蒙层点击
+ */
+function onDeleteCancel() {
+  deleteConfirmVisible.value = false
+  pendingDeleteTrip.value = null
+  logger.debug('[HomePage] delete trip cancel')
 }
 
 /**

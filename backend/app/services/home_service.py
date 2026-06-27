@@ -57,6 +57,9 @@ def get_today_home(
     return {
         "trip_id": trip.id,
         "trip_title": trip.title,
+        # v0.6.0(per user-round4-2026-06-26 19:46):前端 HomeDiary 需要按 today - start_date
+        # 算 day_index,后端补 trip_start_date 字段(原本只返回 date,前端无法派生)
+        "trip_start_date": trip.start_date.isoformat(),
         "date": query_date.isoformat(),
         "today_items": [serialize_trip_item(item) for item in items],
         "unread_reminders": int(unread_reminders or 0),

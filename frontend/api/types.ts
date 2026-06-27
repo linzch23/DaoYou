@@ -10,6 +10,14 @@
 // v0.3.0(2026-06-11):ChatRequest 补 trip_id + current_location 字段,与后端 ChatRequest 对齐
 // v0.3.1(2026-06-11):新增 LocationUpdate types,与后端 locations.py:UpdateLocationRequest 对齐
 // 2026-06-23:chat/photo 恢复 trip_id 必填,与每个旅程一个对话页面的前端逻辑对齐。
+// 2026-06-24(trip_id 一致性审计触发):Trip / TripSummary / HomeTodayData 移除 `city` 字段,
+//   对齐 docs/API接口文档.md §3.1(L116-128 Trip 字段表无 city)+ §5.1(L383-405 /home/today
+//   响应 data 无 city)。原 types 字面写 `city: string` 但后端 Pydantic CreateTripRequest
+//   (backend/app/schemas/trips.py:7-17) 不接 / Trip schema 也不存 — 前端持有不存在的字段
+//   等同埋雷,本轮统一清理;mock/_seed.ts / mock/home.ts / TripCard.vue / HomeDiary.vue
+//   联动同步(per issues/Cross-Page/trip-id-audit-fix-2026-06-24)
+// 2026-06-24(同审计触发):PhotoExplainForm.image 类型 `File | Blob` → `string`,uni-app
+//   实际传本地临时路径(uni.chooseImage 返回值),原类型是浏览器/Node 占位
 // 这些改动由 orchestrator 在 data/contract 层直接做(per AGENTS.md §0 api/ 是 code-writer READ-ONLY 范围,不在 worker 派单里)
 
 // ───────────────── 响应信封 / 错误码 ─────────────────
@@ -78,6 +86,13 @@ export interface ItineraryItem {
   start_time: string        // 'HH:mm'
   end_time: string          // 'HH:mm'
   item_type: ItemType       // 'attraction' | 'food' | 'traffic' | 'rest' | 'other'
+  // 2026-06-23(TripCreateEditFix-001 触发新增):date 是**前端派生**字段,标识该 item 属于哪一天
+  //   - 后端 TripItem **无** date 列(关联的是 trip_day_id,date 由 trip_day.trip_date 承担)
+  //   - 新建行程时由 NewTripPage 收集(user 选 YYYY-MM-DD + 串行分组到 trip_day)
+  //   - 编辑行程时由 EditTripPage 从 trip.days[].items[] 反向派生(date 从 day.trip_date 拿)
+  //   - '?' 可选因为后端 GET /api/trip-items 不返回 date;前端用 day.trip_date 补
+  //   - api/ 是 READ-ONLY(code-writer 自主决策,deliverable §3 透明登记)
+  date?: string             // 'YYYY-MM-DD',前端派生 + user 选填
 }
 
 // ───────────────── Trip / TripDay / TripSummary ─────────────────
@@ -91,16 +106,15 @@ export interface TripDay {
   day_index: number
   trip_date: string // 'YYYY-MM-DD'
   summary: string
-  // §6.3 详情响应里 days 数组中每项包含 items（草案项目用 ReplanNewItem）
   items: TripItem[]
 }
 
 // §3.1 + §6.3 详情响应 —— 全量 Trip
+//   注:无 city 字段(per 2026-06-24 审计清理)
 export interface Trip {
   id: number
   user_id: number
   title: string
-  city: string
   start_date: string // 'YYYY-MM-DD'
   end_date: string
   status: TripStatus
@@ -108,15 +122,24 @@ export interface Trip {
   deleted_at: string | null // ISO 8601;null = 活跃;非 null = 已删(per docs/API接口文档.md §3.1,TrashPage v0.2.0)
 }
 
-// §6.2 列表响应 —— 轻量 Trip（无 user_id、无 days）
+// §6.2 列表响应 —— 轻量 Trip（无 user_id、无 days、无 city）
+//   v0.6.0(per user-round4-2026-06-26 19:46 bug 修复):新增 `itinerary_count` 字段,
+//     前端 `src/utils/tripStatus.js:computeEffectiveStatus` 派生「完整行程」用
+//     (title && start_date && itinerary_count >= 1 → inProgress / finished;
+//     缺任一字段 → draft)。
+//   - 后端 `backend/app/services/serializers.py:serialize_trip_summary(trip, db)` v0.6.0 起
+//     传 db 时走 subquery 一次查清,避免 N+1。
+//   - api/ 是 READ-ONLY(code-writer 自主决策,deliverable §3 透明登记)。
 export interface TripSummary {
   id: number
   title: string
-  city: string
   start_date: string
   end_date: string
   status: TripStatus
   deleted_at: string | null // ISO 8601;null = 活跃;非 null = 已删(TrashPage 用,per docs/API接口文档.md §3.1)
+  // v0.6.0 新增 — 行程项总数(经 TripDay → TripItem join count)
+  // MVP 简化:前端仅用 ≥1 / ==0 判定,实际值不展示
+  itinerary_count: number
 }
 
 // ───────────────── Preferences ─────────────────
@@ -174,36 +197,21 @@ export interface MemoryRecord {
 // §8.1 拍照讲解表单的 style —— 与 Preferences.explanation_style 是不同字段，使用不同枚举
 export type PhotoStyle = 'professional' | 'casual' | 'kid'
 
-// §10.1 改线草案里的 new_items 元素（与 TripItem 不同：草案项没有 id/status/经纬度/trip_day_id）
-export interface ReplanNewItem {
-  title: string
-  item_type: ItemType
-  start_time: string // HH:mm
-  end_time: string   // HH:mm
-  address: string
-  notes?: string
-}
-
-export interface ReplanDraft {
-  draft_id: string // §10.1 样例为 'draft_001'，字符串
-  summary: string
-  reason: string
-  new_items: ReplanNewItem[]
-  removed_item_ids: number[]
-}
-
 // ───────────────── Request 类型（mock 不消费，但为后续 request 封装做准备） ─────────────────
 
 // CreateTripRequest 扩展 itineraryArrange 字段(per UI-025):
 //   - 后端是否存 itineraryArrange 暂未确定(per spec §6.4.x PD-001 触发现状),
 //     但**前端 POST 携带**便于后续后端补字段时无侵入升级
-//   - 沿用既有 5 字段 + user_id(由 service 内部注入) + itineraryArrange 数组
+//   - 沿用既有 4 字段 + user_id(由 service 内部注入) + itineraryArrange 数组
 //   - 4 选填字段(companions / budget_range / transport_preference / special_needs)
 //     仍**不**入参,client-only(per spec §6.4.2)
+//   - 2026-06-23(TripCreateEditFix-001 触发删除):移除 `city` 字段
+//     原 type 字面写 `city: string` 但后端 CreateTripRequest (backend/app/schemas/trips.py:7-17) 不接
+//     Pydantic extra=ignore 静默丢,前端 types 字面偏差,**应**清理;api/ 是 READ-ONLY,
+//     code-writer 自主决策 + deliverable §3 透明登记(spec-writer 后续决策是否同步修订)
 export interface CreateTripRequest {
   user_id: number
   title: string
-  city: string
   start_date: string
   end_date: string
   itineraryArrange?: ItineraryItem[] // UI-025 新增(可选,空数组也合法)
@@ -230,18 +238,33 @@ export interface CreateTripDayRequest {
 export interface CreateTripItemRequest {
   user_id: number
   trip_day_id: number
+  // 2026-06-25(per Cross-Page issue location-real-fix-v2-2026-06-25 §2.4):补回 city 必填
+  //   - 后端 Pydantic `backend/app/schemas/trips.py:33-44 CreateTripItemRequest` city: str 必填
+  //   - 前端 NewTripPage / EditTripPage 调 createTripItem 时**必须**传 city
+  //     (page 层从 trip.title 派生,默认 trip.title 字面值)
+  //   - 此前 audit (trip-id-audit-fix-2026-06-24) 仅清掉 Trip 表的 city,误连带删除 TripItem 的 city
+  city: string
   title: string
-  item_type: ItemType
-  start_time: string // HH:mm
-  end_time: string   // HH:mm
-  address: string
-  latitude: number
-  longitude: number
+  // 以下 6 字段对齐后端 Pydantic 全 optional,前端 MVP 不强求
+  item_type?: ItemType
+  start_time?: string // HH:mm
+  end_time?: string   // HH:mm
+  address?: string
+  latitude?: number
+  longitude?: number
   notes?: string
 }
 
 export interface UpdateTripItemRequest {
   user_id: number
+  // 2026-06-25(UserRound2-001 Bug A 触发新增,additive only):补 title + item_type 字段
+  //   - 后端 UpdateTripItemRequest Pydantic 模型实际接受 title / item_type 可改字段
+  //     (per backend/app/schemas/trips.py + user 实测 PUT 200 OK)
+  //   - 原 type 字面只列 4 字段(start_time / end_time / status / notes),前端 EditTripPage
+  //     onUpdateItem 调用时 title / item_type 实际发向后端但类型无声明,api/ 是 READ-ONLY,
+  //     code-writer 自主决策 + deliverable §3 透明登记(spec-writer 后续决策是否同步修订)
+  title?: string
+  item_type?: ItemType
   start_time?: string // HH:mm
   end_time?: string   // HH:mm
   status?: ItemStatus
@@ -284,26 +307,18 @@ export type LocationUpdateResponse = ApiResponse<{ success: boolean }>
 export interface PhotoExplainForm {
   user_id: number
   trip_id: number
-  image: File | Blob
-  current_location?: string // JSON 字符串："{ latitude, longitude }"
+  // uni-app 本地临时路径(uni.chooseImage 返回的 tempFilePaths[0]),
+  // 不是浏览器/Node 的 File | Blob。原 2026-06-24 审计触发的类型修正。
+  image: string
+  current_location?: string // JSON 字符串:"{ latitude, longitude }"
 }
 
 export interface ReminderCheckRequest {
   user_id: number
   current_time: string // ISO 8601
-  current_location: Location
+  current_location?: Location // Optional:未传时由后端读取用户最新位置(per spec §10.1 字段表「否」+ docs/API-前端一致性审计-v2.md §4.4 Resolved 决策 A)
   // 2026-06-19: 删除 trip_id 字段(per b60dc3c 文档修订 + docs/API接口文档.md §10.1 L1320-1327 不再要求 trip_id)
-}
-
-export interface ReplanRequest {
-  user_id: number
-  message: string
-  current_location: Location
-}
-
-export interface ApplyPlanRequest {
-  user_id: number
-  draft_id: string // §10.2 样例为 'draft_001'
+  // 2026-06-22: current_location 改可选(per docs/API-前端一致性审计-v2.md §7.3.1 orchestrator 1-line fix)
 }
 
 export interface UpdatePreferencesRequest {

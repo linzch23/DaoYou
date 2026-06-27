@@ -19,7 +19,6 @@ export const SEED_USER_ID = 1
 
 // 主行程：trip_id = 1
 const TRIP_ID = 1
-const CITY = '大连'
 const START = '2026-07-01'
 const END = '2026-07-03'
 
@@ -173,7 +172,6 @@ export const seedTrip: Trip = {
   id: TRIP_ID,
   user_id: SEED_USER_ID,
   title: '大连三日游',
-  city: CITY,
   start_date: START,
   end_date: END,
   status: 'active',
@@ -186,7 +184,6 @@ const seedTrip2: Trip = {
   id: 2,
   user_id: SEED_USER_ID,
   title: '青岛两日周末',
-  city: '青岛',
   start_date: '2026-08-15',
   end_date: '2026-08-16',
   status: 'draft',
@@ -208,7 +205,6 @@ const seedTrip3: Trip = {
   id: 3,
   user_id: SEED_USER_ID,
   title: '西安四日文化行',
-  city: '西安',
   start_date: '2026-05-01',
   end_date: '2026-05-04',
   status: 'finished',
@@ -223,7 +219,6 @@ const seedTrip4: Trip = {
   id: 4,
   user_id: SEED_USER_ID,
   title: '西藏自驾游',
-  city: '拉萨',
   start_date: '2026-06-01',
   end_date: '2026-06-03',
   status: 'finished',
@@ -234,7 +229,6 @@ const seedTrip5: Trip = {
   id: 5,
   user_id: SEED_USER_ID,
   title: '上海周末',
-  city: '上海',
   start_date: '2026-04-15',
   end_date: '2026-04-16',
   status: 'finished',
@@ -245,14 +239,18 @@ const seedTrip5: Trip = {
 export const seedTrips: Trip[] = [seedTrip, seedTrip2, seedTrip3, seedTrip4, seedTrip5]
 
 // §6.2 列表响应用 —— 投影掉 user_id 与 days(保留 deleted_at,per spec §3.1 + §6.4.4)
+//   注:不投影 city(per 2026-06-24 审计清理,Trip/TripSummary 已无 city 字段)
+//   v0.6.1(per user-round4-2026-06-26 19:46 bug 修复):新增 itinerary_count 字段,
+//     与后端 `serialize_trip_summary(trip, db)` v0.6.0 1:1 对齐。
+//     mock 派生算法 = sum(days[].items[].length),与后端 subquery 一致。
 export const seedTripSummaries: TripSummary[] = seedTrips.map((t) => ({
   id: t.id,
   title: t.title,
-  city: t.city,
   start_date: t.start_date,
   end_date: t.end_date,
   status: t.status,
   deleted_at: t.deleted_at ?? null,
+  itinerary_count: t.days.reduce((sum, day) => sum + day.items.length, 0),
 }))
 
 // ──────────── 今日行程（day 1 of trip 1） ────────────
@@ -345,6 +343,4 @@ export const seedMemories: MemoryRecord[] = [
     confidence: 0.78,
   },
 ]
-
 // 暴露所有 items 供其他 mock 复用
-export const seedAllItems: TripItem[] = allItems

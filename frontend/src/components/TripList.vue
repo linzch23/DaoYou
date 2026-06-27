@@ -8,6 +8,8 @@
   
   Emits
     selectTrip : TripSummary   用户点某条 TripCard,父组件跳详情
+    chat       : TripSummary   用户点 TripCard chat 按钮 → ChatPage(2026-06-24 加,转发)
+    delete     : TripSummary   用户点 TripCard delete 按钮 → DeleteConfirmDialog(2026-06-24 加,转发)
 -->
 <template>
   <view class="trip-list">
@@ -19,6 +21,8 @@
       <TripCard
         :trip="trip"
         @tap="onSelect(trip)"
+        @chat="emit('chat', trip)"
+        @delete="emit('delete', trip)"
       />
     </view>
   </view>
@@ -35,7 +39,7 @@ defineProps({
   },
 })
 
-const emit = defineEmits(['selectTrip'])
+const emit = defineEmits(['selectTrip', 'chat', 'delete'])
 
 /**
  * @param {import('../api/types').TripSummary} trip

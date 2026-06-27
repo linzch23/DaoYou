@@ -149,7 +149,7 @@
                   v-for="item in sortedItems(day.items)"
                   :key="item.id"
                   :spot="item"
-                  :state="mapItemState(item, currentSubStatus, today)"
+                  :state="mapItemState(item, currentSubStatus, today, day.trip_date)"
                   :is-favorite="false"
                   @tap="onSpotTap(item)"
                 />
@@ -486,20 +486,37 @@ function decideSubStatus(t, ref) {
 /**
  * 单 item 5 态映射(spec §5.4 mapItemState,沿用 HomePage 判定 + 适配 5 子态)
  * finished trip 强制覆盖为 expired(灰显,见 §5.3.L)
+ *
+ * 2026-06-24 Fix C 修订:新增 dayDate 参数,先按 dayDate vs today 距离粗判,
+ * 避免 trip_date=未来日期 的 item 被错判为 expired(原逻辑把 start_time 解释为
+ * 「今天 HH:mm」,与实际 dayDate 无关,导致未来日期 item 误判)。
+ *
  * @param {import('../../api/types').TripItem} item
  * @param {'inProgress' | 'upcoming' | 'expired' | 'finished' | 'draft'} sub
  * @param {Date} ref
+ * @param {string} [dayDate] item 所属 day 的 trip_date(YYYY-MM-DD),可选
  * @returns {'done' | 'active' | 'upcoming' | 'expired' | 'changed'}
  */
-function mapItemState(item, sub, ref) {
+function mapItemState(item, sub, ref, dayDate) {
   if (sub === 'finished') return 'expired'
   if (item.status === 'done') return 'done'
   if (item.status === 'changed') return 'changed'
-  // planned / skipped 按时间判定
+  if (item.status === 'skipped') return 'expired'
+
+  // 2026-06-24 Fix C 新增:先按 dayDate vs today 距离粗判
+  if (typeof dayDate === 'string' && dayDate) {
+    const dayStart = parseDate(dayDate)
+    const dayEnd = dayStart + 86399999 // 当日 23:59:59.999
+    const now = ref.getTime()
+    if (now < dayStart) return 'upcoming' // 整日都未来
+    if (now > dayEnd) return 'expired' // 整日都过去
+    // 当天 → 进入时分判定
+  }
+
+  // planned + 当天 → 按时分判定(原逻辑保留)
   const start = parseTimeOfDay(item.start_time, ref)
   const end = parseTimeOfDay(item.end_time, ref)
   const now = ref.getTime()
-  if (item.status === 'skipped') return 'expired'
   if (now < start) return 'upcoming'
   if (now > end) return 'expired'
   return 'active'

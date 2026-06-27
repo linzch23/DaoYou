@@ -71,6 +71,14 @@ import {
   updateTripMock,
   deleteTripMock,
 } from '../../api/mock/trips.ts'
+import { createTripDayMock } from '../../api/mock/trip-days.ts'
+import {
+  // v0.5.0(2026-06-25 per Cross-Page issue location-real-fix-v2-2026-06-25 §2.2):
+  // - 删除 `createTripItemMock` / `updateTripItemMock` import(本服务不再使用)
+  // - 保留 `deleteTripItemMock` import(deleteTripItem 函数仍走 fallback,
+  //   per issue §2.2 删除清单**仅**列 createTripItem + updateTripItem 2 个函数)
+  deleteTripItemMock,
+} from '../../api/mock/trip-items.ts'
 import {
   getTrip as dbGetTrip,
   setTrip as dbSetTrip,
@@ -138,12 +146,20 @@ function isFallbackable(err) {
 /**
  * POST /api/trips —— 创建行程
  *
+ * v0.4.0(2026-06-24 per TripCreateEditFix-001):
+ *   - 移除 `city` 字段传递:后端 CreateTripRequest extra=ignore 静默丢,徒增 noise。
+ *     后端 `backend/app/models/trip.py:10-21` Trip 模型也无 city 列,
+ *     city 仅在 trip_items.city 上(per issues/Arch/HomePage-001.md 类型审计)。
+ *   - title 派生:`fd.title || 'Trip ${start} - ${end} ${days}天游'`(纯日期兜底,
+ *     不再依赖 city 字段,per spec §6.4.4 v0.4.0 改造)。
+ *   - POST body 仅 `{user_id, title, start_date, end_date, [itineraryArrange]}`。
+ *
  * v0.3.0(per integrate-r1 task):
- *   - 1) HTTP `POST /api/trips` body `{user_id, title, city, start_date, end_date, [itineraryArrange]}` 优先
+ *   - 1) HTTP `POST /api/trips` body `{user_id, title, start_date, end_date, [itineraryArrange]}` 优先
  *   - 2) HTTP 失败(isNetworkError / 5xx)→ 静默降级到 `createTripMock`(返回固定 trip_id=100)
  *
- * 入参只接受后端支持的 5 字段(`title` + `city` + `start_date` + `end_date` +
- * UI-025 `itineraryArrange`,`user_id` 由本服务内部注入),4 选填 client-only 字段
+ * 入参只接受后端支持的 4 字段(`title` + `start_date` + `end_date` +
+ * UI-025 `itineraryArrange`,`user_id` 由本服务内部注入);4 选填 client-only 字段
  * (spec §6.4.2)**不**进入 Request 体,本函数**不**感知。
  *
  * UI-025:`itineraryArrange: ItineraryItem[]` 是**可选**字段(spec §6.4.x 暂未明确
@@ -151,8 +167,7 @@ function isFallbackable(err) {
  * 后端 Pydantic 默认 `extra=ignore`,此字段会被静默忽略,但携带无害。
  *
  * @param {object} req
- * @param {string} req.title  派生自 city + 日期(spec §6.4.4)
- * @param {string} req.city
+ * @param {string} req.title  派生自 user input title 或日期兜底(spec §6.4.4)
  * @param {string} req.start_date  'YYYY-MM-DD'
  * @param {string} req.end_date    'YYYY-MM-DD'
  * @param {import('../api/types').ItineraryItem[]} [req.itineraryArrange]  UI-025 新增,可选
@@ -168,7 +183,6 @@ export function createTrip(req) {
       data: {
         user_id: MVP_USER_ID,
         title: req.title,
-        city: req.city,
         start_date: req.start_date,
         end_date: req.end_date,
         // UI-025 行程安排字段:空数组 fallback,后端 Pydantic 静默 ignore
@@ -184,6 +198,182 @@ export function createTrip(req) {
         statusCode: httpErr.statusCode,
       })
       return Promise.resolve(createTripMock)
+    }
+    return Promise.reject(httpErr)
+  })
+}
+
+/**
+ * POST /api/trips/{tripId}/days —— 创建行程某一天
+ *
+ * v0.4.0(2026-06-24 per TripCreateEditFix-001):
+ *   - 1) HTTP `POST /api/trips/{tripId}/days` body `{user_id, day_index, trip_date, [summary]}` 优先
+ *   - 2) HTTP 失败(isNetworkError / 5xx)→ 静默降级到 `createTripDayMock`(返回固定 trip_day_id=200)
+ *
+ * 沿 createTrip 现有模式(`new Promise((resolve, reject) => { uni.request({...}) })` +
+ * `.catch(isFallbackable → mock)`)。
+ *
+ * @param {number} tripId
+ * @param {object} req
+ * @param {number} req.day_index  从 1 开始(后端约定,见 backend/app/schemas/trips.py:CreateTripDayRequest)
+ * @param {string} req.trip_date  'YYYY-MM-DD'
+ * @param {string} [req.summary]  可选,前端 MVP 默认传 ''
+ * @returns {Promise<import('../api/types').ApiResponse<{ trip_day_id: number }>>}
+ * @throws  {ApiError}
+ */
+export function createTripDay(tripId, req) {
+  return new Promise((resolve, reject) => {
+    uni.request({
+      url: `${BASE_URL}/api/trips/${tripId}/days`,
+      method: 'POST',
+      header: { 'content-type': 'application/json' },
+      data: {
+        user_id: MVP_USER_ID,
+        day_index: req.day_index,
+        trip_date: req.trip_date,
+        summary: req.summary || '',
+      },
+      success: (res) => mapSuccess(res, resolve, reject),
+      fail: (err) => mapFail(err, reject),
+    })
+  }).catch((httpErr) => {
+    if (isFallbackable(httpErr)) {
+      logger.warn('[trips.createTripDay] HTTP failed, fallback to mock', {
+        tripId,
+        isNetworkError: httpErr.isNetworkError,
+        statusCode: httpErr.statusCode,
+      })
+      return Promise.resolve(createTripDayMock)
+    }
+    return Promise.reject(httpErr)
+  })
+}
+
+/**
+ * POST /api/trip-items —— 创建行程项
+ *
+ * v0.5.0(2026-06-25 per Cross-Page issue location-real-fix-v2-2026-06-25 §2.2):
+ *   - 1) HTTP `POST /api/trip-items` body `{user_id, trip_day_id, city, title, item_type,
+ *      [start_time], [end_time], [address], [latitude], [longitude], [notes]}` 优先
+ *   - 2) **失败不 mock fallback** → 直接抛 ApiError(per user 2026-06-25 16:12 硬要求)
+ *   - city 必填(per backend/app/models/trip.py:34-51 + api/types.ts:228 CreateTripItemRequest),
+ *     page 层 NewTripPage.submitTripRequest + EditTripPage.onAddItem 调本函数时
+ *     city 从 trip.title 派生(默认 trip.title 字面值,后端 Pydantic min_length=1 接受任意非空)
+ *
+ * 沿 createTrip 现有模式(`new Promise((resolve, reject) => { uni.request({...}) })`)。
+ *
+ * @param {object} req
+ * @param {number} req.trip_day_id
+ * @param {string} req.city       必填,page 层从 trip.title 派生(不允许空字符串)
+ * @param {string} req.title
+ * @param {import('../api/types').ItemType} [req.item_type]
+ * @param {string} [req.start_time]  'HH:mm'
+ * @param {string} [req.end_time]    'HH:mm'
+ * @returns {Promise<import('../api/types').ApiResponse<{ item_id: number }>>}
+ * @throws  {ApiError}
+ */
+export function createTripItem(req) {
+  return new Promise((resolve, reject) => {
+    uni.request({
+      url: `${BASE_URL}/api/trip-items`,
+      method: 'POST',
+      header: { 'content-type': 'application/json' },
+      data: {
+        user_id: MVP_USER_ID,
+        trip_day_id: req.trip_day_id,
+        // city 必填(per v0.5.0 修复):原 `req.city || ''` 兜底已删除
+        // 后端 Pydantic CreateTripItemRequest.city: str 必填,前端发空串触发 422
+        city: req.city,
+        title: req.title,
+        ...(req.item_type ? { item_type: req.item_type } : {}),
+        ...(req.start_time ? { start_time: req.start_time } : {}),
+        ...(req.end_time ? { end_time: req.end_time } : {}),
+        ...(req.address ? { address: req.address } : {}),
+        ...(typeof req.latitude === 'number' ? { latitude: req.latitude } : {}),
+        ...(typeof req.longitude === 'number' ? { longitude: req.longitude } : {}),
+        ...(req.notes ? { notes: req.notes } : {}),
+      },
+      success: (res) => mapSuccess(res, resolve, reject),
+      fail: (err) => mapFail(err, reject),
+    })
+  })
+  // 注:v0.5.0 起删除 .catch((httpErr) => { mock fallback }) 段
+  // HTTP 失败由 uni.request 回调内 mapFail / mapSuccess 内部 reject ApiError,
+  // Promise 链无后续处理,调用方 page / store 需 best-effort 处理。
+}
+
+/**
+ * PUT /api/trip-items/{trip_item_id} —— 更新行程项
+ *
+ * v0.5.0(per Cross-Page issue location-real-fix-v2-2026-06-25 §2.2):
+ *   - 1) HTTP `PUT /api/trip-items/{tripItemId}` body `{user_id, [title], [item_type],
+ *      [start_time], [end_time], [city], [address], [latitude], [longitude], [notes]}` 优先
+ *   - 2) **失败不 mock fallback** → 直接抛 ApiError
+ *
+ * 与 createTripItem 不同:本函数不要求 title 必填(per UpdateTripItemRequest: 全字段 optional);
+ * 调用方(EditTripPage.onUpdateItem)按 PUT partial-update 语义仅发 changed 字段。
+ *
+ * 注:与 PUT /api/trips/{id} 不同,后端 Pydantic `UpdateTripItemRequest` 模型实际
+ * 接受 `title` / `item_type` 等可改字段(per backend/app/schemas/trips.py + user 实测 200 OK),
+ * 所以本函数可全字段透传,前端**不**做字段级过滤(沿 updateTrip 模式)。
+ *
+ * @param {number} tripItemId
+ * @param {object} req UpdateTripItemRequest 形状(`api/types.ts:UpdateTripItemRequest`):
+ *   { title?, item_type?, start_time?, end_time?, status?, notes?, city? }
+ * @returns {Promise<import('../api/types').ApiResponse<{ updated: true }>>}
+ * @throws  {ApiError}
+ */
+export function updateTripItem(tripItemId, req) {
+  return new Promise((resolve, reject) => {
+    uni.request({
+      url: `${BASE_URL}/api/trip-items/${tripItemId}`,
+      method: 'PUT',
+      header: { 'content-type': 'application/json' },
+      data: {
+        user_id: MVP_USER_ID,
+        ...req,
+      },
+      success: (res) => mapSuccess(res, resolve, reject),
+      fail: (err) => mapFail(err, reject),
+    })
+  })
+  // 注:v0.5.0 起删除 .catch((httpErr) => { mock fallback }) 段
+}
+
+/**
+ * DELETE /api/trip-items/{trip_item_id} —— 删除行程项
+ *
+ * v0.5.0(2026-06-25 per UserRound2-001 Bug A):
+ *   - 1) HTTP `DELETE /api/trip-items/{tripItemId}?user_id=1` 优先
+ *   - 2) HTTP 失败(isNetworkError / 5xx)→ 静默降级到 `deleteTripItemMock`
+ *      (返回固定 `{deleted: true}`)
+ *
+ * user_id 走 query string(后端 `delete_trip_item_endpoint(trip_item_id, user_id: int)` 必填),
+ * 与 `deleteTrip` 路径同模式(per trips.js:359-378 v0.3.0 实证)。
+ *
+ * 404(资源不存在 / 已被并发删除)在 store 层视为幂等成功;service 层透传,EditTripPage
+ * 走乐观更新 → 失败回滚路径,无 404 静默语义(per issue §1.3.2 onRemoveItem 决策)。
+ *
+ * @param {number} tripItemId
+ * @returns {Promise<import('../api/types').ApiResponse<{ deleted: true }>>}
+ * @throws  {ApiError}
+ */
+export function deleteTripItem(tripItemId) {
+  return new Promise((resolve, reject) => {
+    uni.request({
+      url: `${BASE_URL}/api/trip-items/${tripItemId}?user_id=${MVP_USER_ID}`,
+      method: 'DELETE',
+      success: (res) => mapSuccess(res, resolve, reject),
+      fail: (err) => mapFail(err, reject),
+    })
+  }).catch((httpErr) => {
+    if (isFallbackable(httpErr)) {
+      logger.warn('[trips.deleteTripItem] HTTP failed, fallback to mock', {
+        tripItemId,
+        isNetworkError: httpErr.isNetworkError,
+        statusCode: httpErr.statusCode,
+      })
+      return Promise.resolve(deleteTripItemMock)
     }
     return Promise.reject(httpErr)
   })

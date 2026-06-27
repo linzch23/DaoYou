@@ -29,7 +29,7 @@
     - services/preferences.ApiError(跨域复用,来自 services/photos.js re-export)
     - components/_ErrorBanner(trip 解析失败内联 + 追问失败内联错误隔离,per §3 备注 3)
     - components/SpotCard(?fromSpot 携带时只展示不响应点击,沿用 PhotoGuidePage §3.9 决策)
-    - pages/photo-guide/components/ClearChatConfirmDialog.vue(2 按钮清空弹窗,**反向 import**,**不**复制)
+    - pages/photo-guide/components/2 按钮清空确认 dialog(2026-06-24 Fix D 删除,沿用 chat page 移除决策)
 
   不复用 / 不复制(spec §3.9 + §10 R-4):
     - components/EmptyState / NextButton / TripCard / SpotTimeAxis / SpotDetailSheet(本页面无对应场景)
@@ -309,21 +309,8 @@
           </view>
 
           <!-- _ChatInputBar(sticky bottom)— 在 loaded/chatting 态底部 -->
+          <!-- 历史(2026-06-24 Fix D):清空按钮已移除,后端无对应端点 -->
           <view class="chat-input-bar-wrap">
-            <view
-              v-if="chatHistory.length > 0"
-              class="btn-clear-chat"
-              role="button"
-              :aria-label="PhotoGuideStrings.btnClearChat"
-              hover-class="btn-clear-chat-hover"
-              :hover-stay-time="50"
-              @click="onClearChatTap"
-            >
-              <text
-                class="btn-clear-chat-text"
-                aria-hidden="true"
-              >🗑</text>
-            </view>
             <view class="chat-input-field-wrap">
               <input
                 v-model="chatInputDraft"
@@ -397,16 +384,7 @@
       </view>
     </scroll-view>
 
-    <!-- 清空对话确认弹窗(2 按钮:取消 / 清空,清空红色 Danger) -->
-    <ClearChatConfirmDialog
-      :visible="clearDialogVisible"
-      :title="PhotoGuideStrings.clearDialogTitle"
-      :message="PhotoGuideStrings.clearDialogMessage"
-      :btn-confirm-label="PhotoGuideStrings.clearDialogConfirm"
-      :btn-cancel-label="PhotoGuideStrings.clearDialogCancel"
-      @confirm="onDialogConfirm"
-      @cancel="onDialogCancel"
-    />
+    <!-- 2026-06-24 Fix D 移除:清空确认 dialog 整段(沿用 chat page 移除决策) -->
   </view>
 </template>
 
@@ -426,7 +404,7 @@ import { useHomeStore } from '../../stores/homeStore.js'
 import { getGuideResult, ApiError } from '../../services/photos.js'
 import ErrorBanner from '../../components/ErrorBanner.vue'
 import SpotCard from '../../components/SpotCard.vue'
-import ClearChatConfirmDialog from '../photo-guide/components/ClearChatConfirmDialog.vue'
+// 2026-06-24 Fix D 移除:清空确认 dialog import + 整文件删除(沿用 chat page 移除决策)
 
 const strings = GuideResultStrings
 const styleOptions = PhotoGuideStyleOptions
@@ -506,8 +484,6 @@ const chatHistory = ref([])
 const loadError = ref(null)
 /** @type {import('vue').Ref<string | null>} 追问失败的友好提示(驱动 _ErrorBanner 内联,不切 viewMode) */
 const chatError = ref(null)
-/** @type {import('vue').Ref<boolean>} _ClearChatConfirmDialog 显示标记 */
-const clearDialogVisible = ref(false)
 /** @type {import('vue').Ref<boolean>} image 加载失败占位标记 */
 const imageLoadFailed = ref(false)
 /** @type {import('vue').Ref<string>} chat input 草稿(input v-model) */
@@ -698,7 +674,6 @@ async function onLoadPage(query) {
   chatHistory.value = []
   loadError.value = null
   chatError.value = null
-  clearDialogVisible.value = false
   imageLoadFailed.value = false
   chatInputDraft.value = ''
   if (mockChatTimerId.value !== null) {
@@ -824,30 +799,9 @@ function onRetryChat() {
 }
 
 /**
- * 「🗑」清空按钮 → 弹 _ClearChatConfirmDialog
+ * 2026-06-24 Fix D 移除:onClearChatTap / onDialogConfirm / onDialogCancel
+ * (清空对话纯 client-side,后端无对应端点;移除整个 modal 触发链)
  */
-function onClearChatTap() {
-  if (chatHistory.value.length === 0) return
-  clearDialogVisible.value = true
-}
-
-/**
- * _ClearChatConfirmDialog:确认清空
- * spec §5.2 Step 2 + §5.3.I
- */
-function onDialogConfirm() {
-  const prevLength = chatHistory.value.length
-  chatHistory.value = []
-  clearDialogVisible.value = false
-  logger.info('[GuideResultPage] chat cleared', { prevLength })
-}
-
-/**
- * _ClearChatConfirmDialog:取消 / 蒙层点击
- */
-function onDialogCancel() {
-  clearDialogVisible.value = false
-}
 
 /**
  * error 态「重试」→ 重新读缓存(per spec §5.3 + §9 AC-08)
@@ -907,7 +861,7 @@ onUnmounted(() => {
     clearTimeout(mockChatTimerId.value)
     mockChatTimerId.value = null
   }
-  clearDialogVisible.value = false
+  // 历史(2026-06-24 Fix D):清空 dialog 可见性已删
   logger.debug('[GuideResultPage] onUnmounted, viewMode=' + viewMode.value)
 })
 </script>
@@ -1553,32 +1507,7 @@ onUnmounted(() => {
   box-sizing: border-box;
 }
 
-.btn-clear-chat {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 88rpx;
-  height: 88rpx;
-  min-width: 88rpx;
-  min-height: 88rpx;
-  /* ≥ 44pt tap area */
-  border-radius: 9999px;
-  background: #F2EBE0;
-  /* surfaceWarm */
-  flex-shrink: 0;
-  box-sizing: border-box;
-  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
-}
-
-.btn-clear-chat-hover {
-  opacity: 0.8;
-  transform: scale(0.96);
-}
-
-.btn-clear-chat-text {
-  font-size: 32rpx;
-  line-height: 1;
-}
+/* 历史(2026-06-24 Fix D):清空按钮 CSS 同步清理,见 L312 audit trail */
 
 .chat-input-field-wrap {
   flex: 1;

@@ -9,13 +9,22 @@
 
   Emits
     update:modelValue  : (arr: ItineraryItem[]) => void   v-model 标准
+    add                : (item: ItineraryItem) => void    v0.5.0 per UserRound2-001 Bug A;
+                                                          NewTripPage 不消费,EditTripPage onAddItem 接住调 POST /api/trip-items
+    remove             : (id: number) => void             v0.5.0 同上;EditTripPage onRemoveItem 接住调 DELETE
+                                                          v0.5.1(per UserRound2-002 Bug C):emit 顺序固定为
+                                                          emit('remove', id) **先**,v-model splice **后** — 父级
+                                                          handler findIndex 时 arr 还在,避免 -1 early return
+    update             : (arr: ItineraryItem[]) => void   v0.5.0 拖动结束发;EditTripPage MVP 不调 API
+                                                          v0.5.1(per UserRound2-002 Bug D):也用于 onUpdateExistingItem
+                                                          (用户编辑现有 item 路径,MVP 简化不实现 UI,协议保留)
 
   跨端硬约束(per issues/UI/UI-025 §实现挑战):
     - 不用 HTML5 drag-and-drop(Android uni-app x UTS 不解析)
     - 自写 @touchstart + @touchmove + @touchend(跨 H5 + Android 兼容)
     - 不引 npm 依赖(沿 MVP 惯例)
 
-  功能(per issues/UI/UI-025 §修复方案):
+  功能(per issues/UI/UI-025 §修复方案 + UserRound2-002 Bug D 升级):
     - 横向 scroll-view 渲染 items(每项 280rpx 宽卡)
     - 每项卡:title + start_time~end_time + item_type emoji
     - 长按 200ms 进入"拖动模式"(该卡半透明 + scale 1.05 + 提示「拖动调整顺序」)
@@ -23,6 +32,11 @@
     - 松手 → emit('update:modelValue', newOrder)
     - 「+ 添加行程」按钮 → 弹 inline 展开表单(地点名/起止时间/item_type 5 选 1)
     - 每项右上角小 x → 删除(简单 toast 提示后立即删,MVP 简化)
+    - v0.5.1(per UserRound2-002 Bug D):自动按 date+start_time 升序 + 重叠检测
+      - sortItems(arr) 按 date 升序 → 同 date 按 start_time 升序
+      - findOverlap(arr, newItem) 重叠时段检测;[start1,end1) ∩ [start2,end2) ≠ ∅
+      - confirmAdd 路径:重叠 → Toast「与「{title}」时段重叠」+ 拒绝;否则 sort + emit
+      - onUpdateExistingItem 路径:同上,MVP 简化不实现 ✏️ UI 触发(协议保留)
 -->
 <template>
   <view class="itinerary-arrange-field">
@@ -61,7 +75,7 @@
             <text class="item-card-emoji-text">{{ getEmoji(item.item_type) }}</text>
           </view>
           <text class="item-card-title">{{ item.title || '未命名地点' }}</text>
-          <text class="item-card-time">{{ item.start_time || '--:--' }} ~ {{ item.end_time || '--:--' }}</text>
+          <text class="item-card-time">{{ formatItemDate(item.date) }} {{ item.start_time || '--:--' }} ~ {{ item.end_time || '--:--' }}</text>
           <text class="item-card-type">{{ getTypeLabel(item.item_type) }}</text>
 
           <!-- 删除按钮(右上角小 x) -->
@@ -110,14 +124,11 @@
       </view>
     </view>
 
-    <!-- 拖动提示浮层(only when dragging) -->
-    <view
-      v-if="isDragging"
-      class="drag-hint"
-      aria-hidden="true"
-    >
-      <text class="drag-hint-text">{{ strings.dragHint }}</text>
-    </view>
+    <!-- v0.6.0(2026-06-26 per user-round4-2026-06-26):删掉拖动提示浮层
+         原 v-if="isDragging" 块整段删除(显示「拖动调整顺序」),MVP 不实现拖动 UI
+         引用方 0 命中(strings.dragHint 同步删除)
+         保留:touchstart / touchmove / touchend handlers + isDragging computed
+               (per task 简化方案:不删 dead code,避免触碰大段代码引入新 bug) -->
 
     <!-- inline 添加表单 -->
     <view
@@ -131,6 +142,20 @@
         placeholder-class="add-panel-input-placeholder"
       />
       <view class="add-panel-time-row">
+        <picker
+          mode="date"
+          :value="addForm.date"
+          :start="datePickerStart"
+          :end="datePickerEnd"
+          @change="(e) => { addForm.date = e.detail.value }"
+        >
+          <view class="add-panel-time-picker">
+            <text
+              class="add-panel-time-picker-text"
+              :class="{ 'add-panel-time-picker-text-placeholder': !addForm.date }"
+            >{{ addForm.date || strings.placeholderDate }}</text>
+          </view>
+        </picker>
         <picker
           mode="time"
           :value="addForm.start_time"
@@ -209,6 +234,16 @@ import { logger } from '../../../utils/logger.js'
 
 const strings = ItineraryArrangeStrings
 
+// ──────────── 派生常量(per UserRound2-002 Bug D) ────────────
+//
+// 2026-06-25 新增(per UserRound2-002 Bug D):重叠警告文案拼接收敛到 page-local const,
+// 避免改 constants/strings.js 跨多个 page 影响(沿 PhotoGuidePage §8.3 + TrashPage
+// 14 行 page-local 决策;page-only 警告文案,不在其他页面复用)。
+//
+// 模板:'与「{title}」时段重叠' → 通过字符串拼接(per PhotoGuidePage §8.3 模板用法)
+const OVERLAP_WARNING_PREFIX = '与「'
+const OVERLAP_WARNING_MIDDLE = '」时段重叠'
+
 // ──────────── Props / Emits ────────────
 const props = defineProps({
   modelValue: {
@@ -221,7 +256,18 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['update:modelValue'])
+const emit = defineEmits([
+  'update:modelValue',
+  // v0.5.0(2026-06-25 per UserRound2-001 Bug A):加 3 个显式事件,EditTripPage 接住调 API
+  //   - `add`    : user 点「确定」添加一条新 item(newItem 形状含 client-generated id)
+  //   - `remove` : user 点 item 右上角小 ✕ 删除(emit 该 item 的 id)
+  //   - `update` : user 拖动 reorder(emit 整个新 arr,EditTripPage 可感知顺序变化)
+  // 沿 NewTripPage 兼容路径:NewTripPage **不**接这 3 个事件(只接 v-model),
+  // 0 breaking change;EventArgs 1:1 复用 ItineraryItem / id 标量
+  'add',
+  'remove',
+  'update',
+])
 
 // ──────────── Touch / Drag 状态 ────────────
 /** @type {import('vue').Ref<number | null>} 当前正在拖动的 item id */
@@ -344,10 +390,19 @@ function onItemTouchMove(e) {
 function onItemTouchEnd(_e) {
   clearLongPressTimer()
   if (isDragging.value) {
-    logger.info('[ItineraryArrangeField] drag end', { id: draggingId.value })
+    const draggedId = draggingId.value
+    const finalArr = [...props.modelValue]
+    logger.info('[ItineraryArrangeField] drag end', { id: draggedId, finalIndex: finalArr.findIndex((it) => it.id === draggedId) })
     draggingId.value = null
     dragOffsetX.value = 0
     originalIndex.value = -1
+    // v0.5.0(per UserRound2-001 Bug A):拖动结束 emit update 事件
+    //   - 拖动过程中 emit('update:modelValue', arr) 已多次触发(每次跨过 50% 阈值),
+    //     EditTripPage 父级 v-model 数组顺序实时更新(本地)
+    //   - 拖动结束 emit('update', finalArr) 一次性通知「order change settled」
+    //     → EditTripPage MVP:不调 API(后端无 reorder 端点,仅展示用)
+    //   - NewTripPage 仍可继续走 v-model,无 0 breaking
+    emit('update', finalArr)
   }
 }
 
@@ -360,11 +415,68 @@ function clearLongPressTimer() {
 
 // ──────────── 删除 / 添加 inline 表单 ────────────
 
+// ──── 排序 + 重叠检测(per UserRound2-002 Bug D,2026-06-25 新增) ────
+
+/**
+ * 按 date + start_time 升序排序
+ * 2026-06-25 新增(per UserRound2-002 Bug D + spec §3.5 Field 6 升级):
+ *   - user 实测需求驱动从「手动拖动排序」升级为「自动按 date + start_time 升序」
+ *   - 注:HH:mm 时间字符串可直接比较('08:00' < '10:00')
+ *   - 缺 start_time 的项排到该日期末尾
+ *
+ * @param {import('../../../api/types').ItineraryItem[]} arr
+ * @returns {import('../../../api/types').ItineraryItem[]}
+ */
+function sortItems(arr) {
+  return [...arr].sort((a, b) => {
+    if (a.date !== b.date) return a.date < b.date ? -1 : 1
+    // 同一日期,按 start_time 升序;空 start_time 排最后
+    if (!a.start_time) return 1
+    if (!b.start_time) return -1
+    return a.start_time < b.start_time ? -1 : a.start_time > b.start_time ? 1 : 0
+  })
+}
+
+/**
+ * 重叠时段检测
+ * 2026-06-25 新增(per UserRound2-002 Bug D):返回首个与 newItem 重叠的 item(无重叠返 null)
+ *   - 同 date + [start1, end1) 与 [start2, end2) 重叠判定:start1 < end2 && start2 < end1
+ *   - 跳过 newItem 自己(id 一致,避免 update 路径自重叠)
+ *   - 缺任意 time 字段 → 不算重叠(per issue §4.3.1 决策,用户编辑半成品不阻塞)
+ *
+ * @param {import('../../../api/types').ItineraryItem[]} arr 现有 items(不含 newItem)
+ * @param {import('../../../api/types').ItineraryItem} newItem 待检测 item
+ * @returns {import('../../../api/types').ItineraryItem | null}
+ */
+function findOverlap(arr, newItem) {
+  if (!newItem.date || !newItem.start_time || !newItem.end_time) return null
+  for (const it of arr) {
+    if (it.id === newItem.id) continue  // 跳过自己(update 路径)
+    if (it.date !== newItem.date) continue
+    if (!it.start_time || !it.end_time) continue
+    // [start1, end1) 与 [start2, end2) 重叠 = start1 < end2 && start2 < end1
+    if (newItem.start_time < it.end_time && it.start_time < newItem.end_time) {
+      return it
+    }
+  }
+  return null
+}
+
 /**
  * 删除指定 item
+ *
+ * 2026-06-25 修复(per UserRound2-002 Bug C):emit 顺序调整——
+ *   - **先 emit('remove', id)** 让父级 handler(EditTripPage.onRemoveItem)能在 v-model splice
+ *     **前** findIndex by id(arr 还在,idx 有效)→ 调 DELETE API
+ *   - 反向(v0.5.0 旧版先 v-model splice)父级 findIndex 永远 -1 → early return → 永远不调 DELETE
+ *   - 后 emit('update:modelValue', arr) 走 v-model 删本地(乐观更新)
+ *   - 失败由 EditTripPage handler 自行 Toast(per issue §3.3 决策,不回滚避免重复 splice)
+ *
  * @param {number} id
  */
 function onRemoveItem(id) {
+  // 顺序固定:emit('remove') 在前,父级 handler 能 findIndex
+  emit('remove', id)
   const arr = props.modelValue.filter((it) => it.id !== id)
   emit('update:modelValue', arr)
   logger.info('[ItineraryArrangeField] remove item', { id, remaining: arr.length })
@@ -374,13 +486,30 @@ function onRemoveItem(id) {
 const addPanelVisible = ref(false)
 const addForm = ref({
   title: '',
+  date: '',
   start_time: '',
   end_time: '',
   item_type: 'attraction',
 })
 
+/** date-picker 起始日期(今天) */
+const datePickerStart = computed(() => {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+})
+
+/** date-picker 截止日期(2 年后) */
+const datePickerEnd = computed(() => {
+  const d = new Date()
+  d.setFullYear(d.getFullYear() + 2)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+})
+
 const canConfirmAdd = computed(() => {
-  return addForm.value.title.trim() !== '' && addForm.value.start_time !== '' && addForm.value.end_time !== ''
+  return addForm.value.title.trim() !== ''
+    && addForm.value.date !== ''
+    && addForm.value.start_time !== ''
+    && addForm.value.end_time !== ''
 })
 
 function toggleAddPanel() {
@@ -392,6 +521,7 @@ function toggleAddPanel() {
   addPanelVisible.value = true
   addForm.value = {
     title: '',
+    date: '',
     start_time: '',
     end_time: '',
     item_type: 'attraction',
@@ -403,6 +533,7 @@ function cancelAdd() {
   addPanelVisible.value = false
   addForm.value = {
     title: '',
+    date: '',
     start_time: '',
     end_time: '',
     item_type: 'attraction',
@@ -419,14 +550,72 @@ function confirmAdd() {
     // 客户端生成稳定 key(Date.now() + 随机后缀避免同毫秒冲突)
     id: Date.now() * 1000 + Math.floor(Math.random() * 1000),
     title: addForm.value.title.trim(),
+    date: addForm.value.date,
     start_time: addForm.value.start_time,
     end_time: addForm.value.end_time,
     item_type: addForm.value.item_type,
   }
-  const arr = [...props.modelValue, newItem]
-  emit('update:modelValue', arr)
-  logger.info('[ItineraryArrangeField] add item', { id: newItem.id, title: newItem.title })
+  // 2026-06-25 新增(per UserRound2-002 Bug D):重叠检测
+  //   - 同 date + 时段重叠 → 拒绝 + Toast 警告 + 不 emit
+  //   - 沿 PhotoGuidePage §8.3 错误处理模式(uni.showToast 简单反馈)
+  const overlap = findOverlap(props.modelValue, newItem)
+  if (overlap) {
+    uni.showToast({
+      title: `${OVERLAP_WARNING_PREFIX}${overlap.title}${OVERLAP_WARNING_MIDDLE}`,
+      icon: 'none',
+      duration: 2000,
+    })
+    logger.warn('[ItineraryArrangeField] add blocked, overlap', {
+      newTitle: newItem.title,
+      overlapTitle: overlap.title,
+      newDate: newItem.date,
+      newTime: `${newItem.start_time}~${newItem.end_time}`,
+    })
+    return
+  }
+  // 2026-06-25 新增(per UserRound2-002 Bug D):自动按 date+start_time 升序插入
+  //   - 替代旧版「手动拖动排序」(spec §3.5 Field 6 升级)
+  //   - 沿用 emit('update:modelValue', sorted) v-model 协议
+  const sorted = sortItems([...props.modelValue, newItem])
+  emit('update:modelValue', sorted)
+  // v0.5.0(per UserRound2-001 Bug A):显式 emit add,EditTripPage onAddItem 接住调 POST
+  // 与 update:modelValue 并行触发;EditTripPage handler 收到事件后
+  // (1) 乐观更新:v-model 已加本地(client-id);(2) handler await POST,成功把 server-id
+  //     splice 回去替换 client-id 行(per issue §1.3.2 onAddItem 决策)
+  emit('add', newItem)
+  logger.info('[ItineraryArrangeField] add item', { id: newItem.id, title: newItem.title, totalCount: sorted.length })
   cancelAdd()
+}
+
+/**
+ * 用户编辑现有 item 后 → 查重 + 排序 + emit update
+ * 2026-06-25 新增(per UserRound2-002 Bug D):MVP 简化不实现 ✏️ UI 触发(沿 NewTripPage §8.2 +
+ * PhotoGuidePage §8.3 决策),本函数保留供未来 IssueManager 提议 hook(per issue §4.3.3 决策)。
+ * 协议签名:接收 updatedItem(完整 item 含 id),内部查重 + 替换 + 排序 + emit('update:modelValue', sorted) + emit('update', updatedItem)。
+ *
+ * @param {import('../../../api/types').ItineraryItem} updatedItem
+ */
+function onUpdateExistingItem(updatedItem) {
+  // 查重(排除自己 — findOverlap 内部已跳过 it.id === updatedItem.id)
+  const overlap = findOverlap(props.modelValue, updatedItem)
+  if (overlap) {
+    uni.showToast({
+      title: `${OVERLAP_WARNING_PREFIX}${overlap.title}${OVERLAP_WARNING_MIDDLE}`,
+      icon: 'none',
+      duration: 2000,
+    })
+    logger.warn('[ItineraryArrangeField] update blocked, overlap', {
+      updatedTitle: updatedItem.title,
+      overlapTitle: overlap.title,
+    })
+    return
+  }
+  // 替换 + 重排
+  const arr = props.modelValue.map((it) => (it.id === updatedItem.id ? updatedItem : it))
+  const sorted = sortItems(arr)
+  emit('update:modelValue', sorted)
+  emit('update', updatedItem)
+  logger.info('[ItineraryArrangeField] update item', { id: updatedItem.id, totalCount: sorted.length })
 }
 
 // ──────────── 派生:emoji / typeLabel ────────────
@@ -447,6 +636,20 @@ function getEmoji(t) {
  */
 function getTypeLabel(t) {
   return ItineraryArrangeItemTypeOptions.find((o) => o.value === t)?.label || t
+}
+
+/**
+ * 格式化 item.date 'YYYY-MM-DD' → 'MM月DD日'(per TripCreateEditFix-001 C 决策)
+ * 无 date(edit 模式派生时缺)→ 返回空串,避免卡片显示 'undefined月undefined日'
+ * @param {string | undefined} dateIso
+ * @returns {string}
+ */
+function formatItemDate(dateIso) {
+  if (!dateIso || typeof dateIso !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(dateIso)) {
+    return ''
+  }
+  const [, mm, dd] = dateIso.split('-')
+  return `${parseInt(mm, 10)}月${parseInt(dd, 10)}日`
 }
 
 // ──────────── 样式派生:拖动视觉反馈 ────────────

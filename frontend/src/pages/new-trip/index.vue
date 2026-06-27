@@ -169,21 +169,21 @@
             :retryable="false"
           />
 
-          <!-- 7 字段表单 -->
+          <!-- 4 字段表单(TripCreateEditFix-001 v0.4.0:移除 city / companions / budget_range / transport_preference / special_needs) -->
           <view class="form-fields">
-            <!-- Field 1: 目的地(city)*  -->
+            <!-- Field 1: 行程标题(title)* 必填 -->
             <view class="form-field">
               <text class="form-field-label">
-                {{ strings.fieldCity }}
+                {{ strings.fieldTitle }}
                 <text
-                  v-if="!formData.city"
+                  v-if="!formData.title.trim()"
                   class="required-mark"
                 >*</text>
               </text>
               <input
-                v-model="formData.city"
+                v-model="formData.title"
                 class="form-field-input"
-                :placeholder="strings.placeholderCity"
+                :placeholder="titlePlaceholder"
                 placeholder-class="form-field-input-placeholder"
               />
             </view>
@@ -238,86 +238,11 @@
               </picker>
             </view>
 
-            <!-- Field 4: 同行成员(companions)选填 -->
-            <view class="form-field">
-              <text class="form-field-label">{{ strings.fieldCompanions }}</text>
-              <input
-                v-model="formData.companions"
-                class="form-field-input"
-                :placeholder="strings.placeholderCompanions"
-                placeholder-class="form-field-input-placeholder"
-              />
-            </view>
-
-            <!-- Field 5: 预算范围(budget_range)选填 -->
-            <view class="form-field">
-              <text class="form-field-label">{{ strings.fieldBudget }}</text>
-              <input
-                v-model="formData.budget_range"
-                class="form-field-input"
-                :placeholder="strings.placeholderBudget"
-                placeholder-class="form-field-input-placeholder"
-              />
-            </view>
-
-            <!-- Field 5.5: 行程安排(itineraryArrange)UI-025 — 横向 scroll-view 拖动排序 -->
+            <!-- Field 4: 行程安排(itineraryArrange)UI-025 — 横向 scroll-view 拖动排序 + 每条需 date + start_time + end_time -->
             <ItineraryArrangeField
               v-model="formData.itineraryArrange"
               :readonly="false"
             />
-
-            <!-- Field 6: 交通偏好(transport_preference)选填,radio chips -->
-            <view class="form-field">
-              <text class="form-field-label">{{ strings.fieldTransport }}</text>
-              <view class="chip-row">
-                <view
-                  v-for="opt in transportOptions"
-                  :key="opt.value"
-                  class="chip"
-                  :class="{ 'chip-selected': formData.transport_preference === opt.value }"
-                  role="button"
-                  :aria-label="opt.label"
-                  :aria-pressed="formData.transport_preference === opt.value"
-                  hover-class="chip-hover"
-                  :hover-stay-time="50"
-                  @click="onTransportToggle(opt.value)"
-                >
-                  <text
-                    class="chip-text"
-                    :class="{ 'chip-text-selected': formData.transport_preference === opt.value }"
-                  >{{ opt.label }}</text>
-                </view>
-              </view>
-            </view>
-
-            <!-- Field 7: 特殊需求(special_needs)选填,checkbox chips -->
-            <view class="form-field">
-              <text class="form-field-label">{{ strings.fieldNeeds }}</text>
-              <view class="chip-row">
-                <view
-                  v-for="opt in needsOptions"
-                  :key="opt.value"
-                  class="chip"
-                  :class="{ 'chip-selected': formData.special_needs.includes(opt.value) }"
-                  role="button"
-                  :aria-label="opt.label"
-                  :aria-pressed="formData.special_needs.includes(opt.value)"
-                  hover-class="chip-hover"
-                  :hover-stay-time="50"
-                  @click="onNeedsToggle(opt.value)"
-                >
-                  <text
-                    class="chip-text"
-                    :class="{ 'chip-text-selected': formData.special_needs.includes(opt.value) }"
-                  >{{ opt.label }}</text>
-                  <text
-                    v-if="formData.special_needs.includes(opt.value)"
-                    class="chip-check"
-                    aria-hidden="true"
-                  >✓</text>
-                </view>
-              </view>
-            </view>
           </view>
 
           <view class="action-row">
@@ -401,36 +326,33 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { NewTripStrings, NewTripTransportOptions, NewTripNeedsOptions } from '../../constants/strings.js'
+import { NewTripStrings } from '../../constants/strings.js'
 import { AppRoutes } from '../../constants/routes.js'
 import { logger } from '../../utils/logger.js'
 import { useHomeStore } from '../../stores/homeStore.js'
-import { createTrip, saveDraft, updateTrip } from '../../services/trips.js'
+import { createTrip, createTripDay, createTripItem, saveDraft, updateTrip } from '../../services/trips.js'
 import { loadTrips } from '../../db/trips.js'
 import ErrorBanner from '../../components/ErrorBanner.vue'
 import DraftConfirmDialog from './components/DraftConfirmDialog.vue'
 import ItineraryArrangeField from './components/ItineraryArrangeField.vue'
 
 const strings = NewTripStrings
-const transportOptions = NewTripTransportOptions
-const needsOptions = NewTripNeedsOptions
 const backAria = '返回'
 
 // ─────────────── 类型定义(spec §4.1) ───────────────
 /**
- * @typedef {'flight' | 'train' | 'car' | 'walk'} TransportPreference
- * @typedef {'less_walking' | 'with_children' | 'with_elderly' | 'accessible'} SpecialNeedItem
  * @typedef {import('../../api/types').ItineraryItem} ItineraryItem
  *
  * @typedef {Object} NewTripFormData
- * @property {string} city
- * @property {string} start_date
- * @property {string} end_date
- * @property {string} companions
- * @property {string} budget_range
- * @property {TransportPreference | null} transport_preference
- * @property {SpecialNeedItem[]} special_needs
- * @property {ItineraryItem[]} itineraryArrange  // UI-025 新增(spec §3.5 Field 6)
+ * @property {string} title             // 行程标题(必填,v0.4.0 新增显式收集,沿 NewTripStrings.fieldTitle)
+ * @property {string} start_date        // 'YYYY-MM-DD'
+ * @property {string} end_date          // 'YYYY-MM-DD'
+ * @property {ItineraryItem[]} itineraryArrange  // UI-025(v0.4.0 每条 item 含 date? 字段)
+ *
+ * v0.4.0(TripCreateEditFix-001 2026-06-24):移除 city / companions / budget_range /
+ *   transport_preference / special_needs 5 字段。user 2026-06-19 自报「service 和 store
+ *   只是调用 API,具体操作仅由后端执行」,5 选填 client-only 字段 UI 一并移除(spec §6.4.2 PD-001)。
+ *   保留 4 字段:title + start_date + end_date + itineraryArrange。
  */
 
 /**
@@ -440,19 +362,15 @@ const backAria = '返回'
 // ─────────────── 静态辅助函数 ───────────────
 
 /**
- * 创建空的 NewTripFormData(spec §4.1 createEmpty)
+ * 创建空的 NewTripFormData(spec §4.1 createEmpty,v0.4.0 4 字段)
  * @returns {NewTripFormData}
  */
 function createEmptyFormData() {
   return {
-    city: '',
+    title: '',
     start_date: '',
     end_date: '',
-    companions: '',
-    budget_range: '',
-    transport_preference: null,
-    special_needs: [],
-    itineraryArrange: [], // UI-025 新增,默认空数组
+    itineraryArrange: [], // UI-025 默认空数组
   }
 }
 
@@ -471,19 +389,49 @@ function dayDiff(start, end) {
 }
 
 /**
- * 派生 title(spec §6.4.4)
- * @param {NewTripFormData} fd
- * @returns {string}
+ * 派生 trip.title — v0.6.0(per user-round4-2026-06-26)修订
+ *
+ * 严格使用 fd.title.trim(),**不**做任何拼接兜底。
+ * 触发原因:user 2026-06-26 19:46 报 bug,成功创建行程时 trip.title 错误显示为
+ * 「行程 {start_date} - {end_date} {days}天」拼接字符串,而**应该**用 fd.title.trim()。
+ * 根因 = v0.4.0 旧实现:fd.title 为空时 fallback 到日期拼接兜底。
+ * v0.6.0 决策:删除日期拼接 fallback,严格返回 fd.title.trim()。
+ * title 为空 → 返回空字符串,onSubmit 拦截不让提交(formSubmitError banner 提示)。
+ *
+ * @param {NewTripFormData | null | undefined} fd
+ * @returns {string} trim 后的 title(title 为空 → 空字符串)
  */
 function deriveTitle(fd) {
-  if (fd.city && fd.start_date && fd.end_date) {
-    const days = dayDiff(fd.start_date, fd.end_date)
-    return `${fd.city} ${fd.start_date} - ${fd.end_date} ${days}天游`
-  }
-  if (fd.start_date && fd.end_date) {
-    return `Trip ${fd.start_date} - ${fd.end_date}`
-  }
-  return ''
+  if (!fd) return ''
+  return (fd.title || '').trim()
+}
+
+/**
+ * 派生 TripItem.city 字段(per Cross-Page issue location-real-fix-v2-2026-06-25 §2.4 +
+ * Cross-Page issue TripCreateEditFix-001)
+ *
+ * 后端 Pydantic CreateTripItemRequest.city: str 必填(per backend/app/schemas/trips.py:36),
+ * 前端 NewTripPage form 表单**不**含 city 字段(spec 7 字段设计:title / city / start_date /
+ * end_date / companions / budget / transport / special_needs,后端只接 city 必填,
+ * 其余 4 选填 client-only),所以从 trip.title 启发式提取城市名。
+ *
+ * 提取策略:
+ *   1. trip.title.trim() 非空 → 取前 1-3 个连续中文字符作为 city(启发式)
+ *   2. 提取不到中文(全部英文/数字/标点)→ fallback 用 trip.title 字面值
+ *      (后端 Pydantic min_length=1, max_length=200 接受任意非空字符串)
+ *   3. trip.title 为空 → 返回空字符串(沿用 v0.4.0 兜底;理论上 3 必填校验已过,
+ *      title 一定有值,这里仅防御)
+ *
+ * @param {string} tripTitle  派生后的 trip.title(由 `deriveTitle(formData)` 派生)
+ * @returns {string}  city 字段值(允许空字符串兜底,但后端会 422)
+ */
+function deriveCity(tripTitle) {
+  if (!tripTitle || !tripTitle.trim()) return ''
+  // 启发式:取 trip.title 中开头的 1-3 个连续中文字符
+  const m = tripTitle.match(/^[\u4e00-\u9fa5]{1,3}/)
+  if (m) return m[0]
+  // fallback:无中文开头则用 trip.title 字面值
+  return tripTitle.trim().slice(0, 50)
 }
 
 /**
@@ -492,9 +440,9 @@ function deriveTitle(fd) {
  * 用此 mock 兜底(形状基于 api/mock/_seed.ts:205 seedTrip3 西安四日)
  *
  * UI-025:扩展 itineraryArrange 字段(任务 4 复制行程预填),
- * 形状 = api/types.ts ItineraryItem[] 5 字段(id / title / start_time / end_time / item_type);
- * Trip 类型本身**不**含 itineraryArrange(per spec §硬规则:不**改**既有 trips shape),
- * 故用 intersection 类型表达,既满足 Trip 字面又携带额外字段。
+ * 形状 = api/types.ts ItineraryItem[] 6 字段(id / title / start_time / end_time / item_type / date?);
+ *
+ * v0.4.0(TripCreateEditFix-001):移除 city 字段(后端无 city 列),itineraryArrange 每条带 date 字段。
  *
  * @type {import('../../api/types').Trip & { itineraryArrange?: import('../../api/types').ItineraryItem[] }}
  */
@@ -502,34 +450,27 @@ const MOCK_TRIP_FOR_COPY = Object.freeze({
   id: 3,
   user_id: 1,
   title: '西安四日文化行',
-  city: '西安',
   start_date: '2026-05-01',
   end_date: '2026-05-04',
   status: 'finished',
   days: [],
-  // UI-025 任务 4 复制预填(西安四日典型行程)
+  // UI-025 任务 4 复制预填(西安四日典型行程),v0.4.0 每条带 date 字段
   itineraryArrange: [
-    { id: 30001, title: '兵马俑',    start_time: '09:00', end_time: '12:00', item_type: 'attraction' },
-    { id: 30002, title: '午餐:肉夹馍', start_time: '12:30', end_time: '13:30', item_type: 'food' },
-    { id: 30003, title: '古城墙骑行', start_time: '15:00', end_time: '17:00', item_type: 'attraction' },
-    { id: 30004, title: '回民街夜市',  start_time: '19:00', end_time: '21:00', item_type: 'food' },
+    { id: 30001, date: '2026-05-01', title: '兵马俑',     start_time: '09:00', end_time: '12:00', item_type: 'attraction' },
+    { id: 30002, date: '2026-05-01', title: '午餐:肉夹馍', start_time: '12:30', end_time: '13:30', item_type: 'food' },
+    { id: 30003, date: '2026-05-01', title: '古城墙骑行',  start_time: '15:00', end_time: '17:00', item_type: 'attraction' },
+    { id: 30004, date: '2026-05-01', title: '回民街夜市',  start_time: '19:00', end_time: '21:00', item_type: 'food' },
   ],
 })
 
 /**
- * 从 inputText 极简正则提取 city / start_date / end_date(spec §5.5 视图决策算法)
+ * 从 inputText 极简正则提取 start_date / end_date(spec §5.5 视图决策算法,v0.4.0 移除 city)
  * @param {string} text
- * @returns {{ city: string, start_date: string, end_date: string }}
+ * @returns {{ start_date: string, end_date: string }}
  */
 function extractFormDataFromText(text) {
-  const result = { city: '', start_date: '', end_date: '' }
+  const result = { start_date: '', end_date: '' }
   if (!text) return result
-
-  // 城市:匹配 "去|飞|玩|在" + 1-3 个中文字符
-  const cityMatch = text.match(/(?:去|飞|玩|在)([\u4e00-\u9fa5]{1,3}?)(?:玩|旅游|旅行|游|$|[，。])/)
-  if (cityMatch) {
-    result.city = cityMatch[1]
-  }
 
   // 日期:优先 YYYY-MM-DD
   const isoDates = text.match(/\d{4}-\d{2}-\d{2}/g) || []
@@ -604,30 +545,30 @@ const isCopyMode = computed(() => copyFromTripId.value !== null)
 
 // ─────────────── Computed ───────────────
 
-/** 是否有内容(inputText 非空 / 文件非空 / formData 非空)用于判定弹草稿 */
+/** 是否有内容(inputText 非空 / 文件非空 / formData 非空)用于判定弹草稿
+ * v0.4.0(TripCreateEditFix-001):移除 city / companions / budget / transport / needs 5 字段校验 */
 const hasContent = computed(() => {
   return (
     inputText.value.trim() !== '' ||
     attachedFiles.value.length > 0 ||
-    formData.value.city !== '' ||
+    formData.value.title.trim() !== '' ||
     formData.value.start_date !== '' ||
     formData.value.end_date !== '' ||
-    formData.value.companions !== '' ||
-    formData.value.budget_range !== '' ||
-    formData.value.transport_preference !== null ||
-    formData.value.special_needs.length > 0 ||
-    formData.value.itineraryArrange.length > 0 // UI-025 新增
+    formData.value.itineraryArrange.length > 0 // UI-025
   )
 })
 
-/** 3 必填是否都已填(form 态点「确认」前校验) */
+/** 3 必填是否都已填(form 态点「确认」前校验,v0.4.0:title + start_date + end_date) */
 const hasRequiredFields = computed(() => {
   return (
-    formData.value.city.trim() !== '' &&
+    formData.value.title.trim() !== '' &&
     formData.value.start_date !== '' &&
     formData.value.end_date !== ''
   )
 })
+
+/** title 输入框 placeholder(v0.4.0 新增,显式 title 字段) */
+const titlePlaceholder = computed(() => '例如:大连三日游')
 
 /** textarea placeholder(选填,用静态提示) */
 const textareaPlaceholder = computed(() => '例如:7 月去大连玩 3 天,带老婆孩子,预算 5000,坐飞机')
@@ -706,15 +647,11 @@ function loadAndPrefillFromTrip(tripId) {
     logger.info('[NewTripPage] copy fallback to mock seedTrip3', { tripId })
   }
 
-  // 3. 派生 formData(8 字段含 UI-025 itineraryArrange)
+  // 3. 派生 formData(v0.4.0 4 字段:title + start_date + end_date + itineraryArrange)
   formData.value = {
-    city: sourceTrip.city || '',
+    title: sourceTrip.title || '',
     start_date: sourceTrip.start_date || '',
     end_date: sourceTrip.end_date || '',
-    companions: sourceTrip.companions || '',
-    budget_range: sourceTrip.budget_range || '',
-    transport_preference: sourceTrip.transport_preference || null,
-    special_needs: Array.isArray(sourceTrip.special_needs) ? sourceTrip.special_needs : [],
     // UI-025:itineraryArrange 预填(从源 trip 派生,无则空数组)
     itineraryArrange: Array.isArray(sourceTrip.itineraryArrange)
       ? sourceTrip.itineraryArrange.map((it) => ({ ...it }))
@@ -725,7 +662,6 @@ function loadAndPrefillFromTrip(tripId) {
   logger.info('[NewTripPage] copy prefill ok', {
     tripId,
     sourceTitle: originalTripTitle.value,
-    city: formData.value.city,
     start_date: formData.value.start_date,
     end_date: formData.value.end_date,
     itineraryCount: formData.value.itineraryArrange.length,
@@ -815,13 +751,11 @@ function onSubmit() {
     const extracted = extractFormDataFromText(inputText.value)
     formData.value = {
       ...createEmptyFormData(),
-      city: extracted.city,
       start_date: extracted.start_date,
       end_date: extracted.end_date,
     }
     currentStep.value = 'form'
     logger.info('[NewTripPage] analyze done', {
-      city: formData.value.city,
       start_date: formData.value.start_date,
       end_date: formData.value.end_date,
     })
@@ -832,6 +766,7 @@ function onSubmit() {
  * form 态:点「确认」 → submitting(spec §5.2 Step 3-4)
  * 校验:3 必填非空(AC-06)→ 否则 formSubmitError + 保持 form 态
  * UI-024:复制模式 → title 固定用「{originalTitle} 副本」(不随 formData 字段变)
+ * v0.4.0(TripCreateEditFix-001):3 必填 = title + start_date + end_date(移除 city)
  */
 function onConfirm() {
   if (!hasRequiredFields.value) {
@@ -842,20 +777,22 @@ function onConfirm() {
   formSubmitError.value = null
 
   // UI-024:复制模式 title 派生固定为「原 title 副本」
+  // v0.6.0(per user-round4-2026-06-26):copy mode 后缀「副本」**保留**(user 没报这个 bug,
+  // copy mode 是 feature);仅普通模式下 deriveTitle 严格走 fd.title.trim() 不再做日期拼接兜底
   const title = isCopyMode.value
     ? `${originalTripTitle.value} 副本`
     : deriveTitle(formData.value)
   if (!title) {
-    // 防御:3 必填已通过校验,理论 title 一定有值
-    submitError.value = NewTripStrings.errorBadRequest
-    currentStep.value = 'error'
-    logger.error('[NewTripPage] derive title failed unexpectedly')
+    // v0.6.0 修订:title 为空 → 用 formSubmitError banner 显示明确错误提示
+    // (不切 currentStep='error',仅在 form 顶部 ErrorBanner 提示;user 仍可继续填写)
+    // 防御:hasRequiredFields 已包含 title.trim() 必填,但用户可能在 form 已展开后清空 title 再提交
+    formSubmitError.value = NewTripStrings.errorRequired  // '请填写完整'
+    logger.warn('[NewTripPage] submit blocked, title empty after form validate')
     return
   }
 
   const days = dayDiff(formData.value.start_date, formData.value.end_date)
   logger.info('[NewTripPage] submit start', {
-    city: formData.value.city,
     days,
     copyMode: isCopyMode.value,
     title,
@@ -869,21 +806,29 @@ function onConfirm() {
 
 /**
  * 实际发起 POST(AC-07 + AC-08 + AC-09)
+ *
+ * v0.4.0(TripCreateEditFix-001):
+ *   - 移除 city 字段(后端 CreateTripRequest extra=ignore 静默丢)
+ *   - createTrip 成功后,如果 itineraryArrange 非空,**串行**为每个 item
+ *     调 createTripDay → createTripItem,失败 logger.warn 不阻塞
  * @param {string} title
  */
 async function submitTripRequest(title) {
   try {
     const res = await createTrip({
       title,
-      city: formData.value.city,
       start_date: formData.value.start_date,
       end_date: formData.value.end_date,
-      // UI-025:行程安排字段(空数组也合法,service 内部会过滤)
+      // UI-025:行程安排字段(空数组也合法,service 内部会过滤;后端 Pydantic extra=ignore 静默丢)
       itineraryArrange: formData.value.itineraryArrange,
     })
     const tripId = res.data?.trip_id
     if (!tripId) {
       throw new Error('createTrip response missing trip_id')
+    }
+    // 行程安排字段处理(per TripCreateEditFix-001 B 方向):按 date 分组 → 串行 createTripDay → 串行 createTripItem
+    if (formData.value.itineraryArrange.length > 0) {
+      await createItineraryForTrip(tripId, formData.value.itineraryArrange)
     }
     currentStep.value = 'completed'
     submitError.value = null
@@ -959,19 +904,102 @@ function onBack() {
 
 /**
  * _DraftConfirmDialog:保存草稿
+ *
+ * v0.5.0(2026-06-26 per user-round3「首页不显示草稿」修复)草稿推上后端触发:
+ *   - 策略:有 start_date / end_date → 走 `createTrip` 真后端(草稿推上 HomePage);
+ *          没日期(只填了 title / inputText / files)→ fallback 旧 `saveDraft` 本地 storage
+ *          (后端 CreateTripRequest start_date / end_date 必填,不能空)
+ *   - 后端 `createTrip` 失败(网络断开 / 5xx)→ 降级到 `saveDraft` 本地 storage 兜底
+ *   - 草稿**至少**有 title(否则没意义)
+ *   - 草稿**不**带 itineraryArrange(itineraryArrange 是 form 态才有)
+ *   - 创建成功后**不**调 `updateTrip(status='active')`(创建时已 'draft',不需要再切)
+ *
+ * v0.5.1(2026-06-26 per user 19:37 bug)无日期守卫:
+ *   - 入口加守卫:`!fd.start_date || !fd.end_date` → 拒绝保存 + Toast「未选择日期,无法保存为草稿」
+ *   - 不调 createTrip / saveDraft,关闭 _DraftConfirmDialog,currentStep 保持不变
+ *   - 仅针对"没日期"场景;createTrip 失败的 fallback 路径**不**受影响(仍走 saveDraft)
+ *
+ * @returns {Promise<void>}
  */
-function onDialogSave() {
+async function onDialogSave() {
+  const fd = formData.value
+  dialogVisible.value = false
+
+  // v0.5.1(per user 19:37 bug)无日期守卫:没日期 → 拒绝保存 + Toast 提示
+  // 草稿若没 start_date / end_date,后端 CreateTripRequest 必填 → 不可能推上去;
+  // 旧 v0.5.0 走本地 storage fallback 路径,user 实测发现这违反期望:
+  // "没日期的草稿在首页 / 回收站 都没意义(无 day 可生成),不应允许存"
+  if (!fd.start_date || !fd.end_date) {
+    logger.warn('[NewTripPage] saveDraft rejected: missing dates', {
+      hasStartDate: !!fd.start_date,
+      hasEndDate: !!fd.end_date,
+    })
+    uni.showToast({
+      title: NewTripStrings.draftNoDatesToast,
+      icon: 'none',
+      duration: 2000,
+    })
+    return
+  }
+
+  // 草稿至少需要 title(否则没意义,fallback saveDraft 旧路径)
+  const title = fd.title.trim() || '未命名草稿'
+
+  // 策略 1:有 start_date / end_date → 走 createTrip 真后端(草稿推上 HomePage)
+  if (fd.start_date && fd.end_date) {
+    try {
+      const res = await createTrip({
+        title,
+        start_date: fd.start_date,
+        end_date: fd.end_date,
+        itineraryArrange: [], // 草稿无 itinerary
+        status: 'draft', // 显式声明草稿(后端默认也是 'draft',显式更清晰)
+      })
+      const tripId = res.data?.trip_id
+      if (!tripId) throw new Error('createTrip response missing trip_id')
+      logger.info('[NewTripPage] saveDraft push ok', { tripId })
+      uni.showToast({
+        title: NewTripStrings.draftSavedToast,
+        icon: 'success',
+        duration: 1500,
+      })
+      // 刷新首页列表(失败仅 warn,不阻塞 reLaunch)
+      homeStore
+        .fetchTrips()
+        .catch((err) =>
+          logger.warn('[NewTripPage] fetchTrips after draft save failed', err),
+        )
+        .finally(() => {
+          setTimeout(() => {
+            uni.reLaunch({ url: AppRoutes.Home })
+          }, 1200)
+        })
+      return
+    } catch (err) {
+      // 创建失败(网络 / 后端 5xx)→ fallback 旧 saveDraft 本地 storage
+      logger.warn(
+        '[NewTripPage] saveDraft push failed, fallback to local storage',
+        err,
+      )
+      // 继续走到下方 saveDraft fallback 逻辑(不 return)
+    }
+  }
+
+  // 策略 2:fallback — 旧 saveDraft 本地 storage 路径
+  //   触发条件:无 start_date/end_date(只填了 title/inputText/files)
+  //            或策略 1 createTrip 抛错
   const draft = {
     id: Date.now(),
     created_at: new Date().toISOString(),
     inputText: inputText.value,
     attachedFiles: attachedFiles.value,
-    formData: formData.value,
+    formData: fd,
   }
   const ok = saveDraft(draft)
-  dialogVisible.value = false
   if (ok) {
-    logger.info('[NewTripPage] saveDraft ok', { draftId: draft.id })
+    logger.info('[NewTripPage] saveDraft ok (local fallback)', {
+      draftId: draft.id,
+    })
     uni.showToast({
       title: NewTripStrings.draftSavedToast,
       icon: 'success',
@@ -982,7 +1010,7 @@ function onDialogSave() {
     }, 1200)
   } else {
     // storage 写异常(spec §5.3.K)
-    logger.warn('[NewTripPage] saveDraft failed, stay in input')
+    logger.warn('[NewTripPage] saveDraft failed (local fallback), stay in input')
     uni.showToast({
       title: NewTripStrings.draftSaveFailedToast,
       icon: 'none',
@@ -1061,24 +1089,119 @@ function onDateChange(key, e) {
 
 /**
  * 交通偏好 radio 切换(spec §3.5 Field 6:4 选 1)
+ *
+ * v0.4.0(TripCreateEditFix-001):UI 字段已移除,本函数保留为 no-op stub
+ * 避免模板引用产生 undefined 错误(模板在 F 方向已清空 chip-row,
+ *   但若有残留引用也不会抛错)
  * @param {'flight' | 'train' | 'car' | 'walk'} v
  */
 function onTransportToggle(v) {
-  formData.value.transport_preference =
-    formData.value.transport_preference === v ? null : v
+  // no-op(v0.4.0 UI 移除,保留函数签名避免模板残留引用崩溃)
 }
 
 /**
  * 特殊需求 checkbox 切换(spec §3.5 Field 7:多选)
+ *
+ * v0.4.0(TripCreateEditFix-001):UI 字段已移除,本函数保留为 no-op stub
  * @param {'less_walking' | 'with_children' | 'with_elderly' | 'accessible'} v
  */
 function onNeedsToggle(v) {
-  const arr = formData.value.special_needs
-  const i = arr.indexOf(v)
-  if (i >= 0) {
-    arr.splice(i, 1)
-  } else {
-    arr.push(v)
+  // no-op(v0.4.0 UI 移除,保留函数签名避免模板残留引用崩溃)
+}
+
+/**
+ * 为已创建的 trip 串行创建 itinerary days + items(per TripCreateEditFix-001 B 方向)
+ *
+ * 流程:
+ *   1. 按 item.date 分组(`Map<date, ItineraryItem[]>`)
+ *   2. 按 date 排序 → 为每个 date 调 createTripDay → 拿到 trip_day_id
+ *   3. **串行**(避免并发抢)为每条 item 调 createTripItem
+ *   4. 任一 item 失败 → logger.warn 不阻塞(per MVP YAGNI,TripDetailPage 容错显示)
+ *
+ * @param {number} tripId
+ * @param {import('../../api/types').ItineraryItem[]} items
+ */
+async function createItineraryForTrip(tripId, items) {
+  try {
+    // 1. 按 date 分组
+    /** @type {Map<string, import('../../api/types').ItineraryItem[]>} */
+    const grouped = new Map()
+    for (const it of items) {
+      const d = it.date || ''
+      if (!d) {
+        logger.warn('[NewTripPage] itinerary item missing date, skip', { id: it.id, title: it.title })
+        continue
+      }
+      const arr = grouped.get(d) || []
+      arr.push(it)
+      grouped.set(d, arr)
+    }
+
+    // 2. 按 date 升序分配 day_index
+    const sortedDates = Array.from(grouped.keys()).sort()
+    logger.info('[NewTripPage] createItinerary start', {
+      tripId,
+      dates: sortedDates.length,
+      items: items.length,
+    })
+
+    let totalDays = 0
+    let totalItems = 0
+    // 2026-06-25(per Cross-Page issue location-real-fix-v2-2026-06-25 §2.4):
+    // 后端 CreateTripItemRequest.city: str 必填(backend/app/schemas/trips.py:36),
+    // 从 submit 派生的 title 提取 city(启发式:取开头 1-3 个中文字符)
+    const tripItemCity = deriveCity(title)
+    for (let i = 0; i < sortedDates.length; i++) {
+      const date = sortedDates[i]
+      const dayIndex = i + 1 // day_index 从 1 开始(后端约定)
+      const dayItems = grouped.get(date) || []
+
+      // 3. createTripDay 拿 trip_day_id
+      let tripDayId
+      try {
+        const dayRes = await createTripDay(tripId, {
+          day_index: dayIndex,
+          trip_date: date,
+          summary: '',
+        })
+        tripDayId = dayRes.data?.trip_day_id
+        if (!tripDayId) {
+          throw new Error('createTripDay response missing trip_day_id')
+        }
+        totalDays++
+      } catch (err) {
+        logger.warn('[NewTripPage] createTripDay failed, skip this day', {
+          tripId, date, dayIndex, err: err?.message,
+        })
+        continue // 这一天的所有 item 也跳过
+      }
+
+      // 4. 串行为每条 item 调 createTripItem
+      for (const item of dayItems) {
+        try {
+          await createTripItem({
+            trip_day_id: tripDayId,
+            // 2026-06-25(per Cross-Page issue location-real-fix-v2-2026-06-25 §2.4):
+            // city 必填,从 trip.title 启发式提取(非空字符串)
+            city: tripItemCity,
+            title: item.title,
+            item_type: item.item_type || 'other',
+            start_time: item.start_time || undefined,
+            end_time: item.end_time || undefined,
+          })
+          totalItems++
+        } catch (err) {
+          logger.warn('[NewTripPage] createTripItem failed, continue', {
+            tripId, tripDayId, itemId: item.id, title: item.title, err: err?.message,
+          })
+          // 不阻塞,继续下一条
+        }
+      }
+    }
+    logger.info('[NewTripPage] createItinerary done', { tripId, totalDays, totalItems })
+  } catch (err) {
+    logger.error('[NewTripPage] createItinerary unexpected fail', err)
+    // 不抛出(per MVP YAGNI),trip 已创建,行程详情可容错显示部分
   }
 }
 

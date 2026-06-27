@@ -14,9 +14,15 @@
 //   - `user_id = MVP_USER_ID` 服务端识别
 //   - `image` 走 `uni.uploadFile({ filePath, name: 'image' })` 单独字段(uni.uploadFile 自动 multipart 编码)
 //
-// 重要不传字段(spec §6.3.2 + §6.3.3):
+// 重要不传字段(spec §6.3.2):
 //   - **不**传 `history` 字段(追问循环复用 photo_id 关联会话,后端按 photo_id 拿历史)
-//   - **不**传 `current_location` 字段(MVP 阶段无定位权限,不传避免假数据)
+//
+// 重要可选字段(spec §6.3.3):
+//   - `current_location`(可选) —— page 层传入 `CurrentLocation` 对象
+//     (per Cross-Page issue location-amap-integration-2026-06-22):
+//     - 不传 = MVP 不发(向后兼容)
+//     - 传了 = dict:{latitude, longitude}(per v0.5.0,后端 Pydantic Location 期望 dict 字段)
+//     - 后端 LBS 推荐用,影响行程内推荐 / 安全提醒 / 距离计算
 //
 // 失败映射(spec §6.1 Error 表):
 //   - 400 / 4000 / 4002 → 参数非法 / 文件上传失败(errorBadRequest)
@@ -27,17 +33,24 @@
 //   - fail 回调            → 网络断开(isNetworkError=true,errorNetwork)
 //   - 上传超时(> 30s)     → 由页面 setTimeout 兜底触发,本服务不感知(errorUploadTimeout)
 //
-// v0.3.0(2026-06-11)改造(per integrate-r1 task):
-//   - `explainPhoto(req)` 加 mock fallback → `api/mock/photos` 的 `photoExplainMock`
-//   - HTTP 失败(isNetworkError / 5xx)→ 静默降级到 mock
-//   - 本地缓存函数(`saveGuideResult` / `getGuideResult` / `clearGuideResult` /
-//     `loadGuideResults`)0 改动,继续走 storage
-//   - `BASE_URL` / `MVP_USER_ID` / `UPLOAD_TIMEOUT_MS` 改 import 自 `services/config.js`
+// v0.5.0(2026-06-25)改造(per Cross-Page issue location-real-fix-v2-2026-06-25 §2.2):
+//   - **删除** `photoExplainMock` import(api/mock/photos.ts)
+//   - **删除** 1 处 `.catch` 段:`explainPhoto` 失败不再降级 photoExplainMock
+//   - **删除** `USE_MOCK_FALLBACK` import(本服务**不**再使用)
+//   - HTTP 失败一律抛 ApiError,由 page / store 层 best-effort 处理
+//   - **保持** `current_location` JSON 字符串化上送(spec §6.3.3 显式声明是 string 形态,
+//     multipart/form-data 解析;attempt 2 retry 时**恢复**回 v0.3.0 行为,不再改 dict 形态)
+//   - 注:api/mock/photos.ts 保留(mock 文件不动,只是 service 不再 import;per task §2.6)
+//
+// 历史:
+//   - v0.3.0(2026-06-11):photo 真接入(integrate-r1)
+//   - v0.3.0 加 mock fallback(per integrate-r1 task 决策)
+//   - v0.5.0(2026-06-25):删 mock fallback(per Cross-Page issue location-real-fix-v2)
+//   - v0.5.0(2026-06-25 attempt 2):恢复 current_location JSON 字符串化(spec §6.3.3 字面)
 
 import { ApiError } from './preferences.js'
 import { logger } from '../utils/logger.js'
-import { BASE_URL, MVP_USER_ID, USE_MOCK_FALLBACK } from './config.js'
-import { photoExplainMock } from '../../api/mock/photos.ts'
+import { BASE_URL, MVP_USER_ID } from './config.js'
 
 export { ApiError }
 
@@ -58,9 +71,15 @@ const UPLOAD_TIMEOUT_MS = 30000 // 30s 上传超时,per spec §1 + §5.2 + §6.1
  */
 
 /**
+ * @typedef {import('../utils/location.js').LocationResult} LocationResult
+ *
  * @typedef {Object} ExplainPhotoRequest
- * @property {string} image     本地图片临时路径(由 uni.chooseImage 返回的 tempFilePaths[0])
- * @property {number} tripId    当前旅行 ID,用于后端 Agent 注入行程上下文
+ * @property {string} image              本地图片临时路径(由 uni.chooseImage 返回的 tempFilePaths[0])
+ * @property {number} tripId             当前旅行 ID,用于后端 Agent 注入行程上下文(必填)
+ * @property {LocationResult} [currentLocation] 可选,store 拉的最新坐标
+ *   (per Cross-Page issue location-amap-integration-2026-06-22 + spec §6.3.3):
+ *   - 不传 = MVP 不发 `current_location` 字段(向后兼容)
+ *   - 传了 → 内部 `JSON.stringify` 后上送
  */
 
 /**
@@ -133,16 +152,17 @@ function mapUploadSuccess(res, resolve, reject) {
  *   - 2) HTTP 失败(isNetworkError / 5xx)→ 静默降级到 `photoExplainMock`
  *   - 注:mock 端 `photoExplainMock.data` 是固定 4 块演示数据;**不**写真实 image_path,
  *     调用方 `saveGuideResult` 时按 mock 形态缓存
- *   - 入参校验失败 → 直接 reject(不走 fallback,沿用 spec §7.3)
+*   - 入参校验失败 → 直接 reject(不走 fallback,沿用 spec §7.3)
  *
- * 入参(per spec §6.1):
- *   - image:   本地图片临时路径(uni.chooseImage 返回的 tempFilePaths[0])
- *   - tripId:  当前旅行 ID,后端按旅行隔离拍照讲解历史
+ * 入参(per spec §6.1 + cross-page issue location-amap-integration-2026-06-22):
+ *   - image:           本地图片临时路径(uni.chooseImage 返回的 tempFilePaths[0])
+ *   - tripId:          当前旅行 ID,后端按旅行隔离拍照讲解历史(必填,> 0)
+ *   - currentLocation: 可选,store 拉的最新坐标(per spec §6.3.3)
  *
  * 内部处理:
  *   - formData 注入 `user_id = MVP_USER_ID`(前端不感知,沿用项目 MVP 约定)
  *   - image 走 `uni.uploadFile({ filePath, name: 'image' })` 单独字段
- *   - **不**传 `current_location`(spec §6.3.3)
+ *   - 可选 `current_location`(per spec §6.3.3):page 层传了才上送,JSON 字符串化
  *   - **不**传 `history`(spec §6.3.2 追问循环复用 photo_id 关联)
  *   - 30s 上传超时(spec §1 + §5.2)
  *
@@ -188,8 +208,15 @@ export function explainPhoto(req) {
       user_id: MVP_USER_ID,
       trip_id: req.tripId,
       // **不**含 style(spec §9.1 后端不接)
-      // **不**含 current_location(spec §6.3.3 MVP 不传,接高德 SDK 时再开)
+      // 可选 `current_location`(per spec §6.3.3 真接入,per Cross-Page issue
+      //   location-amap-integration-2026-06-22):
+      //   - page 层传了 `req.currentLocation` → JSON 字符串化上送(per spec §6.3.3
+      //     显式声明是 string 形态,后端 multipart/form-data 解析 string 字段)
+      //   - 没传(MVP / 用户拒授权 / 定位失败)→ 字段不出现(向后兼容)
       // **不**含 history(spec §6.3.2 追问循环复用 photo_id 关联)
+      ...(req.currentLocation
+        ? { current_location: JSON.stringify(req.currentLocation) }
+        : {}),
     }
     uni.uploadFile({
       url: `${BASE_URL}/api/photos/explain`,
@@ -200,21 +227,10 @@ export function explainPhoto(req) {
       success: (res) => mapUploadSuccess(res, resolve, reject),
       fail: (err) => mapUploadError(err, reject),
     })
-  }).catch((httpErr) => {
-    // HTTP 失败 → mock fallback(isNetworkError / 5xx)
-    if (httpErr instanceof ApiError && (
-      httpErr.isNetworkError === true
-      || (httpErr.statusCode >= 500 && httpErr.statusCode < 600)
-    ) && USE_MOCK_FALLBACK) {
-      logger.warn('[photos.explainPhoto] HTTP failed, fallback to mock', {
-        isNetworkError: httpErr.isNetworkError,
-        statusCode: httpErr.statusCode,
-      })
-      return Promise.resolve(photoExplainMock)
-    }
-    // 4xx 业务错或 USE_MOCK_FALLBACK=false → 直接 reject
-    return Promise.reject(httpErr)
   })
+  // 注:v0.5.0 起删除 .catch((httpErr) => { mock fallback }) 段
+  // HTTP 失败由 uni.uploadFile 回调内 mapUploadError / mapUploadSuccess 内部 reject ApiError,
+  // Promise 链无后续处理,调用方 page / store 需 best-effort 处理。
 }
 
 // ───────────────── GuideResultPage 本地缓存层(specs/GuideResultPage.md §4.5 + §6.0) ─────────────────

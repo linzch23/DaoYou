@@ -28,6 +28,9 @@ def create_trip(payload: CreateTripRequest, db: Session) -> dict[str, int]:
         title=payload.title,
         start_date=payload.start_date,
         end_date=payload.end_date,
+        # v0.5.0(2026-06-26 per user-round3)草稿推上后端触发:接受 status 入参,
+        # 透传到 Trip 模型(模型 default='draft',payload.status 缺省时 fallback 'draft')
+        status=payload.status or "draft",
     )
     db.add(trip)
     db.commit()
@@ -46,7 +49,10 @@ def list_trips(
     if status is not None:
         statement = statement.where(Trip.status == status)
     trips = db.scalars(statement.order_by(Trip.start_date, Trip.id)).all()
-    return {"trips": [serialize_trip_summary(trip) for trip in trips]}
+    # v0.6.0(per user-round4-2026-06-26 19:46 bug 修复):传 db=db 触发 itinerary_count subquery
+    #   - 前端 computeEffectiveStatus 派生「完整行程」用(per utils/tripStatus.js v0.6.0 rewrite)
+    #   - 单次 subquery 避免 N+1(per serializers.py:serialize_trip_summary 注释)
+    return {"trips": [serialize_trip_summary(trip, db=db) for trip in trips]}
 
 
 def get_trip_detail(user_id: int, trip_id: int, *, db: Session) -> dict[str, object]:

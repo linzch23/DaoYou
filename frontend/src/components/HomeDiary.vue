@@ -57,8 +57,11 @@ import { HomeStrings } from '../constants/strings.js'
 
 const props = defineProps({
   /** @type {import('vue').PropType<{
-   *   trip_id: number, trip_title: string, city: string, date: string,
+   *   trip_id: number, trip_title: string,
+   *   trip_start_date: string, // v0.6.0 新增(per user-round4-2026-06-26)
+   *   date: string,
    *   today_items: import('../api/types').TripItem[], unread_reminders: number
+   *   (city 字段已移除 per 2026-06-24 审计清理)
    * }>} */
   today: {
     type: Object,
@@ -109,13 +112,21 @@ const activeId = computed(() => {
 
 /**
  * 今日是 trip 的第几天:从 trip.start_date 算起
- * 简化:用 today.date 直接展示 dayIndex 1(实际后端应有 day_index 字段;
- *      mock 中 today.date = '2026-07-01' 对应 start_date,所以显示 1)
+ * v0.6.0(per user-round4-2026-06-26 19:46):严格按 today.date - trip.start_date 算
+ * 公式:day_index = Math.floor((today.date - trip.start_date) / 86400000) + 1
+ * 边界:today < trip.start_date → 防御返回 1(today 接口本身已过滤 end_date >= today)
+ *      today/trip_start_date 字段缺失或 NaN → 防御返回 1
  */
 const dayIndex = computed(() => {
-  // 简化:无法从 today 单独拿到 day_index(spec §7.2 未给字段),默认 1
-  // 后续可由 tripDayId 推
-  return 1
+  if (!props.today) return 1
+  const startDate = props.today.trip_start_date
+  const todayDate = props.today.date
+  if (!startDate || !todayDate) return 1
+  const start = new Date(startDate).getTime()
+  const today = new Date(todayDate).getTime()
+  if (Number.isNaN(start) || Number.isNaN(today)) return 1
+  const diffDays = Math.floor((today - start) / 86400000) + 1
+  return Math.max(1, diffDays)   // 防御:负数兜底为 1
 })
 
 /**

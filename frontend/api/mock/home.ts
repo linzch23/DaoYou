@@ -7,7 +7,9 @@ import { seedTodayItems, seedReminders } from './_seed'
 interface HomeTodayData {
   trip_id: number
   trip_title: string
-  city: string
+  // v0.6.0(per user-round4-2026-06-26 19:46 bug):前端 HomeDiary 派生 day_index 用
+  // (原本只返回 date,前端无法按 today - start_date 算)
+  trip_start_date: string // 'YYYY-MM-DD'
   date: string
   today_items: TripItem[]
   unread_reminders: number
@@ -19,7 +21,8 @@ export const todayHomeMock: ApiResponse<HomeTodayData> = {
   data: {
     trip_id: 1,
     trip_title: '大连三日游',
-    city: '大连',
+    // v0.6.0(per user-round4):mock 与 data 同步,day_index 派生用
+    trip_start_date: '2026-07-01',
     date: '2026-07-01',
     today_items: seedTodayItems,
     // 与 remindersMock.data.reminders 中 status==='unread' 的数量保持一致
