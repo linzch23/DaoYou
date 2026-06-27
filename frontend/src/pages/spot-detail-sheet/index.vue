@@ -50,14 +50,13 @@
     />
 
     <!-- sheet 态(spec §3.4):复用 ⭐ components/SpotDetailSheet.vue -->
+    <!-- v0.3.0(per user-round5-2026-06-27 attempt 2):删 :is-favorite + @guide + @toggle-favorite
+         SpotDetailSheet 浮层 v0.3.0 起不显示收藏按钮 / 拍照讲解按钮(只剩 1 按钮「导航」) -->
     <SpotDetailSheet
       v-else-if="viewMode === 'sheet'"
       :spot="selectedSpot"
-      :is-favorite="isCurrentSpotFavorited"
       @close="onSheetClose"
       @navigate="onNavigate"
-      @guide="onGuide"
-      @toggle-favorite="onToggleFavorite"
     />
   </view>
 </template>
@@ -101,10 +100,9 @@ const isRetrying = ref(false)
 
 // ─────────────── Computed ───────────────
 
-const isCurrentSpotFavorited = computed(() => {
-  if (!selectedSpot.value) return false
-  return favoriteIds.value.includes(selectedSpot.value.id)
-})
+// v0.3.0(per user-round5-2026-06-27 attempt 2):isCurrentSpotFavorited 删
+//   收藏按钮已删,浮层不再消费此 computed
+//   favoriteIds ref + loadFavorites / saveFavorites 仍保留(沿 HomePage 同模式,user 后续 task 决定)
 
 // ─────────────── 视图决策(spec §5.1 / §5.4) ───────────────
 
@@ -358,52 +356,10 @@ function onNavigate(spot) {
   })
 }
 
-/**
- * 拍照讲解 —— 跳 PhotoGuide Tab,带 ?fromSpot=spotId(spec §5.2 Step C)
- * 复用 pages/home/index.vue:371-381 同款逻辑
- */
-function onGuide(spot) {
-  if (!spot) return
-  logger.info('[SpotDetailSheetPage] guide', { spotId: spot.id })
-  uni.switchTab({
-    url: `${AppRoutes.PhotoGuide}?fromSpot=${spot.id}`,
-  }).catch((err) => {
-    logger.warn('[SpotDetailSheetPage] switchTab(PhotoGuide) fail', err)
-    uni.showToast({
-      title: '页面跳转失败,请稍后重试',
-      icon: 'none',
-      duration: 1500,
-    })
-  })
-}
-
-/**
- * 收藏 / 取消收藏(本地,无后端;spec §6.4.1 + §6.2 客户端 local 状态)
- * 复用 pages/home/index.vue:387-404 同款逻辑
- */
-function onToggleFavorite(spot) {
-  if (!spot) return
-  const id = spot.id
-  const has = favoriteIds.value.includes(id)
-  let next
-  let toastText
-  if (has) {
-    next = favoriteIds.value.filter((v) => v !== id)
-    toastText = '已取消收藏'
-  } else {
-    next = [...favoriteIds.value, id]
-    toastText = '已收藏'
-  }
-  favoriteIds.value = next
-  saveFavorites(next)
-  uni.showToast({ title: toastText, icon: 'success', duration: 1500 })
-  // spec §5.2 Step D L319:事件名 toggleFavorite(camelCase) + 字段 isFavorite
-  logger.info('[SpotDetailSheetPage] toggleFavorite', {
-    spotId: id,
-    isFavorite: !has,
-    total: next.length,
-  })
-}
+// v0.3.0(per user-round5-2026-06-27 attempt 2):删 onGuide / onToggleFavorite 2 函数
+//   拍照讲解 / 收藏 2 按钮在 SpotDetailSheet 浮层中已删除,对应 handler 同步收敛
+//   favoriteIds ref + loadFavorites / saveFavorites 仍保留(initialize L230 set 但 0 read;
+//   沿 HomePage 同模式保守清理,user 后续 task 决定是否清 storage + 是否升级 homeStore 跨页共享)
 </script>
 
 <style scoped>

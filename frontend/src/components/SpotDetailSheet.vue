@@ -7,15 +7,15 @@
     原 import `HomeStrings, HomeItemTypeEmoji` 改为
     `SpotDetailSheetStrings, ItemTypeEmoji`,实现跨页复用(HomePage + 独立 route)。
   
-  Props
+  Props (v0.3.0 收敛,per user-round5-2026-06-27)
     spot        : TripItem | null     父组件控制:null = 隐藏
-    isFavorite  : boolean              收藏按钮视觉态
+    isFavorite  : (removed v0.3.0)
   
-  Emits
+  Emits (v0.3.0 收敛)
     close          : void               用户关闭(蒙层/拖动/✕)
     navigate       : TripItem           导航去这里
-    guide          : TripItem           拍照讲解
-    toggleFavorite : TripItem           收藏/取消收藏
+    guide          : (removed v0.3.0)
+    toggleFavorite : (removed v0.3.0)
 -->
 <template>
   <view
@@ -93,7 +93,8 @@
         </view>
       </scroll-view>
 
-      <!-- 3 按钮 -->
+      <!-- v0.3.0(per user-round5-2026-06-27):4 按钮 → 1 按钮,只保留「导航去这里」
+           原「拍照讲解」(📷) + 「收藏」(🤍/❤️) 2 按钮整段删除 -->
       <view class="sheet-actions">
         <view
           class="sheet-action sheet-action-navigate"
@@ -105,29 +106,6 @@
         >
           <text class="sheet-action-emoji" aria-hidden="true">🧭</text>
           <text class="sheet-action-text">{{ navigateLabel }}</text>
-        </view>
-        <view
-          class="sheet-action sheet-action-guide"
-          role="button"
-          :aria-label="guideLabel"
-          hover-class="sheet-action-hover"
-          :hover-stay-time="50"
-          @click="onGuide"
-        >
-          <text class="sheet-action-emoji" aria-hidden="true">📷</text>
-          <text class="sheet-action-text">{{ guideLabel }}</text>
-        </view>
-        <view
-          class="sheet-action sheet-action-favorite"
-          :class="{ 'sheet-action-favorite-on': isFavorite }"
-          role="button"
-          :aria-label="favoriteLabel"
-          hover-class="sheet-action-hover"
-          :hover-stay-time="50"
-          @click="onToggleFavorite"
-        >
-          <text class="sheet-action-emoji" aria-hidden="true">{{ favoriteEmoji }}</text>
-          <text class="sheet-action-text">{{ favoriteLabel }}</text>
         </view>
       </view>
     </view>
@@ -147,13 +125,13 @@ const props = defineProps({
     type: Object,
     default: null,
   },
-  isFavorite: {
-    type: Boolean,
-    default: false,
-  },
+  // v0.3.0(per user-round5-2026-06-27):isFavorite prop 已删除
+  //   原用于驱动收藏按钮视觉态,本组件 v0.3.0 起不再显示收藏按钮
 })
 
-const emit = defineEmits(['close', 'navigate', 'guide', 'toggleFavorite'])
+const emit = defineEmits(['close', 'navigate'])
+// v0.3.0(per user-round5-2026-06-27):删 guide + toggleFavorite emit
+//   拍照讲解 / 收藏 2 按钮已删除,对应 emit 收敛
 
 const isClosing = ref(false)
 
@@ -172,26 +150,15 @@ function onNavigate() {
   if (!props.spot) return
   emit('navigate', props.spot)
 }
-
-function onGuide() {
-  if (!props.spot) return
-  emit('guide', props.spot)
-}
-
-function onToggleFavorite() {
-  if (!props.spot) return
-  emit('toggleFavorite', props.spot)
-}
+// v0.3.0(per user-round5-2026-06-27):删 onGuide / onToggleFavorite
+//   拍照讲解 / 收藏 2 按钮已删除,对应 handler 收敛
 
 const closeLabel = computed(() => SpotDetailSheetStrings.sheetCloseLabel)
 const trafficTitle = computed(() => SpotDetailSheetStrings.sheetTrafficTitle)
 const noteTitle = computed(() => SpotDetailSheetStrings.sheetNoteTitle)
 const navigateLabel = computed(() => SpotDetailSheetStrings.actionNavigate)
-const guideLabel = computed(() => SpotDetailSheetStrings.actionGuide)
-const favoriteLabel = computed(() =>
-  props.isFavorite ? SpotDetailSheetStrings.actionUnfavorite : SpotDetailSheetStrings.actionFavorite
-)
-const favoriteEmoji = computed(() => (props.isFavorite ? '❤️' : '🤍'))
+// v0.3.0(per user-round5-2026-06-27):删 guideLabel / favoriteLabel / favoriteEmoji
+//   拍照讲解 / 收藏 2 按钮已删除,对应 computed 收敛
 
 const typeEmoji = computed(
   () => (props.spot && ItemTypeEmoji[props.spot.item_type]) || ItemTypeEmoji.default
@@ -457,19 +424,8 @@ watch(
   line-height: 1.4;
 }
 
-/* 收藏激活态:spec §6.4.1 "已收藏时填充 Accent" */
-.sheet-action-favorite-on {
-  background: #D4613A;
-  /* Accent */
-}
-
-.sheet-action-favorite-on .sheet-action-text {
-  color: #FFFFFF;
-}
-
-.sheet-action-favorite-on .sheet-action-emoji {
-  filter: drop-shadow(0 0 1rpx rgba(255, 255, 255, 0.6));
-}
+/* v0.3.0(per user-round5-2026-06-27):删 .sheet-action-favorite-on 3 段 CSS */
+/* 收藏按钮已删除,对应样式同步收敛 */
 
 /* 蒙层入场 */
 @keyframes sheetMaskIn {

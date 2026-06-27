@@ -33,6 +33,11 @@
     - HomePage TripCard / Diary「查看完整行程」/ NewTripPage POST 成功 / push 通知
     - 注:HomePage 当前用 `?id=xxx`,本页面按 spec §4.3 + §5.1 解析 `?tripId=xxx`;
          此为下游 / 跨页对齐项,见 deliverable §3
+
+  v0.3.0 修订(per user-round5-2026-06-27):
+    - SpotDetailSheet 浮层 4 按钮 → 1 按钮(仅保留「导航去这里」),拍照讲解 / 收藏 2 按钮删除
+    - 本页面同步删除 onGuide / onToggleFavorite handler + @guide / @toggle-favorite emit binding
+    - 选点 / 导航升级 / 收藏跨页共享 推迟到后续 task
 -->
 <template>
   <view
@@ -229,13 +234,12 @@
     </view>
 
     <!-- 景点详情浮层(spec §8.3 复用) -->
+    <!-- v0.3.0(per user-round5-2026-06-27):删 :is-favorite + @guide + @toggle-favorite
+         SpotDetailSheet 浮层 v0.3.0 起不显示收藏按钮 / 拍照讲解按钮(只剩 1 按钮「导航」) -->
     <SpotDetailSheet
       :spot="selectedSpot"
-      :is-favorite="false"
       @close="onSheetClose"
       @navigate="onNavigate"
-      @guide="onGuide"
-      @toggle-favorite="onToggleFavorite"
     />
 
     <!-- 删除确认弹窗(私有组件) -->
@@ -887,6 +891,7 @@ function onSheetClose() {
 
 /**
  * SpotDetailSheet「导航去这里」→ 唤起系统地图(spec §5.3.D + §9 AC-04 类似)
+ * 导航升级(4 端条件编译 + lat/lng 缺失 Toast + H5 端高德网页兜底)推迟到后续 task
  */
 function onNavigate(item) {
   if (!item) return
@@ -902,27 +907,9 @@ function onNavigate(item) {
   })
 }
 
-/**
- * SpotDetailSheet「拍照讲解」→ 跳 PhotoGuide Tab(spec §5.2)
- */
-function onGuide(item) {
-  if (!item) return
-  logger.info('[TripDetailPage] guide', { itemId: item.id })
-  uni.switchTab({
-    url: `${AppRoutes.PhotoGuide}?fromSpot=${item.id}`,
-  }).catch((err) => {
-    logger.warn('[TripDetailPage] switchTab(PhotoGuide) fail', err)
-  })
-}
-
-/**
- * SpotDetailSheet「收藏」→ MVP 简化:仅 logger.info,不入 favoriteIds(沿用 §8.3 决策)
- */
-function onToggleFavorite(item) {
-  if (!item) return
-  logger.info('[TripDetailPage] toggleFavorite', { itemId: item.id })
-  // spec §8.3:本页面**不**挂载 favoriteIds,避免跨页 store 边界污染
-}
+// v0.3.0(per user-round5-2026-06-27):删 onGuide / onToggleFavorite 2 函数
+//   拍照讲解 / 收藏 2 按钮在 SpotDetailSheet 浮层中已删除,对应 handler 同步收敛
+//   选点 + 导航升级 + 收藏跨页共享 推迟到后续 task(per issues/Cross-Page/user-round5-...)
 </script>
 
 <style scoped>

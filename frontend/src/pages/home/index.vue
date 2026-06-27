@@ -26,6 +26,14 @@
   Refresh:
     onShow → homeStore.refreshAll() 强制重拉(spec §5.1)
     hasFetchedOnce 控制 viewMode 不会在第一次完成前跳到 error 之外
+
+  v0.3.0 修订(per user-round5-2026-06-27):
+    - SpotDetailSheet 浮层 4 按钮 → 1 按钮(仅保留「导航去这里」),拍照讲解 / 收藏 2 按钮删除
+    - 本页面同步删除 onGuide / onToggleFavorite handler + @guide / @toggle-favorite emit binding
+    - isCurrentSpotFavorited computed 整段删除(浮层不再消费此 computed)
+    - favoriteIds ref + loadFavorites / saveFavorites storage 逻辑暂保留
+      (本 task 不删,user 后续 task 决定是否清 storage + 是否升级为 homeStore 跨页共享)
+    - 选点 / 导航升级 / 收藏跨页共享 推迟到后续 task
 -->
 <template>
   <view class="home-page">
@@ -150,13 +158,12 @@
     </view>
 
     <!-- 景点详情浮层 -->
+    <!-- v0.3.0(per user-round5-2026-06-27):删 :is-favorite + @guide + @toggle-favorite
+         SpotDetailSheet 浮层 v0.3.0 起不显示收藏按钮 / 拍照讲解按钮(只剩 1 按钮「导航」) -->
     <SpotDetailSheet
       :spot="selectedSpot"
-      :is-favorite="isCurrentSpotFavorited"
       @close="onCloseSheet"
       @navigate="onNavigate"
-      @guide="onGuide"
-      @toggle-favorite="onToggleFavorite"
     />
 
     <!-- 删除确认弹窗(2026-06-24 UserRound2-001 §3 Bug C 新增) -->
@@ -256,10 +263,8 @@ const errorMessage = computed(
   () => store.error?.message || strings.errorTitle
 )
 
-const isCurrentSpotFavorited = computed(() => {
-  if (!selectedSpot.value) return false
-  return favoriteIds.value.includes(selectedSpot.value.id)
-})
+// v0.3.0(per user-round5-2026-06-27):isCurrentSpotFavorited 删
+//   收藏按钮已删,favoriteIds 暂保留 ref(本 task 不删,user 后续 task 决定是否清 storage)
 
 /**
  * 行程列表按 start_date 升序(spec §5.2 + §9 AC-05:进行中置顶)
@@ -569,6 +574,7 @@ function onCloseSheet() {
 /**
  * 导航去这里 — 唤起系统地图
  * spec §9 AC-04:uni.openLocation({ latitude, longitude, name, address })
+ * 导航升级(4 端条件编译 + lat/lng 缺失 Toast + H5 端高德网页兜底)推迟到后续 task
  */
 function onNavigate(spot) {
   if (!spot) return
@@ -585,43 +591,11 @@ function onNavigate(spot) {
   })
 }
 
-/**
- * 拍照讲解 — 跳 PhotoGuide Tab,预填 spot id(spec §9 AC-04 简化:URL 携带)
- */
-function onGuide(spot) {
-  if (!spot) return
-  logger.info('[HomePage] guide', { itemId: spot.id })
-  // MVP 用 URL 简化携带,后续可由 photoGuideStore 跨页传(spec §6.3)
-  uni.switchTab({
-    url: `${AppRoutes.PhotoGuide}?fromSpot=${spot.id}`,
-  }).catch((err) => {
-    logger.warn('[HomePage] switchTab(PhotoGuide) fail', err)
-    uni.showToast({ title: strings.toastPageJumpFail, icon: 'none', duration: 1500 })
-  })
-}
-
-/**
- * 收藏 / 取消收藏(本地,无后端;spec §6.4.1)
- * 持久化到 uni.storage 'favorites'(task §12)
- */
-function onToggleFavorite(spot) {
-  if (!spot) return
-  const id = spot.id
-  const has = favoriteIds.value.includes(id)
-  let next
-  let toastText
-  if (has) {
-    next = favoriteIds.value.filter((v) => v !== id)
-    toastText = strings.toastUnfavorited
-  } else {
-    next = [...favoriteIds.value, id]
-    toastText = strings.toastFavorited
-  }
-  favoriteIds.value = next
-  saveFavorites(next)
-  uni.showToast({ title: toastText, icon: 'success', duration: 1500 })
-  logger.info('[HomePage] toggle favorite', { itemId: id, has: !has, total: next.length })
-}
+// v0.3.0(per user-round5-2026-06-27):删 onGuide / onToggleFavorite 2 函数
+//   拍照讲解 / 收藏 2 按钮在 SpotDetailSheet 浮层中已删除,对应 handler 同步收敛
+//   favoriteIds ref + loadFavorites / saveFavorites storage 逻辑暂保留
+//   (本 task 不删,user 后续 task 决定是否清 storage + 是否升级为 homeStore 跨页共享)
+//   选点 / 导航升级 / 收藏跨页共享 推迟到后续 task(per issues/Cross-Page/user-round5-...)
 
 /**
  * 标记 spot 已到达(乐观更新,本页面 MVP 不挂载 UI 入口,仅导出 hook)
