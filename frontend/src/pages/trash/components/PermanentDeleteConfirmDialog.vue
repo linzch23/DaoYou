@@ -16,7 +16,7 @@
 
   注:
     - 沿用 MyPage _LogoutConfirmDialog 形态:2 按钮 + Danger 配色 + 动效 fadeIn 0.2s + slideUp 0.3s ease-spring
-    - 与 _DraftConfirmDialog(3 按钮草稿)/ _ClearChatConfirmDialog(2 按钮清空对话)形态独立;
+    - 与 _DraftConfirmDialog(3 按钮草稿)/ 2 按钮清空对话(2026-06-24 Fix D 移除)形态独立;
       MVP 唯一调用方,沿用 _ 前缀**不**抽公共(per spec §3 备注 5 + §8.2)
     - 操作不可逆(MVP 实际不删,但 2 次确认给用户"这操作严肃"感)→ 「永久删除」按钮**红色 Danger 配色**
       (per spec §3.3 + docs/交互设计.md §9.3 操作不可逆确认按钮红色标注)

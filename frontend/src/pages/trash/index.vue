@@ -167,9 +167,17 @@ const permanentDeleteDialogTripId = ref(null)
 /** @type {import('vue').Ref<boolean>} */
 const permanentDeleteDialogVisible = ref(false)
 
+// 2026-06-25 修复(per UserRound2-002 Bug B):细分 4001/4000 错误码
+// - spec 字面没这 2 键,page-local const 避免改 strings.js 跨多个 page
+//   (沿 PhotoGuidePage §8.3 page-local 决策;page-only 错误文案,不影响其他页面)
+const ERROR_NOT_FOUND_TEXT = '资源已不存在'
+const ERROR_BAD_REQUEST_TEXT = '操作失败,请重试'
+
 /**
- * 错误码 → 友好提示映射(spec §5.3 A/B/C + §5.4 伪代码)
+ * 错误码 → 友好提示映射(spec §5.3 A/B/C + §5.4 伪代码 + 2026-06-25 Bug B 细分)
  * - isNetworkError=true → errorNetwork
+ * - code=4001 / 404 → ERROR_NOT_FOUND_TEXT(资源已不存在,race condition / 后端自动清理)
+ * - code=4000 / 400 → ERROR_BAD_REQUEST_TEXT(请求参数错误,Pydantic 校验)
  * - code=5000 / 5xx → errorServer
  * - 其他 / 4xx → errorFallback
  * @returns {string}
@@ -178,6 +186,12 @@ function mapErrorToMessage() {
   const err = trashStore.error
   if (!err) return strings.errorNetwork
   if (err.isNetworkError) return strings.errorNetwork
+  if (err.code === 4001 || err.statusCode === 404) {
+    return ERROR_NOT_FOUND_TEXT
+  }
+  if (err.code === 4000 || err.statusCode === 400) {
+    return ERROR_BAD_REQUEST_TEXT
+  }
   if (err.code === 5000 || (err.statusCode >= 500 && err.statusCode < 600)) {
     return strings.errorServer
   }

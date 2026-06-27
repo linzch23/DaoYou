@@ -15,7 +15,7 @@
     cancel     : void   用户点「取消」或关闭弹窗(点蒙层)
 
   注:
-    - 沿用 PhotoGuidePage §3.6 _ClearChatConfirmDialog 形态:2 按钮 + Danger 配色 +
+    - 沿用 PhotoGuidePage §3.6 2 按钮清空 dialog 形态(2026-06-24 Fix D 已移除)+ Danger 配色 +
       动效 fadeIn 0.2s + slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1)
     - 与 pages/edit-trip/components/DraftConfirmDialog.vue(3 按钮 + 草稿场景)
       **形态完全独立**;MVP 唯一调用方,沿用 _ 前缀**不**抽公共(per spec §3 备注 6 + §8.3)

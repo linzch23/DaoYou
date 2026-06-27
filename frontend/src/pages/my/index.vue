@@ -35,7 +35,7 @@
  
   不复用(per spec §3.7 + §10 C-10):
     - 不抽 _MenuItem / _UserInfoCard / _PreferenceSummary / _LogoutButton / _ConfirmDialog 公共子组件(MVP YAGNI,inline 渲染)
-    - _ClearChatConfirmDialog 私有(PhotoGuidePage)/ _DraftConfirmDialog 私有(NewTripPage / EditTripPage)/ _DeleteConfirmDialog 私有(TripDetailPage)— 同形态但语义不同,新建本页面私有 _LogoutConfirmDialog
+    - 2 按钮清空对话 dialog(2026-06-24 Fix D 移除,PhotoGuidePage 私有)/ _DraftConfirmDialog 私有(NewTripPage / EditTripPage)/ _DeleteConfirmDialog 私有(TripDetailPage)— 同形态但语义不同,新建本页面私有 _LogoutConfirmDialog
  
   关键决策(per spec §6.4.1/§6.4.2/§6.4.3 + C-8/C-9):
     - 不调 GET /api/users/me(MVP 无 User 类型)— 头像/昵称走 emoji + 中文默认占位
