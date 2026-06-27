@@ -40,7 +40,7 @@
     - 复用 POST /api/photos/explain,**不**新建追问 API,**不**传 history 字段
     - 后端按 photo_id 关联会话(spec §6.3.2)
     - chatting 失败 → _ErrorBanner 内联(input 上方,retryable=true),不切全屏 error
-    - _ClearChatConfirmDialog 二次确认(2 按钮:取消/清空;清空红色 Danger)
+    - 2 按钮清空确认 dialog(取消/清空,清空红色 Danger) — 2026-06-24 Fix D 移除(沿用 chat / guide-result 移除决策)
 -->
 <template>
   <view
@@ -341,18 +341,8 @@
           </view>
 
           <!-- _ChatInputBar(sticky bottom)— 在 result/chatting 态底部 -->
+          <!-- 历史(2026-06-24 Fix D):清空按钮已移除(跨 3 page 同步,后端无对应端点) -->
           <view class="chat-input-bar-wrap">
-            <view
-              v-if="chatHistory.length > 0"
-              class="btn-clear-chat"
-              role="button"
-              :aria-label="strings.btnClearChat"
-              hover-class="btn-clear-chat-hover"
-              :hover-stay-time="50"
-              @click="onClearChatTap"
-            >
-              <text class="btn-clear-chat-text" aria-hidden="true">🗑</text>
-            </view>
             <view class="chat-input-field-wrap">
               <input
                 v-model="chatInputDraft"
@@ -401,16 +391,7 @@
       </view>
     </scroll-view>
 
-    <!-- 清空对话确认弹窗(2 按钮:取消 / 清空,清空红色 Danger) -->
-    <ClearChatConfirmDialog
-      :visible="clearDialogVisible"
-      :title="strings.clearDialogTitle"
-      :message="strings.clearDialogMessage"
-      :btn-confirm-label="strings.clearDialogConfirm"
-      :btn-cancel-label="strings.clearDialogCancel"
-      @confirm="onDialogConfirm"
-      @cancel="onDialogCancel"
-    />
+    <!-- 2026-06-24 Fix D 移除:清空确认 dialog 整段(沿用 chat / guide-result 移除决策) -->
   </view>
 </template>
 
@@ -427,10 +408,11 @@ import { logger } from '../../utils/logger.js'
 import { useUserStore } from '../../stores/userStore.js'
 import { useHomeStore } from '../../stores/homeStore.js'
 import { explainPhoto, saveGuideResult } from '../../services/photos.js'
+// 2026-06-24 Fix D 移除:清空确认 dialog import + 整文件删除(沿用 chat / guide-result 移除决策)
 import { ApiError } from '../../services/preferences.js'
+import { getCurrentLocation, checkLocationPermission } from '../../utils/location.js'
 import ErrorBanner from '../../components/ErrorBanner.vue'
 import SpotCard from '../../components/SpotCard.vue'
-import ClearChatConfirmDialog from './components/ClearChatConfirmDialog.vue'
 
 const strings = PhotoGuideStrings
 
@@ -519,6 +501,92 @@ function mapChatError(err) {
   return mapAnalyzeError(err).message
 }
 
+/**
+ * v0.5.0(2026-06-25 per Cross-Page issue location-real-fix-v2-2026-06-25 §2.5)增强:
+ *   - 先查 `checkLocationPermission()` 权限状态(per user 2026-06-25 16:12 硬要求
+ *     「坚决不能 mock 兜底」+ 「让用户知道定位失败」)
+ *   - 'denied' → 弹 modal 引导到系统设置(uni.openAppAuthorizeSetting),返回 null
+ *   - 'authorized' / 'not determined' → 调 `getCurrentLocation()` 拿真实位置
+ *   - 拿定位失败:
+ *     * PERMISSION_DENIED → 弹 modal(与 denied 路径同)
+ *     * 其它(UNAVAILABLE / TIMEOUT / CANCELED)→ toast「定位失败,本次不附带位置」
+ *   - 任何情况都不静默 catch,也不抛错阻塞主流程;返回 null 让后续业务继续走
+ *
+ * 沿 chat/index.vue §tryGetLocationSafe 同模式(2026-06-25 实证)
+ *
+ * @param {string} traceTag  调用方标识(explain / chat / retry),写入 logger.warn 便于诊断
+ * @returns {Promise<import('../../utils/location.js').LocationResult | null>}
+ */
+async function tryGetLocationSafe(traceTag) {
+  // 0. 先查权限状态(per cross-page issue §2.5)
+  const status = await checkLocationPermission()
+  if (status === 'denied') {
+    logger.warn(`[photo-guide.${traceTag}] permission denied`, { status })
+    uni.showModal({
+      title: '需要定位权限',
+      content: '请在系统设置中开启定位权限,以便为您提供基于位置的拍照讲解。',
+      confirmText: '去设置',
+      cancelText: '取消',
+      success: (res) => {
+        if (res.confirm) {
+          // #ifdef APP-PLUS
+          uni.openAppAuthorizeSetting({
+            success: () => logger.info(`[photo-guide.${traceTag}] openAppAuthorizeSetting ok`),
+            fail: (err) => logger.warn(`[photo-guide.${traceTag}] openAppAuthorizeSetting failed`, err),
+          })
+          // #endif
+          // #ifndef APP-PLUS
+          uni.showToast({ title: '请在浏览器/系统设置中开启定位权限', icon: 'none', duration: 2500 })
+          // #endif
+        }
+      },
+    })
+    return null
+  }
+
+  // 1. 拿定位
+  try {
+    const loc = await getCurrentLocation()
+    logger.info(`[photo-guide.${traceTag}] location ok`, {
+      latitude: loc.latitude,
+      longitude: loc.longitude,
+    })
+    return loc
+  } catch (err) {
+    // 2. 失败显式 toast,不阻塞主流程
+    logger.warn(`[photo-guide.${traceTag}] location failed`, {
+      code: err?.code,
+      message: err?.message,
+    })
+    if (err?.code === 'PERMISSION_DENIED') {
+      // 运行时被回收(罕见)
+      uni.showModal({
+        title: '需要定位权限',
+        content: '定位权限被回收,请在系统设置中重新开启。',
+        confirmText: '去设置',
+        cancelText: '取消',
+        success: (res) => {
+          if (res.confirm) {
+            // #ifdef APP-PLUS
+            uni.openAppAuthorizeSetting({
+              success: () => logger.info(`[photo-guide.${traceTag}] openAppAuthorizeSetting ok (runtime denied)`),
+              fail: (openErr) => logger.warn(`[photo-guide.${traceTag}] openAppAuthorizeSetting failed`, openErr),
+            })
+            // #endif
+          }
+        },
+      })
+      return null
+    }
+    uni.showToast({
+      title: '定位失败,本次不附带位置',
+      icon: 'none',
+      duration: 2000,
+    })
+    return null
+  }
+}
+
 // ─────────────── Local State(spec §4.1) ───────────────
 
 /** @type {import('vue').Ref<number | null>} URL ?fromSpot 解析结果 */
@@ -549,8 +617,6 @@ const isUploadTimeout = ref(false)
 const analyzeError = ref(null)
 /** @type {import('vue').Ref<string | null>} chatting 失败的友好提示(驱动 _ErrorBanner 内联) */
 const chatError = ref(null)
-/** @type {import('vue').Ref<boolean>} _ClearChatConfirmDialog 显示标记 */
-const clearDialogVisible = ref(false)
 /** @type {import('vue').Ref<boolean>} image 加载失败占位标记 */
 const imageLoadFailed = ref(false)
 /** @type {import('vue').Ref<string>} chat input 草稿(input v-model) */
@@ -731,7 +797,6 @@ async function onLoadPage(query) {
   chatHistory.value = []
   analyzeError.value = null
   chatError.value = null
-  clearDialogVisible.value = false
   imageLoadFailed.value = false
   chatInputDraft.value = ''
   isUploadTimeout.value = false
@@ -900,9 +965,14 @@ async function doExplainAnalyze() {
     currentStep.value = 'error'
     return
   }
+  // 2026-06-24 修复:try getCurrentLocation 失败静默降级(per Q3)
+  const location = await tryGetLocationSafe('explain')
   const req = {
     image: imagePath.value,
     tripId,
+    // per spec §6.3.3 真接入 + Cross-Page issue location-amap-integration-2026-06-22:
+    //   page 层 try getCurrentLocation 拿到 → 上送;没拿到 → undefined → service 内部不传该字段
+    currentLocation: location || undefined,
   }
   try {
     const res = await explainPhoto(req)
@@ -972,9 +1042,15 @@ async function doExplainChat() {
     currentStep.value = 'result'
     return
   }
+  // 2026-06-24 修复:try getCurrentLocation 失败静默降级(per Q3)
+  const location = await tryGetLocationSafe('chat')
   const req = {
     image: imagePath.value,
     tripId,
+    // per spec §6.3.3 真接入 + Cross-Page issue location-amap-integration-2026-06-22:
+    //   page 层 try getCurrentLocation 拿到 → 上送;没拿到 → undefined → service 内部不传该字段
+    //   追问循环复用 photo_id 关联会话,location 字段同步复用
+    currentLocation: location || undefined,
   }
   try {
     const res = await explainPhoto(req)
@@ -1031,30 +1107,9 @@ function onChipTap(q) {
 }
 
 /**
- * 「🗑」清空按钮 → 弹 _ClearChatConfirmDialog
+ * 2026-06-24 Fix D 移除:onClearChatTap / onDialogConfirm / onDialogCancel
+ * (清空对话纯 client-side,后端无对应端点;移除整个 modal 触发链)
  */
-function onClearChatTap() {
-  if (chatHistory.value.length === 0) return
-  clearDialogVisible.value = true
-}
-
-/**
- * _ClearChatConfirmDialog:确认清空
- * spec §5.2 Step 4 + §9 AC-16
- */
-function onDialogConfirm() {
-  const prevLength = chatHistory.value.length
-  chatHistory.value = []
-  clearDialogVisible.value = false
-  logger.info('[PhotoGuidePage] chat cleared', { prevLength })
-}
-
-/**
- * _ClearChatConfirmDialog:取消 / 蒙层点击
- */
-function onDialogCancel() {
-  clearDialogVisible.value = false
-}
 
 /**
  * error 态「重试」→ 重新发起
@@ -1861,32 +1916,7 @@ onUnmounted(() => {
   box-sizing: border-box;
 }
 
-.btn-clear-chat {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 88rpx;
-  height: 88rpx;
-  min-width: 88rpx;
-  min-height: 88rpx;
-  /* ≥ 44pt tap area */
-  border-radius: 9999px;
-  background: #F2EBE0;
-  /* surfaceWarm */
-  flex-shrink: 0;
-  box-sizing: border-box;
-  transition: opacity 0.15s ease-out, transform 0.15s ease-out;
-}
-
-.btn-clear-chat-hover {
-  opacity: 0.8;
-  transform: scale(0.96);
-}
-
-.btn-clear-chat-text {
-  font-size: 32rpx;
-  line-height: 1;
-}
+/* 历史(2026-06-24 Fix D):清空按钮 CSS 同步清理,见 L344 audit trail */
 
 .chat-input-field-wrap {
   flex: 1;
