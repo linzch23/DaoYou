@@ -11,6 +11,8 @@
     title            : string         modal 标题(本页面固定传 ChatPageStrings.actionOptionsTitle)
     btnConfirmLabel  : string         「应用此方案」按钮文案(本页面传 ChatPageStrings.actionOptionsConfirm)
     btnCancelLabel   : string         「取消」按钮文案(本页面传 ChatPageStrings.actionOptionsCancel)
+    invalidMessage   : string         (v0.3.0 新增)校验失败提示;非空时顶部显示 banner + confirm 按钮 disabled,
+                                       文本走父 page 提供(本页面传 ChatPageStrings.replanInvalid);空 = 隐藏 banner
 
   Emits
     confirm  (selectedOption: any)   用户选中某项 + 点「应用此方案」触发,传选中 option
@@ -40,6 +42,16 @@
     <view class="action-options" @click.stop>
       <view class="action-options-content">
         <text class="action-options-title">{{ title }}</text>
+
+        <!-- v0.3.0 新增:校验失败顶部 banner(per spec §3.9 step 6 + AC-24,父 page 传 ChatPageStrings.replanInvalid) -->
+        <view
+          v-if="invalidMessage"
+          class="action-options-invalid-banner"
+          role="alert"
+          aria-live="polite"
+        >
+          <text class="action-options-invalid-banner-text">{{ invalidMessage }}</text>
+        </view>
 
         <scroll-view
           class="action-options-list"
@@ -94,10 +106,10 @@
 
         <view
           class="action-options-btn action-options-btn-confirm"
-          :class="{ 'action-options-btn-disabled': selectedIdx === null || submitting }"
+          :class="{ 'action-options-btn-disabled': selectedIdx === null || submitting || !!invalidMessage }"
           role="button"
           :aria-label="btnConfirmLabel"
-          :aria-disabled="selectedIdx === null || submitting ? 'true' : 'false'"
+          :aria-disabled="(selectedIdx === null || submitting || !!invalidMessage) ? 'true' : 'false'"
           hover-class="action-options-btn-confirm-hover"
           :hover-stay-time="50"
           @click="onConfirm"
@@ -136,6 +148,11 @@ const props = defineProps({
   submitting: {
     type: Boolean,
     default: false,
+  },
+  // v0.3.0 新增:校验失败顶部 banner(per spec §3.9 step 6 + AC-24)
+  invalidMessage: {
+    type: String,
+    default: '',
   },
 })
 
@@ -280,6 +297,28 @@ function onMaskClick() {
   font-weight: 600;
   color: #2C2C2C;
   /* ink */
+  line-height: 1.4;
+}
+
+/* v0.3.0 新增:校验失败顶部 banner(per spec §3.9 step 6 + AC-24) */
+.action-options-invalid-banner {
+  background: rgba(196, 74, 58, 0.08);
+  /* danger #C44A3A 8% 透明,见 UI §二 */
+  border-left: 4rpx solid #C44A3A;
+  /* danger,见 UI §二 */
+  border-radius: 8px;
+  padding: 16rpx 20rpx;
+  box-sizing: border-box;
+  opacity: 0.95;
+  animation: actionOptionsFadeIn 0.15s ease-out both;
+}
+
+.action-options-invalid-banner-text {
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 26rpx;
+  /* 13px */
+  color: #C44A3A;
+  /* danger,见 UI §二 */
   line-height: 1.4;
 }
 
