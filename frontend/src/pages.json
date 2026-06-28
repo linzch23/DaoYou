@@ -111,16 +111,6 @@
       }
     },
     {
-      "path": "pages/notification-setting/index",
-      "style": {
-        "navigationBarTitleText": "通知设置",
-        "navigationStyle": "custom",
-        "navigationBarTextStyle": "black",
-        "navigationBarBackgroundColor": "#FDFBF7",
-        "backgroundColor": "#F7F3EC"
-      }
-    },
-    {
       "path": "pages/personal-profile/index",
       "style": {
         "navigationBarTitleText": "个人资料",

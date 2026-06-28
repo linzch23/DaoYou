@@ -305,6 +305,7 @@ import {
 import { AppRoutes } from '../../constants/routes.js'
 import { logger } from '../../utils/logger.js'
 import { useChatStore } from '../../stores/chatStore.js'
+import { storeToRefs } from 'pinia'  // 2026-06-28 retro fix 修 silent drop:把 page-local actionOptions ref 改读 store.currentActionOptions
 import { useHomeStore } from '../../stores/homeStore.js'
 import { ApiError } from '../../services/chat.js'
 import { getCurrentLocation, checkLocationPermission } from '../../utils/location.js'
@@ -505,8 +506,9 @@ async function tryGetLocationSafe() {
 
 /** @type {import('vue').Ref<ChatViewMode>} 严格 5 枚举 */
 const viewMode = ref('loading')
-/** @type {import('vue').Ref<any[]>} intent='replan' 时的 action_options 列表(MVP any[]) */
-const actionOptions = ref([])
+// 2026-06-28 retro fix 修 silent drop:actionOptions 来源从 page-local ref 改读 store.currentActionOptions
+//   (由 L558-559 `const { currentActionOptions: actionOptions } = storeToRefs(chatStore)` 解构派生);
+//   后端真传 `data.action_options` 时 store sendMessage 成功分支会写入,page 模板 `:options="actionOptions"` 自动响应。
 /** @type {import('vue').Ref<number | null>} ActionOptionsModal 中选中的 option 索引 */
 const selectedOptionIdx = ref(null)
 /** @type {import('vue').Ref<string>} _InputBar text-input v-model 绑值 */
@@ -552,6 +554,10 @@ const photoOptions = [
 
 // ─────────────── Store ───────────────
 const chatStore = useChatStore()
+// 2026-06-28 retro fix 修 silent drop:把 actionOptions 派生自 store.currentActionOptions
+//   (storeToRefs 解构出 ref,响应式 1:1 对齐;`actionOptions.value = []` 重置仍可直接写,
+//    storeToRefs 解构出的 ref 是双向绑定的)
+const { currentActionOptions: actionOptions } = storeToRefs(chatStore)
 
 // v0.5.0(2026-06-24)trip_id 修复:无 active trip 错误态派生(error 模板按这个切「去新建」按钮)
 // 派生:取 historyError / sendError 第一个匹配 isNoActiveTripError 的

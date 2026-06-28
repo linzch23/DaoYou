@@ -863,7 +863,6 @@ export const MyPageStrings = {
   menuPersonalProfile: '个人信息编辑',   // 菜单项 1 标签
   menuTrash: '回收站',                    // 菜单项 2 标签
   menuStyleSetting: '讲解风格',            // 菜单项 3 标签
-  menuNotificationSetting: '通知设置',     // 菜单项 4 标签
   menuHelp: '帮助',                        // 菜单项 5 标签
   menuAbout: '关于',                       // 菜单项 6 标签
   toastHelpComing: '功能即将上线,敬请期待', // 帮助菜单点击弹 Toast(per §3.4)
@@ -900,8 +899,8 @@ export const MyPageStrings = {
  *   route     : string | null           AppRoutes.<X> 或 null(null = MVP 未开放)
  *   behavior  : 'navigate' | 'coming-soon'  点击行为(per §3 备注 7)
  *
- * 复用 `AppRoutes.PersonalProfile` / `Trash` / `StyleSetting` / `NotificationSetting`
- * / `About` 5 个**已预声明**的子路由(per `constants/routes.js:16-20`),
+ * 复用 `AppRoutes.PersonalProfile` / `Trash` / `StyleSetting`
+ * / `About` 4 个**已预声明**的子路由(per `constants/routes.js:16-20`),
  * 复用 `MyPageStrings.menuXxxXxx` 6 键 label,**不**重复定义字面值
  *
  * @type {ReadonlyArray<{ id: string, icon: string, label: string, route: string | null, behavior: 'navigate' | 'coming-soon' }>}
@@ -910,7 +909,6 @@ export const MyPageMenuOptions = Object.freeze([
   { id: 'personal-profile',    icon: '👤',  label: MyPageStrings.menuPersonalProfile,    route: AppRoutes.PersonalProfile,    behavior: 'navigate' },
   { id: 'trash',                icon: '🗑️', label: MyPageStrings.menuTrash,                route: AppRoutes.Trash,               behavior: 'navigate' },
   { id: 'style-setting',        icon: '🎙️', label: MyPageStrings.menuStyleSetting,        route: AppRoutes.StyleSetting,        behavior: 'navigate' },
-  { id: 'notification-setting', icon: '🔔', label: MyPageStrings.menuNotificationSetting, route: AppRoutes.NotificationSetting, behavior: 'navigate' },
   { id: 'help',                 icon: '❓', label: MyPageStrings.menuHelp,                 route: null,                          behavior: 'coming-soon' },
   { id: 'about',                icon: 'ℹ️', label: MyPageStrings.menuAbout,                route: AppRoutes.About,               behavior: 'navigate' },
 ])
@@ -1094,145 +1092,6 @@ export const StyleSettingOptions = Object.freeze([
 ])
 
 /**
- * NotificationSettingPage 专用文案(specs/NotificationSettingPage.md §4.5 + §10.8 C-1,实际 26 键)
- *
- * spec 字面写"~17 键"和"~22 键"两处与 C-1 详细 list(2+1+2+2+4+4+2+4+1+1+2+1=26)不一致;
- * 此处按 C-1 list 实际定义 26 键(spec 笔误,deliverable §3.4 显式登记)
- *
- * 字段分类:
- *   顶栏(2) + 加载(1) + 表单头(2) + 段标题(2) + 4 开关标题(4) + 4 开关描述(4)
- *   + 静默时段(2) + picker 标签 + placeholder(4) + 提交按钮(1) + 提交态(1)
- *   + 完成态 + Toast(2) + H5 aria(1) = 26 键
- *   错误兜底与「重试」按钮文案**复用** `OnboardingStrings.errorFallback` / `OnboardingStrings.retry`,
- *   **不**在本段重复(spec §10.4 i18n 纪律 + §10.8 C-11 强约束)
- *
- * 复用约定(spec §3.8 + §4.5 备注 + §10.4 i18n 纪律):
- *   - 顶栏 `backAria: '返回'` 与 StyleSettingStrings.backAria / PersonalProfileStrings.backAria
- *     / TripDetailStrings.backAria / PhotoGuideStrings.backAria **字面相同但本页面**不**复用既有段**——
- *     保持各 page 字符串段独立(per spec-writer-patterns §13「各 page 独立 strings 段」决策),
- *     避免跨 page 字符串耦合
- *   - 错误兜底 1 键 `errorFallback` **引用** `OnboardingStrings.errorFallback` 既有段字面值
- *     (MVP 简化,storage 异常罕见,统一走 errorFallback 兜底,**不**细分 errorNetwork/Server/BadRequest)
- *   - 「重试」按钮文案走 `OnboardingStrings.retry`,**不**在本段重复
- *   - 4 开关 title / desc 8 键独立国际化(便于未来 i18n 化)
- *   - emoji 图标 🧭 / 👥 / 📢 / 🎁 跨语言通用,无需翻译,直接 inline 在 notificationSwitchConfigs
- */
-export const NotificationSettingStrings = {
-  // 顶栏(spec §3.2 + §4.5)
-  backAria: '返回',                                   // Header「←」aria-label
-  title: '通知设置',                                   // 顶栏标题(与 pages.json navigationBarTitleText 对齐)
-
-  // 加载(spec §3.7 + §4.5)
-  loadingText: '正在加载设置...',                      // viewMode='loading' 提示语
-
-  // 表单头(spec §3.3 + §4.5)
-  formTitle: '通知偏好',                              // _FormHeader 标题
-  formHint: '选择要接收的通知类别;静默时段内不发送任何通知', // _FormHeader 提示
-
-  // 段标题(spec §3 + §4.5)
-  sectionNotificationLabel: '通知类别',                // 4 开关 Section 标题
-  sectionQuietHoursLabel: '静默时段',                  // 静默时段 Section 标题
-
-  // 4 开关标题(spec §3.4 表格 + §4.5)
-  titleTripReminder: '行程提醒',
-  titleBuddyActivity: '同伴动态',
-  titleSystemMessage: '系统消息',
-  titleMarketing: '营销推广',
-
-  // 4 开关描述(spec §3.4 表格 + §4.5)
-  descTripReminder: '出发前、行程中关键节点自动提醒',
-  descBuddyActivity: '同伴创建 / 修改 / 删除行程时通知',
-  descSystemMessage: '系统升级、维护和故障通知',
-  descMarketing: '活动优惠、推广信息和问卷调研',
-
-  // 静默时段(spec §3.6 + §4.5)
-  quietHoursTitle: '静默时段',                         // _QuietHoursRow QHHeader 标题
-  quietHoursDesc: '该时段内不发送任何通知',            // QHHeader 描述
-
-  // picker 标签(spec §3.6 + §4.5)
-  pickerStartLabel: '开始时间',
-  pickerEndLabel: '结束时间',
-  pickerStartPlaceholder: '请选择开始时间',
-  pickerEndPlaceholder: '请选择结束时间',
-
-  // 提交按钮(spec §3.5 + §4.5)
-  btnSave: '保存',                                    // _ActionBar 单 CTA
-
-  // 提交态(spec §3.7 + §4.5)
-  savingText: '正在保存设置...',                      // viewMode='saving' 提示语
-
-  // 完成态(spec §3.7 + §4.5)
-  savedText: '已保存!',                               // viewMode='saved' 提示语
-
-  // Toast(spec §4.5)
-  saveSuccessToast: '已保存',                         // 保存成功后短暂 Toast(短版,沿用 successText)
-
-  // H5 aria(spec §10 可访问性)
-  pageAria: '通知设置页',                             // page root aria-label
-}
-
-/**
- * NotificationSettingDefaults 7 字段默认偏好(spec §4.4 + §4.1 NotificationPrefs 形状)
- *
- * 7 键对象,1:1 对齐 `NotificationPrefs` 形状(7 字段):
- *   4 开关(trip_reminder / buddy_activity / system_message / marketing)
- *   + 3 静默时段(quiet_hours_enabled / quiet_hours_start / quiet_hours_end)
- *
- * MVP 简化决策:
- *   - 4 开关:trip_reminder / buddy_activity / system_message 默认开(用户主观意愿倾向接收),
- *     marketing 默认关(减少打扰,符合业界惯例)
- *   - 静默时段:默认开 + 22:00-08:00(夜间不打扰 + 早晨及时接收,允许跨午夜 per §5.3 H)
- *
- * MVP 简化:不与 userId 关联(per spec §6.4.3 决策,MVP 单用户 '1' 隐含)
- * 持久化由 `uni.setStorageSync('notification_prefs', payload)` 触发(per spec §5.2 Step 6)
- *
- * @type {Readonly<{
- *   trip_reminder: boolean,
- *   buddy_activity: boolean,
- *   system_message: boolean,
- *   marketing: boolean,
- *   quiet_hours_enabled: boolean,
- *   quiet_hours_start: string,
- *   quiet_hours_end: string,
- * }>}
- */
-export const NotificationSettingDefaults = Object.freeze({
-  trip_reminder: true,         // 行程提醒(默认开)
-  buddy_activity: true,        // 同伴动态(默认开)
-  system_message: true,        // 系统消息(默认开)
-  marketing: false,            // 营销推广(默认关)
-  quiet_hours_enabled: true,   // 静默时段 toggle(默认开)
-  quiet_hours_start: '22:00',  // 静默时段开始时间('HH:mm' 格式)
-  quiet_hours_end: '08:00',    // 静默时段结束时间('HH:mm' 格式)
-})
-
-/**
- * notificationSwitchConfigs 4 通知开关元数据(spec §3.4 表格 + §4.4)
- *
- * 4 键数组,顺序为"通知功能价值由高到低":
- *   行程提醒 > 同伴动态 > 系统消息 > 营销
- *
- * 数据形状(spec §4.4):
- *   key       : string       唯一 key(v-for :key 用;1:1 对齐 NotificationSettingDefaults 4 开关)
- *   icon      : string       emoji 图标,左侧 64rpx
- *   title     : string       中文短标签(由 NotificationSettingStrings.titleXxx 引用)
- *   desc      : string       中文长描述(由 NotificationSettingStrings.descXxx 引用)
- *   defaultOn : boolean      默认开关值,新用户 fallback(per §5.1 onLoad miss 分支)
- *
- * `defaultOn` 1:1 对齐 `NotificationSettingDefaults` 4 开关
- * 复用 `NotificationSettingStrings.titleXxx` / `descXxx` 8 键,**不**重复字面值
- * 与 `OnboardingInterestOptions` / `StyleSettingOptions` **语义独立**(通知类别 vs 兴趣 vs 讲解风格)
- *
- * @type {ReadonlyArray<{ key: string, icon: string, title: string, desc: string, defaultOn: boolean }>}
- */
-export const notificationSwitchConfigs = Object.freeze([
-  { key: 'trip_reminder',  icon: '🧭', title: NotificationSettingStrings.titleTripReminder,  desc: NotificationSettingStrings.descTripReminder,  defaultOn: true  },
-  { key: 'buddy_activity', icon: '👥', title: NotificationSettingStrings.titleBuddyActivity, desc: NotificationSettingStrings.descBuddyActivity, defaultOn: true  },
-  { key: 'system_message', icon: '📢', title: NotificationSettingStrings.titleSystemMessage, desc: NotificationSettingStrings.descSystemMessage, defaultOn: true  },
-  { key: 'marketing',      icon: '🎁', title: NotificationSettingStrings.titleMarketing,      desc: NotificationSettingStrings.descMarketing,      defaultOn: false },
-])
-
-/**
  * LoginPage 专用文案(specs/LoginPage.md v0.1.0 §4.4,~7 键)
  *
  * 字段分类:
@@ -1377,7 +1236,7 @@ export const AboutStrings = {
  *   copyright.value  ← 项目级占位字面(MVP 阶段团队尚未正式命名,占位文案)
  *
  * 复用 `AboutStrings.cardLabelXxx` 4 键,**不**重复字面值
- * 与 `StyleSettingOptions` / `OnboardingInterestOptions` / `notificationSwitchConfigs`
+ * 与 `StyleSettingOptions` / `OnboardingInterestOptions`
  * **形态独立** — 本段无 `defaultOn` / `value-enum` 等运行时约束(纯展示,无业务逻辑)
  *
  * @type {ReadonlyArray<{ key: string, icon: string, label: string, value: string }>}

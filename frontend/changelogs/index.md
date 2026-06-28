@@ -31,6 +31,7 @@
 | [BottomTabBar](#bottomtabbar) | 2026-06-05 | v0.1.0 | MVP 简化路径 — pages.json tabBar 段新增(uni-app 原生 tabBar 3 项 + 6 占位 iconPath,1x1 transparent PNG 68 bytes each);**不**实现 `custom: true` / **不**创建 `components/tab-bar/BottomTabBar.vue` / **不**新增 `BottomTabBarStrings` 段(per task 显式「MVP 简化:先用 uni-app 原生 tabBar, **不实现**圆形凸出, 后续可升级 custom tabBar」);**任务 vs spec 偏差登记** 3 处:无 custom tabBar / 无 BottomTabBar.vue / 无 BottomTabBarStrings 段(per memory §2 + orchestrator override spec §8.1 + §10 R-1 + §10 R-6,deliverable §3 显式登记);颜色字段按 spec 字面落地(`color: '#9A9A9A'` spec AC-09 vs task '#5A5A5A' / `borderStyle: 'black'` spec vs task 'white',per memory §2 「行为类 → spec 永远赢」);既有 16 page entry / globalStyle / easycom 0 改动;Review 待 3 reviewer 并行,Architecture 待 architecture-reviewer 派工 |
 | [TripDetailPage](#tripdetailpage) | 2026-06-06 | v0.1.1 | **UI-026 retro fix** — `pages/trip-detail/index.vue` `.day-block` 视觉边界优化(per issues/UI/UI-026-day-block-border-optimize.md):bg `#FDFBF7 → #FFFFFF` 纯白(与 page `#F7F3EC` 暖米色形成 3.1% 亮度差 + border + shadow 双层边界),新增 `border: 1.5rpx solid rgba(45, 106, 94, 0.12)`,`box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04) → 0.06` 微提升;**0 改动** 4 视图态 / 5 子态矩阵 / viewMode 决策 / spec / AppColors / `_TripHeader` background(spec 边界,trip-header 留 `#FDFBF7` 与 day-block 微差异信息层 1);retro fix 协议保持 `Spec.status: NotStarted` + `Architecture.status: NotStarted` + `Development.status: NotStarted` + `FinalStatus: NotStarted` + `Review.{ui,spec,test}: Pass`(0 触动,纯 UX 视觉调整 0 业务逻辑变更 0 spec 字段变更 0 API 契约变更,reviewer 重审无新失败项);Playwright 实测 5173 tripId=1:3 day-block `rgb(255,255,255)` + `border 0.12` + `shadow 0.06` + page bg `rgb(247,243,236)` 边界清晰 + 0 console error;Vite 编译产物 curl 验证 `border: 0.04688rem solid rgba(45, 106, 94, 0.12)` 跨 H5/Android 兼容 |
 | [HomePage](#homepage) | 2026-06-06 | v0.2.1 | **UI-026 retro fix 跨页影响** — `components/SpotCard.vue` + `components/SpotTimeAxis.vue` 视觉边界优化(per issues/UI/UI-026-day-block-border-optimize.md):`.spot-card` border `0.06 → 0.10` + 新增 `box-shadow: 0 4rpx 12rpx rgba(0, 0, 0, 0.06)` + 新增 `.spot-card-done { background: #FFFFFF }` 显式规则(UI-021 移除绿底后 0 CSS 占位,接 task 6 协调 race);`.spot-time-axis-divider` `width: 1rpx → 4rpx` + `background: 0.10 → 0.15`(横向 scroll-view 卡片间分隔清晰);**0 改动** 4 状态视觉(active / upcoming / expired / changed)+ AppColors + computeState + spec + 5 视图态 + sectionVisibility 4 字段 + viewMode 5 枚举 + decideViewMode() + pages.json + store + service;retro fix 协议保持 `FinalStatus: Done` + `Review.{ui,spec,test}: Pass` 0 触动;Playwright 视觉验证受限 — seed trip 1 start_date `2026-07-01` 不匹配 today `2026-06-06`,`store.today = null`,`showDiary = false`,SpotTimeAxis 不渲染(代码 + Vite 编译产物已验证 `width: 0.125rem` + `background: rgba(45, 106, 94, 0.15)`,实际渲染需 user 真实 trip 触发) |
+| [ChatPage](#chatpage) | 2026-06-28 | v0.2.1 | **silent drop retro fix** — 修 `data.action_options` 字段前端 silent drop(spec §9 AC-05 violation,per issues/Spec/ChatPage-action-options-silent-drop-001.md):`stores/chatStore.js` 加 1 字段 `currentActionOptions`(state docstring L11 扩 1 行 + state ref L69 + `sendMessage` success 写入 L210 + `fetchHistory` 入口重置 L107 + `sendPhotoMessage` 入口防御性重置 L301 + return 暴露 L368;既有 sendMessage success logger payload 加 `action_options_count` 字段 L217);`pages/chat/index.vue` 加 `import { storeToRefs } from 'pinia'` L308 + 删 page-local `const actionOptions = ref([])` L509 改走 `const { currentActionOptions: actionOptions } = storeToRefs(chatStore)` L560(响应式 1:1 对齐,`actionOptions.value = []` 重置仍可直接写,storeToRefs 解构出的 ref 双向绑定);**0 改动** 5 视图态 enum(loading/idle/sending/chatting/error 全部保留)+ 3 intent 路由 + modal 形态 + `onActionOptionConfirm` 占位 Toast(spec §3.9 字面允许,bug 2 留 follow-up)+ `services/chat.js`(已透传整段 data)+ `api/types.ts` / `api/mock/*` / `services/photos.js`(READ-ONLY)+ 既有 Review.{ui,spec,test}=Pass 状态 + FinalStatus=Done;retro fix 协议(per AGENTS.md §8.11 fix-notification-click-inverse precedent + ssp-arch §6 forward-looking comment 反模式);PageStatus.yaml ChatPage.Development 注释追 1 行 v0.2.1 retro fix 沿革;bug 2 留作 follow-up(spec §3.9 + §6.4 #6 + §9 AC-06 当前 MVP 占位 Toast「即将上线」,若业务决定升级 spec v0.3.0 真接 `PUT /api/trip-items/{item_id}` 走完整 spec → arch → dev → 3 review 流程);详见 outputs/fix-chat-action-options-silent-drop/deliverable.md |
 
 ---
 
@@ -1569,3 +1570,73 @@ chatStore:
 - **不**改 `backend/**`(不在 frontend 范围)
 - **不**改 `docs/**`(orchestrator 1-line 决策保留)
 - **不**关任何 Issue(由 reviewer 关闭)
+
+---
+
+## ChatPage — 2026-06-28 — v0.2.1
+
+silent drop retro fix — `data.action_options` 字段前端 silent drop(spec §9 AC-05 violation 修复,per issues/Spec/ChatPage-action-options-silent-drop-001.md)
+
+### Implemented
+
+#### 1. `stores/chatStore.js` — 加 1 字段 `currentActionOptions` state + 写入 + 重置 + 暴露
+- state 区(L63 附近 setup-store 模式):扩 1 字段 `currentActionOptions: any[]`,初始 `[]`
+- state docstring(L11):扩 1 行说明字段用途 + 2026-06-28 retro fix 出处
+- state ref 定义(L69):`const currentActionOptions = ref([])` + JSDoc 注释引用 Issue 路径
+- `sendMessage` success 分支(L210 紧跟 `currentIntent.value =` 赋值后):`currentActionOptions.value = Array.isArray(data.action_options) ? data.action_options : []`
+- `sendMessage` success logger(L217):既有 logger payload 加 `action_options_count: currentActionOptions.value.length` 字段(per AC-12 logger 全覆盖)
+- `fetchHistory` 入口(L106-107):`currentActionOptions.value = []` 重置(避免上次 session 残留)
+- `sendPhotoMessage` 入口(L301):`currentActionOptions.value = []` 防御性重置(photo 流程不触发改线意图,但防御性)
+- return 暴露(L368):`currentActionOptions,` 加进 return state 列表 + 注释引用 Issue 路径
+
+#### 2. `pages/chat/index.vue` — page-local `actionOptions` 改走 `storeToRefs`
+- 加 `import { storeToRefs } from 'pinia'`(L308,紧跟 `useChatStore` import)
+- 删 L509 page-local `const actionOptions = ref([])` + 替换为 3 行注释说明 retro fix 决策
+- L560 紧跟 `const chatStore = useChatStore()` 后加 `const { currentActionOptions: actionOptions } = storeToRefs(chatStore)`(storeToRefs 解构出 ref,响应式 1:1 对齐,`actionOptions.value = []` 重置仍可直接写,storeToRefs 解构出的 ref 双向绑定)
+- L557-559 在 storeToRefs 解构前加 3 行注释说明决策路径
+- 既有 L639 / L708 / L998 `actionOptions.value = []` 重置路径 0 改动(storeToRefs 解构出的 ref 是响应式 ref,直接 .value 写仍生效)
+- 既有 L660-679 `handleIntentRouting` 判定逻辑 0 改动(已写好 `actionOptions.value.length > 0`,source 改 store 后自动生效)
+- 既有 L262-267 modal 模板 `:options="actionOptions"` 0 改动(自动从 store 拿)
+- 既有 L763-772 `onActionOptionConfirm` 0 改动(spec §3.9 MVP 占位 Toast 字面允许,bug 2 留 follow-up)
+
+### Key contracts
+
+- **State 字段扩展**:`messages` / `isLoading` / `error` / `currentIntent` 4 字段 → 5 字段(+`currentActionOptions`),与 spec §7.1 store contract 1:1 对齐(per Issue §3.1 修 1 字段)
+- **响应式 1:1 对齐**:`storeToRefs(chatStore)` 解构出 `currentActionOptions: actionOptions` ref,page 端 `actionOptions.value` 读 / 写与 store state 完全双向绑定
+- **重置入口**:`fetchHistory` / `sendPhotoMessage` 入口均重置 `currentActionOptions = []`(防御性,避免上次 session 残留)
+- **0 触动既有 5 视图态 enum / 3 intent 路由 / modal 形态**:`handleIntentRouting` 判定 `actionOptions.value.length > 0` 自动从 store 拿真值(spec §3.9 + §9 AC-05 字面 1:1 对齐)
+
+### retro fix 协议合规(per AGENTS.md §8.11 fix-notification-click-inverse precedent)
+
+- ✅ 0 触动 `specs/ChatPage.md`(spec-writer 越权边界守住)
+- ✅ 0 触动 `services/chat.js`(已透传整段 data)
+- ✅ 0 触动 `services/photos.js` / `api/types.ts` / `api/mock/*`(READ-ONLY)
+- ✅ 0 触动既有 5 视图态 enum / 3 intent 路由 / modal 形态
+- ✅ 0 触动 `onActionOptionConfirm` 占位 Toast(spec §3.9 字面允许 MVP 简化)
+- ✅ 0 触动 `Review.{ui,spec,test}=Pass` + `FinalStatus=Done`(per ssp-arch §6 forward-looking comment 反模式防御)
+- ✅ PageStatus.yaml ChatPage.Development 注释追 1 行 v0.2.1 retro fix 沿革
+- ✅ 3 reviewer「抽样审计 + 自报已知妥协」原则:reviewer 重审 0 新失败项 = 不重审 = 不增加 reviewer 负担
+
+### follow-up task 登记(bug 2 留作后续)
+
+- `onActionOptionConfirm` 当前是 MVP 占位 Toast(spec §3.9 + §6.4 #6 + §9 AC-06 字面允许)
+- 若业务决定升级 spec 至 v0.3.0 真接 `PUT /api/trip-items/{item_id}` → 走 spec → arch → dev → 3 review 完整流程
+- 本 task scope 0 触发 bug 2(spec-writer 越权边界 + task 显式 scope 限定)
+
+### PageStatus
+
+- `Spec.status`: Completed(0 改)
+- `Architecture.status`: Pass(0 改)
+- `Development.status`: Completed(0 改 + 1 行 retro fix 注释)
+- `Review.{ui,spec,test}`: Pass(0 改)
+- `FinalStatus`: Done(0 改,5/5 满足状态保持)
+
+### Reviewer checklist anchors
+
+- AC-05 → spec §9(spec-auditor 复核:intent='replan' + action_options.length > 0 → ActionOptionsModal 1:1 对齐)
+- AC-06 → spec §9(spec-auditor 复核:intent='apply-plan' + Toast「即将上线」+ 不调 apply 端点 1:1 保持,bug 2 留 follow-up)
+- 8 test scenarios → spec §5(test-agent 复核:5 视图态 0 触动 + 3 intent 路由 0 触动 + sendMessage 失败回退逻辑 0 改动)
+- Component props/emits/slots → spec §8.1-§8.3(ui-reviewer 复核:ActionOptionsModal / ApplyPlanConfirmDialog 0 改动)
+
+详见 outputs/fix-chat-action-options-silent-drop/deliverable.md
+

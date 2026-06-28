@@ -15,7 +15,6 @@ export const AppRoutes = {
   // 个人中心子页
   PersonalProfile: '/pages/personal-profile/index',
   StyleSetting: '/pages/style-setting/index',
-  NotificationSetting: '/pages/notification-setting/index',
   Trash: '/pages/trash/index',
   About: '/pages/about/index',
 

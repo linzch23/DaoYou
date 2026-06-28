@@ -8,6 +8,8 @@
 //   isLoading       : boolean                fetchHistory 飞行标记(初始 false)
 //   error           : ApiError | null        fetchHistory / sendMessage 失败的 ApiError(初始 null;**不**存 friendly mapped)
 //   currentIntent   : string | null          最近一次 sendMessage 成功响应的 intent 字段(初始 null)
+//   currentActionOptions: any[]               最近一次 sendMessage 成功响应的 action_options 字段(初始 [];2026-06-28
+//                                              retro fix 修 silent drop,per issues/Spec/ChatPage-action-options-silent-drop-001.md)
 //
 // action
 //   fetchHistory()  : Promise<void>          调 services/chat.getChatHistory();成功更新 messages + error=null;失败更新 error
@@ -61,6 +63,10 @@ export const useChatStore = defineStore('chat', () => {
   const error = ref(null)
   /** @type {import('vue').Ref<ChatIntent | null>} */
   const currentIntent = ref(null)
+  /** @type {import('vue').Ref<any[]>} 2026-06-28 retro fix 修 silent drop(spec §3.9 + §9 AC-05 violation);
+   *  最近一次 sendMessage 成功响应的 action_options 字段(初始 []);
+   *  fetchHistory / sendPhotoMessage 入口处重置(防御性,sendPhotoMessage 不用 action_options) */
+  const currentActionOptions = ref([])
 
   // ───────── Actions ─────────
 
@@ -97,6 +103,8 @@ export const useChatStore = defineStore('chat', () => {
       messages.value = Array.isArray(res?.data?.messages) ? res.data.messages : []
       error.value = null
       currentIntent.value = null
+      // 2026-06-28 retro fix 修 silent drop:fetchHistory 入口重置 currentActionOptions(避免上次 session 残留)
+      currentActionOptions.value = []
       logger.info('[chatStore.fetchHistory] ok', {
         count: messages.value.length,
         tripId,
@@ -196,12 +204,17 @@ export const useChatStore = defineStore('chat', () => {
       }
       messages.value.push(assistantMsg)
       currentIntent.value = (typeof data.intent === 'string' ? data.intent : 'chat')
+      // 2026-06-28 retro fix 修 silent drop(spec §3.9 + §9 AC-05 violation):
+      //   后端真传 data.action_options(replan 2 选项 / apply-plan apply 选项),前端必须写到 store
+      //   让 page 层 handleIntentRouting 判定 `action_options.length > 0` 触发 ActionOptionsModal
+      currentActionOptions.value = Array.isArray(data.action_options) ? data.action_options : []
       error.value = null
       logger.info('[chatStore.sendMessage] ok', {
         intent: currentIntent.value,
         messageCount: messages.value.length,
         tripId,
         hasLocation: !!options.currentLocation,
+        action_options_count: currentActionOptions.value.length,
       })
     } catch (err) {
       // 3b) Failure → 回退 user msg(避免 user msg 单独残留)
@@ -283,6 +296,9 @@ export const useChatStore = defineStore('chat', () => {
     }
     messages.value.push(userMsg)
     const userMsgIndex = messages.value.length - 1
+    // 2026-06-28 retro fix 修 silent drop:sendPhotoMessage 入口重置 currentActionOptions(防御性,
+    // photo 流程不触发改线意图,photo 接口也不返 action_options)
+    currentActionOptions.value = []
     logger.info('[chatStore.sendPhotoMessage] start', {
       tripId,
       userMsgIndex,
@@ -349,6 +365,7 @@ export const useChatStore = defineStore('chat', () => {
     isLoading,
     error,
     currentIntent,
+    currentActionOptions,   // 2026-06-28 retro fix 暴露:per issues/Spec/ChatPage-action-options-silent-drop-001.md
     // actions
     fetchHistory,
     sendMessage,

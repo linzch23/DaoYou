@@ -233,6 +233,26 @@ export const useHomeStore = defineStore('home', () => {
         items: res.data.today_items?.length ?? 0,
       })
     } catch (err) {
+      // 2026-06-28 retro fix(spec §600 字面合规化):
+      //   后端 GET /api/home/today 在"今天没 active trip 覆盖"时正确返回 404 + code=4001
+      //   (per backend/app/services/home_service.py:32-33),"RESTful 语义=资源不存在,属正常空状态"
+      //   spec/HomePage.md §600 明确规定:404/4001 → today=null,不视为 error,
+      //   走 trips / empty 视图(由 HomePage sectionVisibility 派生)
+      //   改前 bug:本 catch 走 throw → refreshAll catch → buildErrorInfo → error.type='notfound'
+      //   → HomePage sectionVisibility.showError=true → 整页 HomeErrorOverlay,
+      //   用户看到「行程不存在」+ 重试无效(数据条件不变,retry 永远失败)
+      //   改后:本 catch 内单独识别 4001/404 → today=null + error=null + log info + return,
+      //   与 spec §600 字面对齐;其他 statusCode 仍走 throw(由 refreshAll catch 兜底)
+      if (err instanceof ApiError && (err.code === 4001 || err.statusCode === 404)) {
+        today.value = null
+        lastFetchedAt.value = new Date().toISOString()
+        error.value = null
+        logger.info('[homeStore.fetchToday] no active trip today, short-circuit (spec §600)', {
+          code: err.code,
+          statusCode: err.statusCode,
+        })
+        return
+      }
       logger.error('[homeStore.fetchToday] failed', err)
       throw err
     } finally {
@@ -269,9 +289,24 @@ export const useHomeStore = defineStore('home', () => {
         error: error.value?.type ?? null,
       })
     } catch (err) {
-      // 理论上 Promise.allSettled 不会 reject,这里兜底
-      logger.error('[homeStore.refreshAll] failed', err)
-      error.value = buildErrorInfo(err)
+      // 2026-06-28 retro fix(spec §600 兜底防御):
+      //   正常路径下 fetchToday 已内部消化 4001/404 不 throw(改 A 后),
+      //   本 catch 不会被 fetchToday 触发;但保险起见保留 4001/404 静默分支,
+      //   避免未来重构(fetchToday 重新 throw)时 404 误归类为 error 再次触发整页 overlay
+      //   改前 bug:本 catch 走 buildErrorInfo → error.type='notfound' → HomeErrorOverlay
+      //   改后:4001/404 → log info + error=null + today=null(防御性 short-circuit)
+      if (err instanceof ApiError && (err.code === 4001 || err.statusCode === 404)) {
+        logger.info('[homeStore.refreshAll] 404 caught, no active trip today, short-circuit', {
+          code: err.code,
+          statusCode: err.statusCode,
+        })
+        error.value = null
+        today.value = null
+      } else {
+        // 理论上 Promise.allSettled 不会 reject,这里兜底
+        logger.error('[homeStore.refreshAll] failed', err)
+        error.value = buildErrorInfo(err)
+      }
     } finally {
       isFetchingTrips.value = false
       isFetchingToday.value = false
