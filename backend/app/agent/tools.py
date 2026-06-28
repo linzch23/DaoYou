@@ -1,7 +1,7 @@
 import base64
 import mimetypes
 import uuid
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import httpx
@@ -14,6 +14,7 @@ DEFAULT_TRIP = {
     "title": "大连三日游",
     "days": [
         {
+            "id": 1,
             "day_index": 1,
             "trip_date": "2026-07-01",
             "items": [
@@ -49,6 +50,19 @@ DEFAULT_PREFERENCES = {
     "special_needs": ["less_walking"],
 }
 
+CREATE_TRIP_ITEM_FIELDS = {
+    "city",
+    "title",
+    "item_type",
+    "start_time",
+    "end_time",
+    "address",
+    "latitude",
+    "longitude",
+    "notes",
+}
+UPDATE_TRIP_ITEM_FIELDS = CREATE_TRIP_ITEM_FIELDS | {"status"}
+
 
 # 行程工具：当前读取传入上下文或演示默认行程，后续可接 trips 相关数据库查询。
 def trip_tool(state: AgentState) -> dict[str, object]:
@@ -58,6 +72,215 @@ def trip_tool(state: AgentState) -> dict[str, object]:
 # 记忆工具：当前读取传入偏好或默认画像，后续可接 user_memory/user_preferences。
 def memory_tool(state: AgentState) -> dict[str, object]:
     return dict(state.get("user_preferences") or DEFAULT_PREFERENCES)
+
+
+# 行程项工具：只校验并生成待确认操作，不在 Agent 推理阶段写数据库。
+def trip_item_tool(
+    state: AgentState,
+    operation: dict[str, object],
+) -> dict[str, object]:
+    trip = trip_tool(state)
+    trip_id = _positive_int(trip.get("id"))
+    state_trip_id = _positive_int(state.get("trip_id"))
+    if trip_id is None or state_trip_id is None or trip_id != state_trip_id:
+        return {"error": "当前聊天绑定的旅行与行程上下文不一致"}
+
+    operation_name = str(operation.get("operation") or "")
+    payload_source = operation.get("payload")
+    if not isinstance(payload_source, dict):
+        return {"error": "行程项方案缺少 payload"}
+
+    if operation_name == "create_trip_item":
+        return _build_create_trip_item_action(trip_id, trip, operation, payload_source)
+    if operation_name == "update_trip_item":
+        return _build_update_trip_item_action(trip_id, trip, operation, payload_source)
+    return {"error": "不支持的行程项操作"}
+
+
+def _build_create_trip_item_action(
+    trip_id: int,
+    trip: dict[str, object],
+    operation: dict[str, object],
+    payload_source: dict[str, object],
+) -> dict[str, object]:
+    target_day = _resolve_trip_day(trip, operation)
+    if target_day is None:
+        return {"error": "请明确要添加到旅行中的哪一天"}
+
+    payload = _filter_trip_item_payload(payload_source, CREATE_TRIP_ITEM_FIELDS)
+    if not payload.get("city"):
+        city = _trip_day_city(target_day)
+        if city:
+            payload["city"] = city
+    if not payload.get("title"):
+        return {"error": "请说明要新增的景点、餐饮或休息安排"}
+    if not payload.get("city"):
+        return {"error": "请说明新增安排所在的城市"}
+
+    title = str(payload["title"])
+    action_option = {
+        "option_id": str(operation.get("option_id") or "option_001"),
+        "label": str(operation.get("label") or f"新增{title}"),
+        "description": str(operation.get("description") or "添加到当前旅行安排"),
+        "operation": "create_trip_item",
+        "trip_id": trip_id,
+        "payload": payload,
+    }
+    trip_day_id = _positive_int(target_day.get("id"))
+    if trip_day_id is not None:
+        action_option["trip_day_id"] = trip_day_id
+    else:
+        action_option["target_date"] = str(target_day["trip_date"])
+        action_option["target_day_index"] = int(target_day["day_index"])
+    return {"action_option": action_option}
+
+
+def _build_update_trip_item_action(
+    trip_id: int,
+    trip: dict[str, object],
+    operation: dict[str, object],
+    payload_source: dict[str, object],
+) -> dict[str, object]:
+    target_item = _resolve_trip_item(trip, operation)
+    if target_item is None:
+        return {"error": "请明确要修改当前旅行中的哪一项安排"}
+
+    payload = _filter_trip_item_payload(payload_source, UPDATE_TRIP_ITEM_FIELDS)
+    if not payload:
+        return {"error": "请说明要修改的内容"}
+
+    item_id = _positive_int(target_item.get("id"))
+    if item_id is None:
+        return {"error": "目标行程项缺少有效 ID"}
+
+    title = str(target_item.get("title") or "当前安排")
+    return {
+        "action_option": {
+            "option_id": str(operation.get("option_id") or "option_001"),
+            "label": str(operation.get("label") or f"修改{title}"),
+            "description": str(operation.get("description") or "更新当前旅行安排"),
+            "operation": "update_trip_item",
+            "trip_id": trip_id,
+            "item_id": item_id,
+            "payload": payload,
+        }
+    }
+
+
+def _resolve_trip_day(
+    trip: dict[str, object],
+    operation: dict[str, object],
+) -> dict[str, object] | None:
+    days = [day for day in trip.get("days", []) if isinstance(day, dict)]
+    target_date = str(operation.get("target_date") or "")
+    target_day_index = _positive_int(operation.get("target_day_index"))
+
+    matches = [
+        day
+        for day in days
+        if (target_date and str(day.get("trip_date") or "") == target_date)
+        or (target_day_index is not None and day.get("day_index") == target_day_index)
+    ]
+    if len(matches) == 1:
+        return matches[0]
+    if not target_date and target_day_index is None and len(days) == 1:
+        return days[0]
+    return _build_missing_trip_day(trip, target_date, target_day_index)
+
+
+def _build_missing_trip_day(
+    trip: dict[str, object],
+    target_date: str,
+    target_day_index: int | None,
+) -> dict[str, object] | None:
+    try:
+        start_date = date.fromisoformat(str(trip.get("start_date") or ""))
+        end_date = date.fromisoformat(str(trip.get("end_date") or ""))
+    except ValueError:
+        return None
+
+    resolved_date: date | None = None
+    resolved_index = target_day_index
+    if target_date:
+        try:
+            resolved_date = date.fromisoformat(target_date)
+        except ValueError:
+            return None
+        expected_index = (resolved_date - start_date).days + 1
+        if resolved_index is not None and resolved_index != expected_index:
+            return None
+        resolved_index = expected_index
+    elif resolved_index is not None:
+        resolved_date = start_date + timedelta(days=resolved_index - 1)
+    elif start_date == end_date:
+        resolved_date = start_date
+        resolved_index = 1
+
+    if (
+        resolved_date is None
+        or resolved_index is None
+        or not start_date <= resolved_date <= end_date
+    ):
+        return None
+    return {
+        "id": None,
+        "day_index": resolved_index,
+        "trip_date": resolved_date.isoformat(),
+        "items": [],
+    }
+
+
+def _resolve_trip_item(
+    trip: dict[str, object],
+    operation: dict[str, object],
+) -> dict[str, object] | None:
+    items = [
+        item
+        for day in trip.get("days", [])
+        if isinstance(day, dict)
+        for item in day.get("items", [])
+        if isinstance(item, dict)
+    ]
+    target_item_id = _positive_int(operation.get("target_item_id"))
+    if target_item_id is not None:
+        return next(
+            (item for item in items if _positive_int(item.get("id")) == target_item_id),
+            None,
+        )
+
+    target_title = str(operation.get("target_item_title") or "").strip()
+    if not target_title:
+        return None
+    matches = [item for item in items if str(item.get("title") or "") == target_title]
+    return matches[0] if len(matches) == 1 else None
+
+
+def _filter_trip_item_payload(
+    payload: dict[str, object],
+    allowed_fields: set[str],
+) -> dict[str, object]:
+    return {
+        key: value
+        for key, value in payload.items()
+        if key in allowed_fields and value is not None
+    }
+
+
+def _trip_day_city(day: dict[str, object]) -> str:
+    for item in day.get("items", []):
+        if isinstance(item, dict) and item.get("city"):
+            return str(item["city"])
+    return ""
+
+
+def _positive_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
 
 
 # 图片理解工具：当前是 mock fallback，保证无真实视觉 API Key 时拍照讲解仍可演示。

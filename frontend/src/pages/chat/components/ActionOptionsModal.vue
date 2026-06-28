@@ -51,7 +51,10 @@
             v-for="(opt, idx) in options"
             :key="idx"
             class="action-option-row"
-            :class="{ 'action-option-row-selected': selectedIdx === idx }"
+            :class="{
+              'action-option-row-selected': selectedIdx === idx,
+              'action-options-btn-disabled': submitting,
+            }"
             role="button"
             :aria-label="getOptionLabel(opt)"
             :aria-pressed="selectedIdx === idx ? 'true' : 'false'"
@@ -91,10 +94,10 @@
 
         <view
           class="action-options-btn action-options-btn-confirm"
-          :class="{ 'action-options-btn-disabled': selectedIdx === null }"
+          :class="{ 'action-options-btn-disabled': selectedIdx === null || submitting }"
           role="button"
           :aria-label="btnConfirmLabel"
-          :aria-disabled="selectedIdx === null ? 'true' : 'false'"
+          :aria-disabled="selectedIdx === null || submitting ? 'true' : 'false'"
           hover-class="action-options-btn-confirm-hover"
           :hover-stay-time="50"
           @click="onConfirm"
@@ -130,6 +133,10 @@ const props = defineProps({
     type: String,
     required: true,
   },
+  submitting: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const emit = defineEmits(['confirm', 'cancel'])
@@ -148,12 +155,13 @@ watch(
 )
 
 /**
- * 提取 option title(优先用 opt.title / 其次 opt.name / 其次 toString)
+ * 提取 option title(优先使用 Agent 合同的 label 字段)
  * @param {any} opt
  * @returns {string}
  */
 function getOptionTitle(opt) {
   if (opt && typeof opt === 'object') {
+    if (typeof opt.label === 'string') return opt.label
     if (typeof opt.title === 'string') return opt.title
     if (typeof opt.name === 'string') return opt.name
   }
@@ -188,6 +196,7 @@ function getOptionLabel(opt) {
  * @param {number} idx
  */
 function onOptionTap(idx) {
+  if (props.submitting) return
   selectedIdx.value = selectedIdx.value === idx ? null : idx
 }
 
@@ -195,7 +204,7 @@ function onOptionTap(idx) {
  * 「应用此方案」→ emit confirm(option)
  */
 function onConfirm() {
-  if (selectedIdx.value === null) return
+  if (selectedIdx.value === null || props.submitting) return
   const opt = props.options[selectedIdx.value]
   emit('confirm', opt)
 }
@@ -204,6 +213,7 @@ function onConfirm() {
  * 「取消」按钮 → emit cancel
  */
 function onCancel() {
+  if (props.submitting) return
   emit('cancel')
 }
 
@@ -211,6 +221,7 @@ function onCancel() {
  * 蒙层点击 = 等同「取消」(per spec §8.3)
  */
 function onMaskClick() {
+  if (props.submitting) return
   emit('cancel')
 }
 </script>

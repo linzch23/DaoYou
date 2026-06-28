@@ -264,6 +264,7 @@
       :title="ChatPageStrings.actionOptionsTitle"
       :btn-confirm-label="ChatPageStrings.actionOptionsConfirm"
       :btn-cancel-label="ChatPageStrings.actionOptionsCancel"
+      :submitting="isApplyingAction"
       @confirm="onActionOptionConfirm"
       @cancel="onActionOptionCancel"
     />
@@ -308,6 +309,7 @@ import { useChatStore } from '../../stores/chatStore.js'
 import { storeToRefs } from 'pinia'  // 2026-06-28 retro fix 修 silent drop:把 page-local actionOptions ref 改读 store.currentActionOptions
 import { useHomeStore } from '../../stores/homeStore.js'
 import { ApiError } from '../../services/chat.js'
+import { createTripDay, createTripItem, updateTripItem } from '../../services/trips.js'
 import { getCurrentLocation, checkLocationPermission } from '../../utils/location.js'
 import ActionOptionsModal from './components/ActionOptionsModal.vue'
 import ApplyPlanConfirmDialog from './components/ApplyPlanConfirmDialog.vue'
@@ -523,6 +525,8 @@ const historyError = ref(null)
 
 /** @type {import('vue').Ref<boolean>} ActionOptionsModal 显示标记 */
 const actionOptionsVisible = ref(false)
+/** @type {import('vue').Ref<boolean>} 行程项操作写入中，防止重复确认 */
+const isApplyingAction = ref(false)
 /** @type {import('vue').Ref<boolean>} ApplyPlanConfirmDialog 显示标记 */
 const applyPlanDialogVisible = ref(false)
 /** @type {import('vue').Ref<number>} scroll-view 滚动位置(新 reply 到达后设 999999 强制滚到底) */
@@ -763,24 +767,80 @@ function onFollowUpClick(q) {
  */
 
 /**
- * ActionOptionsModal:确认应用 → MVP 阶段仅 Toast「即将上线」(per spec §3.9)
- * @param {any} _selectedOption
+ * ActionOptionsModal:确认后按 operation 调用现有 TripItem API。
+ * @param {any} selectedOption
  */
-function onActionOptionConfirm(_selectedOption) {
-  // MVP 阶段不调 apply 端点,只展示「即将上线」Toast
-  actionOptionsVisible.value = false
-  uni.showToast({
-    title: ChatPageStrings.actionOptionsComingSoon,
-    icon: 'none',
-    duration: 2000,
-  })
-  logger.info('[ChatPage] action option confirmed (coming-soon toast)')
+async function onActionOptionConfirm(selectedOption) {
+  if (isApplyingAction.value) return
+
+  const boundTripId = useHomeStore().currentTripId
+  const optionTripId = Number(selectedOption?.trip_id)
+  if (!Number.isInteger(optionTripId) || optionTripId !== boundTripId) {
+    uni.showToast({ title: ChatPageStrings.actionOptionsInvalid, icon: 'none' })
+    logger.warn('[ChatPage] action option trip mismatch', { optionTripId, boundTripId })
+    return
+  }
+
+  const operation = selectedOption?.operation
+  const payload = sanitizeActionPayload(operation, selectedOption?.payload)
+  isApplyingAction.value = true
+  try {
+    if (operation === 'create_trip_item') {
+      let tripDayId = Number(selectedOption?.trip_day_id)
+      if (!Number.isInteger(tripDayId) || tripDayId <= 0) {
+        const targetDayIndex = Number(selectedOption?.target_day_index)
+        const targetDate = selectedOption?.target_date
+        if (!Number.isInteger(targetDayIndex) || targetDayIndex <= 0 || typeof targetDate !== 'string') {
+          throw new Error('invalid trip day target')
+        }
+        const dayResult = await createTripDay(optionTripId, {
+          day_index: targetDayIndex,
+          trip_date: targetDate,
+          summary: '',
+        })
+        tripDayId = Number(dayResult?.data?.trip_day_id)
+        if (!Number.isInteger(tripDayId) || tripDayId <= 0) throw new Error('invalid created trip_day_id')
+      }
+      await createTripItem({ trip_day_id: tripDayId, ...payload })
+    } else if (operation === 'update_trip_item') {
+      const itemId = Number(selectedOption?.item_id)
+      if (!Number.isInteger(itemId) || itemId <= 0) throw new Error('invalid item_id')
+      await updateTripItem(itemId, payload)
+    } else {
+      throw new Error('unsupported action operation')
+    }
+
+    actionOptionsVisible.value = false
+    actionOptions.value = []
+    uni.showToast({ title: ChatPageStrings.actionOptionsApplied, icon: 'success' })
+    logger.info('[ChatPage] action option applied', { operation, optionTripId })
+  } catch (err) {
+    uni.showToast({ title: ChatPageStrings.actionOptionsApplyFailed, icon: 'none' })
+    logger.error('[ChatPage] action option apply failed', err)
+  } finally {
+    isApplyingAction.value = false
+  }
+}
+
+function sanitizeActionPayload(operation, source) {
+  if (!source || typeof source !== 'object') return {}
+  const createFields = new Set([
+    'city', 'title', 'item_type', 'start_time', 'end_time', 'address',
+    'latitude', 'longitude', 'notes',
+  ])
+  const allowedFields = operation === 'update_trip_item'
+    ? new Set([...createFields, 'status'])
+    : createFields
+  return Object.fromEntries(
+    Object.entries(source).filter(([key, value]) => allowedFields.has(key) && value != null)
+  )
 }
 
 /**
  * ActionOptionsModal:取消
  */
 function onActionOptionCancel() {
+  if (isApplyingAction.value) return
   actionOptionsVisible.value = false
   logger.info('[ChatPage] action option cancelled')
 }

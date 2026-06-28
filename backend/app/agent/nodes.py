@@ -1,4 +1,5 @@
 import json
+import re
 
 from app.agent.llm import call_llm
 from app.agent.prompts import (
@@ -14,6 +15,7 @@ from app.agent.tools import (
     memory_tool,
     ocr_tool,
     reminder_tool,
+    trip_item_tool,
     trip_tool,
     vision_tool,
     weather_tool,
@@ -30,7 +32,25 @@ def intent_detect_node(state: AgentState) -> AgentState:
         return {**state, "intent": "photo_explain"}
 
     message = str(state.get("user_message") or "")
-    if any(keyword in message for keyword in ["不想去", "累", "换", "取消", "改"]):
+    if any(
+        keyword in message
+        for keyword in [
+            "不想去",
+            "累",
+            "换",
+            "取消",
+            "改",
+            "新增",
+            "添加",
+            "加一个",
+            "加个",
+            "安排一个",
+            "插入",
+        ]
+    ) or (
+        "安排" in message
+        and any(keyword in message for keyword in ["景点", "餐", "咖啡", "休息", "活动", "项目"])
+    ):
         return {**state, "intent": "replan"}
     if any(keyword in message for keyword in ["提醒", "来得及", "出发", "风险"]):
         return {**state, "intent": "reminder"}
@@ -118,23 +138,38 @@ def replan_node(state: AgentState) -> AgentState:
     location = state.get("current_location") or {}
     map_result = map_tool(origin=location, keyword="附近咖啡馆")
     weather_result = weather_tool(city=str(trip.get("city") or "大连"))
-    llm_result = _generate_replan_with_llm(
-        state=state,
-        trip=trip,
-        preferences=preferences,
-        map_result=map_result,
-        weather_result=weather_result,
-    )
-    structured_data = llm_result or _mock_replan_payload(map_result, preferences)
-    action_options = _build_replan_action_options(
-        trip=trip,
-        structured_data=structured_data,
-        map_result=map_result,
-        preferences=preferences,
-    )
-    reply = (
-        structured_data.get("summary")
-        or "我建议把较远的户外景点换成附近咖啡馆休息，再保留傍晚海边散步。"
+    explicit_first_item = _explicit_first_trip_item_payload(state, trip)
+    llm_result = None
+    if explicit_first_item is None:
+        llm_result = _generate_replan_with_llm(
+            state=state,
+            trip=trip,
+            preferences=preferences,
+            map_result=map_result,
+            weather_result=weather_result,
+        )
+    if explicit_first_item is not None:
+        structured_data = explicit_first_item
+    elif llm_result is not None:
+        structured_data = llm_result
+    elif _is_trip_item_create_request(str(state.get("user_message") or "")):
+        structured_data = _clarification_payload("请告诉我想添加到旅行中的哪一天，以及具体安排。")
+    else:
+        structured_data = _mock_replan_payload(trip, map_result, preferences)
+
+    action_options, action_error = _build_replan_action_options(state, structured_data)
+    if action_error and not action_options:
+        structured_data = {
+            **structured_data,
+            "needs_clarification": True,
+            "clarifying_question": action_error,
+            "operations": [],
+        }
+    reply = str(
+        structured_data.get("clarifying_question")
+        if structured_data.get("needs_clarification")
+        else structured_data.get("summary")
+        or "我已经整理好行程调整方案，请确认后应用。"
     )
     final_response = {
         "intent": "replan",
@@ -409,96 +444,54 @@ def _is_valid_replan_payload(data: object) -> bool:
     if not isinstance(data, dict):
         return False
     required_keys = {
-        "draft_id": str,
+        "needs_clarification": bool,
+        "clarifying_question": str,
         "summary": str,
         "reason": str,
-        "new_items": list,
-        "removed_item_ids": list,
+        "operations": list,
     }
-    return all(
+    if not all(
         isinstance(data.get(key), expected_type)
         for key, expected_type in required_keys.items()
+    ):
+        return False
+    if data["needs_clarification"]:
+        return not data["operations"] and bool(data["clarifying_question"].strip())
+    return bool(data["operations"]) and all(
+        isinstance(operation, dict) for operation in data["operations"]
     )
 
 
 def _build_replan_action_options(
-    trip: dict[str, object],
+    state: AgentState,
     structured_data: dict[str, object],
-    map_result: dict[str, object],
-    preferences: dict[str, object],
-) -> list[dict[str, object]]:
-    target_item = find_replan_target(trip)
-    item_id = int(target_item.get("id") or 3)
-    new_item = _first_replan_item(structured_data, map_result)
-    payload = _trip_item_update_payload(new_item)
-    if not payload:
-        return []
+) -> tuple[list[dict[str, object]], str | None]:
+    if structured_data.get("needs_clarification"):
+        return [], None
 
-    description = str(
-        structured_data.get("reason")
-        or "用户当前偏好慢节奏和少步行，原计划下午路线较远。"
-    )
-    if "less_walking" not in preferences.get("special_needs", []):
-        description = str(
-            structured_data.get("reason")
-            or "当前请求表达了降低强度的需求，因此建议减少远距离移动。"
-        )
+    operations = structured_data.get("operations")
+    if not isinstance(operations, list):
+        return [], "行程修改方案格式不完整，请重新说明需求"
 
-    return [
-        {
-            "option_id": "option_001",
-            "label": f"改为{payload.get('title') or '附近咖啡馆休息'}",
-            "description": description,
-            "operation": "update_trip_item",
-            "item_id": item_id,
-            "payload": payload,
-        },
-        {
-            "option_id": "option_002",
-            "label": "跳过下一站",
-            "description": "直接将下一站标记为跳过。",
-            "operation": "update_trip_item",
-            "item_id": item_id,
-            "payload": {
-                "status": "skipped",
-                "notes": "用户临时取消该安排",
-            },
-        },
-    ]
-
-
-def _first_replan_item(
-    structured_data: dict[str, object],
-    map_result: dict[str, object],
-) -> dict[str, object]:
-    new_items = structured_data.get("new_items")
-    if isinstance(new_items, list) and new_items and isinstance(new_items[0], dict):
-        return dict(new_items[0])
-    recommended_place = map_result.get("recommended_place")
-    return dict(recommended_place) if isinstance(recommended_place, dict) else {}
-
-
-def _trip_item_update_payload(item: dict[str, object]) -> dict[str, object]:
-    allowed_fields = {
-        "city",
-        "title",
-        "item_type",
-        "start_time",
-        "end_time",
-        "address",
-        "latitude",
-        "longitude",
-        "status",
-        "notes",
-    }
-    return {
-        key: value
-        for key, value in item.items()
-        if key in allowed_fields and value is not None
-    }
+    action_options: list[dict[str, object]] = []
+    for index, operation in enumerate(operations, start=1):
+        if not isinstance(operation, dict):
+            return [], "行程修改方案格式不完整，请重新说明需求"
+        candidate = {
+            **operation,
+            "option_id": f"option_{index:03d}",
+            "description": operation.get("description") or structured_data.get("reason") or "",
+        }
+        result = trip_item_tool(state, candidate)
+        action_option = result.get("action_option")
+        if not isinstance(action_option, dict):
+            return [], str(result.get("error") or "无法确认目标行程项，请补充信息")
+        action_options.append(action_option)
+    return action_options, None
 
 
 def _mock_replan_payload(
+    trip: dict[str, object],
     map_result: dict[str, object],
     preferences: dict[str, object],
 ) -> dict[str, object]:
@@ -506,10 +499,92 @@ def _mock_replan_payload(
     if "less_walking" not in preferences.get("special_needs", []):
         reason = "当前请求表达了降低强度的需求，因此建议减少远距离移动。"
 
+    target_item = find_replan_target(trip)
+    recommended_place = map_result.get("recommended_place")
+    payload = dict(recommended_place) if isinstance(recommended_place, dict) else {}
     return {
-        "draft_id": "draft_001",
+        "needs_clarification": False,
+        "clarifying_question": "",
         "summary": "建议取消较远的户外景点，改为附近咖啡馆休息。",
         "reason": reason,
-        "new_items": [map_result["recommended_place"]],
-        "removed_item_ids": [3],
+        "operations": [
+            {
+                "operation": "update_trip_item",
+                "target_item_id": target_item.get("id"),
+                "label": f"改为{payload.get('title') or '附近咖啡馆休息'}",
+                "payload": payload,
+            },
+            {
+                "operation": "update_trip_item",
+                "target_item_id": target_item.get("id"),
+                "label": "跳过下一站",
+                "description": "直接将下一站标记为跳过。",
+                "payload": {
+                    "status": "skipped",
+                    "notes": "用户临时取消该安排",
+                },
+            },
+        ],
     }
+
+
+def _clarification_payload(question: str) -> dict[str, object]:
+    return {
+        "needs_clarification": True,
+        "clarifying_question": question,
+        "summary": "需要补充行程项信息。",
+        "reason": "当前信息不足以安全生成可执行操作。",
+        "operations": [],
+    }
+
+
+def _explicit_first_trip_item_payload(
+    state: AgentState,
+    trip: dict[str, object],
+) -> dict[str, object] | None:
+    message = str(state.get("user_message") or "").strip()
+    match = re.search(
+        r"把(?P<title>.+?)(?:添加|加入|安排)(?:为|到)?第一个行程项",
+        message,
+    )
+    start_date = str(trip.get("start_date") or "")
+    if match is None or not start_date:
+        return None
+
+    title = match.group("title").strip(" ，,。")
+    if not title:
+        return None
+    city = str(trip.get("title") or "").strip() or "当前城市"
+    return {
+        "needs_clarification": False,
+        "clarifying_question": "",
+        "summary": f"已准备把{title}添加到旅行第一天，请确认后应用。",
+        "reason": "用户明确指定将该地点作为第一个行程项。",
+        "operations": [
+            {
+                "operation": "create_trip_item",
+                "target_date": start_date,
+                "target_day_index": 1,
+                "label": f"第一天新增{title}",
+                "description": "作为当前旅行的第一个行程项",
+                "payload": {
+                    "city": city,
+                    "title": title,
+                    "item_type": "attraction",
+                    "notes": "用户通过聊天确认新增",
+                },
+            }
+        ],
+    }
+
+
+def _is_trip_item_create_request(message: str) -> bool:
+    if any(keyword in message for keyword in ["不想去", "换", "取消", "改"]):
+        return False
+    return any(
+        keyword in message
+        for keyword in ["新增", "添加", "加一个", "加个", "安排一个", "插入"]
+    ) or (
+        "安排" in message
+        and any(keyword in message for keyword in ["景点", "餐", "咖啡", "休息", "活动", "项目"])
+    )

@@ -1392,6 +1392,9 @@ export const ChatPageStrings = {
   actionOptionsCancel: '取消',
   actionOptionsConfirm: '应用此方案',
   actionOptionsComingSoon: '该功能即将上线',
+  actionOptionsApplied: '行程已更新',
+  actionOptionsApplyFailed: '应用失败,请稍后重试',
+  actionOptionsInvalid: '方案已失效,请重新获取',
 
   // ApplyPlan 弹窗(spec §3.10 ApplyPlanConfirmDialog + §4.4)
   applyPlanTitle: '确认应用改线方案?',

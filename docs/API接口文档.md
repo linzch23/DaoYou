@@ -306,7 +306,7 @@ MVP 可在 `users` 中预置演示经纬度，但默认记录的 `location_updat
 
 
 ### 3.9 AgentActionOption
-Agent 识别到改线意图时，通过该结构返回可供用户选择的行程节点修改方案。
+Agent 识别到行程编辑意图时，通过该结构返回可供用户选择的行程项新增或修改方案。
 
 ```json
 {
@@ -314,6 +314,7 @@ Agent 识别到改线意图时，通过该结构返回可供用户选择的行�
   "label": "改为附近咖啡馆休息",
   "description": "减少步行，保留傍晚海边散步。",
   "operation": "update_trip_item",
+  "trip_id": 1,
   "item_id": 3,
   "payload": {
     "city": "大连",
@@ -331,9 +332,13 @@ Agent 识别到改线意图时，通过该结构返回可供用户选择的行�
 | option_id | string | 本次 Chat 响应内的选项标识 |
 | label | string | 前端展示的选项标题 |
 | description | string | 选项说明和推荐理由 |
-| operation | string | 当前固定为 `update_trip_item` |
-| item_id | int | 需要修改的行程节点 ID |
-| payload | object | 提交给 `PUT /api/trip-items/{item_id}` 的字段，不包含 `user_id` |
+| operation | string | `create_trip_item` / `update_trip_item` |
+| trip_id | int | 当前聊天绑定的旅行 ID，前端执行前必须校验 |
+| trip_day_id | int \| null | 目标 TripDay 已存在时返回 |
+| target_date | string \| null | TripDay 不存在时返回，必须在旅行日期范围内 |
+| target_day_index | int \| null | TripDay 不存在时返回，从 1 开始 |
+| item_id | int \| null | 修改节点时必填，必须属于当前旅行 |
+| payload | object | 提交给 TripItem 创建或更新接口的字段，不包含 `user_id`、归属 ID |
 
 
 ## 4. 健康检查
@@ -1211,10 +1216,11 @@ Content-Type: application/json
 改线处理约束：
 
 + `/api/chat` 只生成选项，不直接修改 `trip_items`。
-+ 前端展示 `action_options`，用户选中后取出对应的 `item_id` 和 `payload`。
-+ 前端将当前 `user_id` 合并到 `payload`，调用 `PUT /api/trip-items/{item_id}` 完成修改。
-+ `operation` 当前只支持 `update_trip_item`，本阶段不提供独立的改线生成或应用接口。
-+ Agent 无法生成可靠选项时，返回自然语言建议并将 `action_options` 置为空数组。
++ 前端展示 `action_options`，并在执行前校验选项的 `trip_id` 与当前聊天一致。
++ `create_trip_item` 有 `trip_day_id` 时直接调用 `POST /api/trip-items`；只有合法目标日期但 TripDay 尚不存在时，先调用 `POST /api/trips/{trip_id}/days`，再创建 TripItem。
++ `update_trip_item` 使用 `item_id + payload` 调用 `PUT /api/trip-items/{item_id}`。
++ 前端 Service 补充当前 `user_id`；Chat 流程不提供独立的应用接口。
++ Agent 无法可靠确定旅行日或目标节点时，先返回自然语言追问，并将 `action_options` 置为空数组。
 
 Agent 输出约定：
 

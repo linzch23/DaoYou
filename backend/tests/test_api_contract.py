@@ -61,7 +61,8 @@ def test_reminder_current_time_requires_timezone() -> None:
         )
 
 
-def test_chat_replan_returns_action_options(db: Session) -> None:
+def test_chat_replan_returns_action_options(db: Session, monkeypatch) -> None:
+    monkeypatch.setattr("app.agent.nodes.call_llm", lambda messages: None)
     db.add(User(id=1, nickname="演示用户"))
     db.flush()
     trip = Trip(

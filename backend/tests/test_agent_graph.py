@@ -11,6 +11,36 @@ def disable_external_agent_tools(monkeypatch) -> None:
     monkeypatch.setattr("app.agent.tools.settings.qwen_api_key", "")
 
 
+def _trip_context() -> dict[str, object]:
+    return {
+        "id": 1,
+        "title": "大连三日游",
+        "start_date": "2026-07-01",
+        "end_date": "2026-07-03",
+        "days": [
+            {
+                "id": 10,
+                "day_index": 1,
+                "trip_date": "2026-07-01",
+                "items": [
+                    {
+                        "id": 3,
+                        "city": "大连",
+                        "title": "贝壳博物馆",
+                        "status": "planned",
+                    }
+                ],
+            },
+            {
+                "id": 11,
+                "day_index": 2,
+                "trip_date": "2026-07-02",
+                "items": [],
+            },
+        ],
+    }
+
+
 def test_chat_agent_returns_reply(monkeypatch) -> None:
     monkeypatch.setattr("app.agent.nodes.call_llm", lambda messages: None)
 
@@ -311,24 +341,28 @@ def test_replan_agent_returns_draft_items(monkeypatch) -> None:
             "user_id": 1,
             "trip_id": 1,
             "user_message": "我累了不想去下一个景点，帮我换一个轻松点的安排。",
+            "current_trip": _trip_context(),
             "current_location": {"latitude": 38.92, "longitude": 121.64},
         }
     )
 
     assert result["intent"] == "replan"
-    assert result["structured_data"]["draft_id"] == "draft_001"
-    assert result["structured_data"]["new_items"]
+    assert result["structured_data"]["needs_clarification"] is False
+    assert result["structured_data"]["operations"]
     assert result["action_options"]
     assert result["action_options"][0]["operation"] == "update_trip_item"
+    assert result["action_options"][0]["trip_id"] == 1
 
 
 def test_replan_agent_uses_llm_payload_when_valid(monkeypatch) -> None:
     def fake_call_llm(messages: list[dict[str, str]]) -> str:
         return (
-            '{"draft_id":"draft_llm_001","summary":"模型建议改去室内展馆。",'
+            '{"needs_clarification":false,"clarifying_question":"",'
+            '"summary":"模型建议改去室内展馆。",'
             '"reason":"用户表达疲惫，室内路线更轻松。",'
-            '"new_items":[{"title":"室内展馆","item_type":"attraction"}],'
-            '"removed_item_ids":[3]}'
+            '"operations":[{"operation":"update_trip_item","target_item_id":3,'
+            '"label":"改为室内展馆","payload":{"title":"室内展馆",'
+            '"item_type":"attraction"}}]}'
         )
 
     monkeypatch.setattr("app.agent.nodes.call_llm", fake_call_llm)
@@ -339,12 +373,12 @@ def test_replan_agent_uses_llm_payload_when_valid(monkeypatch) -> None:
             "trip_id": 1,
             "user_message": "我累了，帮我换一个轻松点的安排。",
             "intent_hint": "replan",
+            "current_trip": _trip_context(),
         }
     )
 
     assert result["intent"] == "replan"
-    assert result["structured_data"]["draft_id"] == "draft_llm_001"
-    assert result["structured_data"]["new_items"][0]["title"] == "室内展馆"
+    assert result["structured_data"]["operations"][0]["payload"]["title"] == "室内展馆"
     assert result["action_options"]
     assert result["action_options"][0]["operation"] == "update_trip_item"
 
@@ -352,10 +386,11 @@ def test_replan_agent_uses_llm_payload_when_valid(monkeypatch) -> None:
 def test_replan_agent_parses_markdown_json_payload(monkeypatch) -> None:
     def fake_call_llm(messages: list[dict[str, str]]) -> str:
         return (
-            '```json\n{"draft_id":"draft_markdown_001","summary":"模型建议改去书店休息。",'
+            '```json\n{"needs_clarification":false,"clarifying_question":"",'
+            '"summary":"模型建议改去书店休息。",'
             '"reason":"用户疲惫，书店更安静。",'
-            '"new_items":[{"title":"安静书店","item_type":"rest"}],'
-            '"removed_item_ids":[3]}\n```'
+            '"operations":[{"operation":"update_trip_item","target_item_id":3,'
+            '"payload":{"title":"安静书店","item_type":"rest"}}]}\n```'
         )
 
     monkeypatch.setattr("app.agent.nodes.call_llm", fake_call_llm)
@@ -366,20 +401,21 @@ def test_replan_agent_parses_markdown_json_payload(monkeypatch) -> None:
             "trip_id": 1,
             "user_message": "我累了，帮我换一个轻松点的安排。",
             "intent_hint": "replan",
+            "current_trip": _trip_context(),
         }
     )
 
-    assert result["structured_data"]["draft_id"] == "draft_markdown_001"
-    assert result["structured_data"]["new_items"][0]["title"] == "安静书店"
+    assert result["structured_data"]["operations"][0]["payload"]["title"] == "安静书店"
 
 
 def test_replan_agent_extracts_json_from_text_payload(monkeypatch) -> None:
     def fake_call_llm(messages: list[dict[str, str]]) -> str:
         return (
-            '好的，方案如下：{"draft_id":"draft_text_001","summary":"模型建议改去茶馆。",'
+            '好的，方案如下：{"needs_clarification":false,"clarifying_question":"",'
+            '"summary":"模型建议改去茶馆。",'
             '"reason":"茶馆适合坐下休息。",'
-            '"new_items":[{"title":"附近茶馆","item_type":"rest"}],'
-            '"removed_item_ids":[3]}'
+            '"operations":[{"operation":"update_trip_item","target_item_id":3,'
+            '"payload":{"title":"附近茶馆","item_type":"rest"}}]}'
         )
 
     monkeypatch.setattr("app.agent.nodes.call_llm", fake_call_llm)
@@ -390,11 +426,11 @@ def test_replan_agent_extracts_json_from_text_payload(monkeypatch) -> None:
             "trip_id": 1,
             "user_message": "我累了，帮我换一个轻松点的安排。",
             "intent_hint": "replan",
+            "current_trip": _trip_context(),
         }
     )
 
-    assert result["structured_data"]["draft_id"] == "draft_text_001"
-    assert result["structured_data"]["new_items"][0]["title"] == "附近茶馆"
+    assert result["structured_data"]["operations"][0]["payload"]["title"] == "附近茶馆"
 
 
 def test_replan_agent_falls_back_when_llm_payload_invalid(monkeypatch) -> None:
@@ -406,9 +442,111 @@ def test_replan_agent_falls_back_when_llm_payload_invalid(monkeypatch) -> None:
             "trip_id": 1,
             "user_message": "我累了，帮我换一个轻松点的安排。",
             "intent_hint": "replan",
+            "current_trip": _trip_context(),
         }
     )
 
     assert result["intent"] == "replan"
-    assert result["structured_data"]["draft_id"] == "draft_001"
-    assert result["structured_data"]["new_items"][0]["title"] == "附近咖啡馆休息"
+    assert result["structured_data"]["needs_clarification"] is False
+    assert result["structured_data"]["operations"][0]["payload"]["title"] == "附近咖啡馆休息"
+
+
+def test_replan_agent_builds_create_trip_item_option(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.agent.nodes.call_llm",
+        lambda messages: (
+            '{"needs_clarification":false,"clarifying_question":"",'
+            '"summary":"建议在第二天下午新增咖啡馆休息。",'
+            '"reason":"用户希望安排轻松一些。",'
+            '"operations":[{"operation":"create_trip_item",'
+            '"target_date":"2026-07-02","label":"7月2日下午新增咖啡馆休息",'
+            '"payload":{"city":"大连","title":"咖啡馆休息","item_type":"rest",'
+            '"start_time":"14:30","end_time":"15:30","user_id":999,'
+            '"trip_day_id":999}}]}'
+        ),
+    )
+
+    result = run_agent(
+        {
+            "user_id": 1,
+            "trip_id": 1,
+            "user_message": "7月2日下午加一个咖啡馆休息。",
+            "current_trip": _trip_context(),
+        }
+    )
+
+    option = result["action_options"][0]
+    assert option["operation"] == "create_trip_item"
+    assert option["trip_id"] == 1
+    assert option["trip_day_id"] == 11
+    assert "user_id" not in option["payload"]
+    assert "trip_day_id" not in option["payload"]
+
+
+def test_replan_agent_can_target_missing_first_trip_day(monkeypatch) -> None:
+    monkeypatch.setattr("app.agent.nodes.call_llm", lambda messages: None)
+    trip = {
+        "id": 8,
+        "title": "广州",
+        "start_date": "2026-07-01",
+        "end_date": "2026-07-03",
+        "days": [],
+    }
+
+    result = run_agent(
+        {
+            "user_id": 1,
+            "trip_id": 8,
+            "user_message": "把陈家祠添加为第一个行程项",
+            "current_trip": trip,
+        }
+    )
+
+    option = result["action_options"][0]
+    assert option["operation"] == "create_trip_item"
+    assert option["trip_id"] == 8
+    assert option["target_date"] == "2026-07-01"
+    assert option["target_day_index"] == 1
+    assert "trip_day_id" not in option
+
+
+def test_replan_agent_asks_for_missing_create_target(monkeypatch) -> None:
+    monkeypatch.setattr("app.agent.nodes.call_llm", lambda messages: None)
+
+    result = run_agent(
+        {
+            "user_id": 1,
+            "trip_id": 1,
+            "user_message": "帮我新增一个轻松的安排。",
+            "current_trip": _trip_context(),
+        }
+    )
+
+    assert result["intent"] == "replan"
+    assert result["structured_data"]["needs_clarification"] is True
+    assert result["action_options"] == []
+    assert "哪一天" in result["reply"]
+
+
+def test_replan_agent_rejects_item_from_another_trip(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.agent.nodes.call_llm",
+        lambda messages: (
+            '{"needs_clarification":false,"clarifying_question":"",'
+            '"summary":"修改其他节点。","reason":"测试越权 ID。",'
+            '"operations":[{"operation":"update_trip_item","target_item_id":999,'
+            '"payload":{"start_time":"15:00"}}]}'
+        ),
+    )
+
+    result = run_agent(
+        {
+            "user_id": 1,
+            "trip_id": 1,
+            "user_message": "把博物馆改到下午三点。",
+            "current_trip": _trip_context(),
+        }
+    )
+
+    assert result["action_options"] == []
+    assert result["structured_data"]["needs_clarification"] is True
