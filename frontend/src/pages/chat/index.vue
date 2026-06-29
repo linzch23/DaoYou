@@ -144,15 +144,34 @@
                     v-for="(q, qIdx) in msg.follow_up_questions"
                     :key="qIdx"
                     class="follow-up-chip"
-                  :class="{ 'follow-up-chip-disabled': viewMode === 'sending' }"
+                  :class="{ 'follow-up-chip-disabled': viewMode === 'sending' || idx !== chatStore.messages.length - 1 }"
                     role="button"
                     :aria-label="q"
-                    :aria-disabled="viewMode === 'sending' ? 'true' : 'false'"
+                    :aria-disabled="viewMode === 'sending' || idx !== chatStore.messages.length - 1 ? 'true' : 'false'"
                     hover-class="follow-up-chip-hover"
                     :hover-stay-time="50"
-                    @click="onFollowUpClick(q)"
+                    @click="onFollowUpClick(q, idx)"
                   >
                     <text class="follow-up-chip-text">💡 {{ q }}</text>
+                  </view>
+                </view>
+                <view
+                  v-if="msg.role === 'assistant' && msg.clarification_options && msg.clarification_options.length > 0"
+                  class="follow-up-chips"
+                >
+                  <view
+                    v-for="option in msg.clarification_options"
+                    :key="option.option_id"
+                    class="follow-up-chip"
+                    :class="{ 'follow-up-chip-disabled': viewMode === 'sending' || idx !== chatStore.messages.length - 1 }"
+                    role="button"
+                    :aria-label="option.label"
+                    :aria-disabled="viewMode === 'sending' || idx !== chatStore.messages.length - 1 ? 'true' : 'false'"
+                    hover-class="follow-up-chip-hover"
+                    :hover-stay-time="50"
+                    @click="onClarificationOptionClick(option, idx)"
+                  >
+                    <text class="follow-up-chip-text">{{ option.label }}</text>
                   </view>
                 </view>
               </view>
@@ -280,6 +299,18 @@
       @cancel="onApplyPlanCancel"
     />
 
+    <ApplyPlanConfirmDialog
+      :visible="deleteConfirmVisible"
+      :title="ChatPageStrings.deleteActionTitle"
+      :message="ChatPageStrings.deleteActionMessage"
+      :btn-confirm-label="ChatPageStrings.deleteActionConfirm"
+      :btn-cancel-label="ChatPageStrings.deleteActionCancel"
+      :submitting="isApplyingAction"
+      :danger="true"
+      @confirm="onDeleteActionConfirm"
+      @cancel="onDeleteActionCancel"
+    />
+
     <!-- v0.2.0 新增 2 modal(per spec §3.10 PhotoActionSheet + §3.12 ImagePreviewModal) -->
     <PhotoActionSheet
       :visible="actionSheetVisible"
@@ -310,7 +341,7 @@ import { useChatStore } from '../../stores/chatStore.js'
 import { storeToRefs } from 'pinia'  // 2026-06-28 retro fix 修 silent drop:把 page-local actionOptions ref 改读 store.currentActionOptions
 import { useHomeStore } from '../../stores/homeStore.js'
 import { ApiError } from '../../services/chat.js'
-import { createTripDay, createTripItem } from '../../services/trips.js'
+import { createTripDay, createTripItem, deleteTripItem } from '../../services/trips.js'
 import { validateActionOption } from '../../services/actionOptionValidation.js'
 import { getCurrentLocation, checkLocationPermission } from '../../utils/location.js'
 import ActionOptionsModal from './components/ActionOptionsModal.vue'
@@ -331,6 +362,7 @@ import ImagePreviewModal from './components/ImagePreviewModal.vue'
  * @property {string} content
  * @property {string} [created_at]
  * @property {string[]} [follow_up_questions]
+ * @property {{option_id:string,label:string,message:string}[]} [clarification_options]
  * @property {string} [image]            v0.2.0 新增,role='user' 拍照 msg 时携带图片本地路径
  * @property {boolean} [image_failed]    v0.2.0 新增,sendPhotoMessage 失败时标 ❌(MVP 预留 hook)
  *
@@ -529,6 +561,10 @@ const historyError = ref(null)
 const actionOptionsVisible = ref(false)
 /** @type {import('vue').Ref<boolean>} 行程项操作写入中，防止重复确认 */
 const isApplyingAction = ref(false)
+/** @type {import('vue').Ref<boolean>} 永久删除二次确认弹窗 */
+const deleteConfirmVisible = ref(false)
+/** @type {import('vue').Ref<any | null>} 等待最终确认的删除选项 */
+const pendingDeleteOption = ref(null)
 /**
  * v0.3.0 新增:ActionOptionsModal 校验失败顶部 banner 提示文案
  * (per spec §3.9 step 6 + AC-24;空串 = 隐藏 banner,非空 = 显示 banner + confirm 按钮 disabled)
@@ -660,6 +696,8 @@ async function onLoadPage() {
   historyError.value = null
   actionOptionsVisible.value = false
   applyPlanDialogVisible.value = false
+  deleteConfirmVisible.value = false
+  pendingDeleteOption.value = null
   scrollTop.value = 0
   lastMessageCount.value = 0
   // v0.2.0 新增:PhotoActionSheet + ImagePreviewModal 重置(spec §5.4 兜底)
@@ -726,6 +764,8 @@ async function onSendTap() {
   selectedOptionIdx.value = null
   actionOptionsVisible.value = false
   applyPlanDialogVisible.value = false
+  deleteConfirmVisible.value = false
+  pendingDeleteOption.value = null
 
   logger.info('[ChatPage] send start', { len: text.length })
 
@@ -758,13 +798,33 @@ async function onSendTap() {
 /**
  * follow-up chip 点击 → 自动填入 input + 触发发送(per spec §5.2 Step 4)
  * @param {string} q
+ * @param {number} messageIndex
  */
-function onFollowUpClick(q) {
+function onFollowUpClick(q, messageIndex) {
   if (viewMode.value === 'sending') return
+  if (messageIndex !== chatStore.messages.length - 1) return
   if (!q) return
   draftMessage.value = q
   logger.info('[ChatPage] follow-up clicked', { text: q })
   // 自动触发发送
+  onSendTap()
+}
+
+/**
+ * 澄清选项显示 label，但向模型发送完整的用户第一人称回答 message。
+ * @param {{option_id:string,label:string,message:string}} option
+ * @param {number} messageIndex
+ */
+function onClarificationOptionClick(option, messageIndex) {
+  if (viewMode.value === 'sending') return
+  if (messageIndex !== chatStore.messages.length - 1) return
+  const message = typeof option?.message === 'string' ? option.message.trim() : ''
+  if (!message) return
+  draftMessage.value = message
+  logger.info('[ChatPage] clarification option clicked', {
+    optionId: option.option_id,
+    label: option.label,
+  })
   onSendTap()
 }
 
@@ -791,6 +851,12 @@ function onFollowUpClick(q) {
  */
 async function onActionOptionConfirm(selectedOption) {
   if (isApplyingAction.value) return
+  if (selectedOption?.operation === 'delete_trip_item') {
+    pendingDeleteOption.value = selectedOption
+    actionOptionsVisible.value = false
+    deleteConfirmVisible.value = true
+    return
+  }
 
   const validationCode = validateActionOption(selectedOption)
   if (validationCode) {
@@ -802,77 +868,172 @@ async function onActionOptionConfirm(selectedOption) {
     // 不关闭 modal,让 user 看到 banner 提示 + 重新选 / 取消
     return
   }
+  await applyActionOption(selectedOption)
+}
+
+async function applyActionOption(selectedOption) {
+  if (isApplyingAction.value) return false
 
   const boundTripId = useHomeStore().currentTripId
   const optionTripId = Number(selectedOption?.trip_id)
+
   if (!Number.isInteger(optionTripId) || optionTripId !== boundTripId) {
-    uni.showToast({ title: ChatPageStrings.actionOptionsInvalid, icon: 'none' })
-    logger.warn('[ChatPage] action option trip mismatch', { optionTripId, boundTripId })
+    uni.showToast({
+      title: ChatPageStrings.actionOptionsInvalid,
+      icon: 'none',
+    })
+    logger.warn('[ChatPage] action option trip mismatch', {
+      optionTripId,
+      boundTripId,
+    })
     actionOptionsInvalidMessage.value = ''
-    return
+    return false
   }
 
   const operation = selectedOption?.operation
-  const payload = sanitizeActionPayload(operation, selectedOption?.payload)
+  const rawPayload = selectedOption?.payload
+
+  if (
+    !selectedOption
+    || !rawPayload
+    || typeof rawPayload !== 'object'
+    || Array.isArray(rawPayload)
+  ) {
+    actionOptionsInvalidMessage.value = ChatPageStrings.replanInvalid
+    logger.warn('[ChatPage] action option invalid', { selectedOption })
+    return false
+  }
+
+  const payload = sanitizeActionPayload(operation, rawPayload)
+
+  // create 不要求 item_id；update/delete 必须有合法 item_id。
+  if (
+    ['update_trip_item', 'delete_trip_item'].includes(operation)
+    && (!Number.isInteger(Number(selectedOption.item_id))
+      || Number(selectedOption.item_id) <= 0)
+  ) {
+    actionOptionsInvalidMessage.value = ChatPageStrings.replanInvalid
+    logger.warn('[ChatPage] action option missing item_id', {
+      operation,
+      itemId: selectedOption?.item_id,
+    })
+    return false
+  }
+
+  actionOptionsInvalidMessage.value = ''
   isApplyingAction.value = true
+
   try {
     if (operation === 'create_trip_item') {
       let tripDayId = Number(selectedOption?.trip_day_id)
+
       if (!Number.isInteger(tripDayId) || tripDayId <= 0) {
         const targetDayIndex = Number(selectedOption?.target_day_index)
         const targetDate = selectedOption?.target_date
-        if (!Number.isInteger(targetDayIndex) || targetDayIndex <= 0 || typeof targetDate !== 'string') {
+
+        if (
+          !Number.isInteger(targetDayIndex)
+          || targetDayIndex <= 0
+          || typeof targetDate !== 'string'
+        ) {
           throw new Error('invalid trip day target')
         }
+
         const dayResult = await createTripDay(optionTripId, {
           day_index: targetDayIndex,
           trip_date: targetDate,
           summary: '',
         })
+
         tripDayId = Number(dayResult?.data?.trip_day_id)
-        if (!Number.isInteger(tripDayId) || tripDayId <= 0) throw new Error('invalid created trip_day_id')
+
+        if (!Number.isInteger(tripDayId) || tripDayId <= 0) {
+          throw new Error('invalid created trip_day_id')
+        }
       }
-      await createTripItem({ trip_day_id: tripDayId, ...payload })
-      actionOptionsVisible.value = false
-      actionOptionsInvalidMessage.value = ''
-      actionOptions.value = []
-      uni.showToast({ title: ChatPageStrings.actionOptionsApplied, icon: 'success' })
-      logger.info('[ChatPage] action option applied', { operation, optionTripId })
+
+      await createTripItem({
+        trip_day_id: tripDayId,
+        ...payload,
+      })
     } else if (operation === 'update_trip_item') {
-      const itemId = Number(selectedOption?.item_id)
-      if (!Number.isInteger(itemId) || itemId <= 0) throw new Error('invalid item_id')
-      // v0.3.0 spec §3.9:update 走 chatStore.applyReplanOption(统一日志 + 成功后 fetchHistory 刷新)
-      await chatStore.applyReplanOption({ item_id: itemId, payload })
-      actionOptionsVisible.value = false
-      actionOptionsInvalidMessage.value = ''
-      actionOptions.value = []
-      uni.showToast({ title: ChatPageStrings.replanSuccess, icon: 'success', duration: 2000 })
-      logger.info('[ChatPage] replan applied', { item_id: itemId })
+      const itemId = Number(selectedOption.item_id)
+
+      // 使用 main 新增的 store 方法，成功后会刷新聊天历史。
+      await chatStore.applyReplanOption({
+        item_id: itemId,
+        payload,
+      })
+    } else if (operation === 'delete_trip_item') {
+      const itemId = Number(selectedOption.item_id)
+      await deleteTripItem(itemId)
     } else {
       throw new Error('unsupported action operation')
     }
-  } catch (err) {
-    // 步骤 5 failure:关闭 modal + Toast + **不**弹 _ErrorOverlay + **不**自动重试
+
     actionOptionsVisible.value = false
     actionOptionsInvalidMessage.value = ''
-    // 区分 create 失败文案与 replan 失败文案(per spec §3.9 step 5 / AC-23)
+    actionOptions.value = []
+
+    const successTitle = operation === 'update_trip_item'
+      ? ChatPageStrings.replanSuccess
+      : ChatPageStrings.actionOptionsApplied
+
+    uni.showToast({
+      title: successTitle,
+      icon: 'success',
+      duration: 2000,
+    })
+
+    logger.info('[ChatPage] action option applied', {
+      operation,
+      optionTripId,
+      itemId: selectedOption?.item_id,
+    })
+
+    return true
+  } catch (err) {
+    actionOptionsInvalidMessage.value = ''
+
     const failTitle = operation === 'update_trip_item'
       ? ChatPageStrings.replanError
       : ChatPageStrings.actionOptionsApplyFailed
-    uni.showToast({ title: failTitle, icon: 'none', duration: 2000 })
+
+    uni.showToast({
+      title: failTitle,
+      icon: 'none',
+      duration: 2000,
+    })
+
     logger.error('[ChatPage] action option apply failed', {
       operation,
       optionTripId,
-      item_id: selectedOption?.item_id,
+      itemId: selectedOption?.item_id,
       error: err?.message,
       code: err?.code,
       statusCode: err?.statusCode,
-      isNetworkError: err?.isNetworkError,
     })
-    // 不自动重试;user 可重新触发 ActionOptionsModal 同一 option 触发新一次 PUT
+
+    return false
   } finally {
     isApplyingAction.value = false
   }
+}
+
+async function onDeleteActionConfirm() {
+  if (!pendingDeleteOption.value || isApplyingAction.value) return
+  const applied = await applyActionOption(pendingDeleteOption.value)
+  if (applied) {
+    deleteConfirmVisible.value = false
+    pendingDeleteOption.value = null
+  }
+}
+
+function onDeleteActionCancel() {
+  if (isApplyingAction.value) return
+  deleteConfirmVisible.value = false
+  pendingDeleteOption.value = null
+  actionOptionsVisible.value = true
 }
 
 function sanitizeActionPayload(operation, source) {
@@ -1116,6 +1277,8 @@ onUnmounted(() => {
   // 兜底重置可见性(per spec §5.4;2026-06-24 Fix D:清空 dialog 已删)
   actionOptionsVisible.value = false
   applyPlanDialogVisible.value = false
+  deleteConfirmVisible.value = false
+  pendingDeleteOption.value = null
   // v0.2.0 新增:PhotoActionSheet + ImagePreviewModal 兜底关闭(spec §5.4)
   actionSheetVisible.value = false
   imagePreviewVisible.value = false

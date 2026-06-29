@@ -15,6 +15,7 @@ FALLBACK_RESPONSE = {
     "reply": "导友暂时没能生成完整回复，但我会继续帮你看行程和时间安排。",
     "action_options": [],
     "follow_up_questions": [],
+    "clarification_options": [],
 }
 
 
@@ -72,4 +73,5 @@ def run_agent(state: AgentState) -> dict[str, object]:
     response.setdefault("action_options", [])
     response.setdefault("structured_data", {})
     response.setdefault("follow_up_questions", [])
+    response.setdefault("clarification_options", [])
     return response
