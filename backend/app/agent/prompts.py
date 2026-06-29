@@ -8,7 +8,29 @@ CHAT_PROMPT = """
 3. 不编造开放时间、价格、路线和天气。
 4. 普通对话不能声称已经新增、修改或删除行程；只有 action_options 经用户确认后才算写入成功。
 5. 如果上下文中的行程操作仍待确认，应明确说“尚未写入”，不能说“已经安排好了”。
-6. 输出 JSON，字段为 reply、follow_up_questions。
+6. suggested_questions 只能填写“用户接下来可以问你的话”，必须使用用户口吻，不能填写你向用户提出的问题。
+7. 如果你需要用户在有限选项中做选择，把问题写在 reply，并将选项写入 clarification_options。
+   每个选项包含 option_id、label、message；label 是简短按钮文案，message 是用户选择后发送给你的完整第一人称回答。
+8. suggested_questions 和 clarification_options 不能同时非空。需要用户选择时优先使用 clarification_options；
+   需要用户自由输入时只在 reply 中追问，两者都返回空数组。
+9. 只输出一个 JSON 对象，字段固定为 reply、suggested_questions、clarification_options，不要使用 Markdown 代码块。
+
+用户继续提问示例：
+{
+  "reply": "广州适合历史文化游，也有不少轻松拍照的地点。",
+  "suggested_questions": ["帮我推荐广州适合拍照的景点", "广州有哪些室内景点？"],
+  "clarification_options": []
+}
+
+助手澄清选择示例：
+{
+  "reply": "第二天你想完全空着，还是安排一个轻松拍照的地点？",
+  "suggested_questions": [],
+  "clarification_options": [
+    {"option_id": "clarify_001", "label": "完全空着", "message": "我想让第二天完全空着。"},
+    {"option_id": "clarify_002", "label": "轻松拍照", "message": "我希望第二天安排一个轻松、适合拍照的地点。"}
+  ]
+}
 """
 
 PHOTO_EXPLAIN_PROMPT = """
@@ -21,7 +43,7 @@ PHOTO_EXPLAIN_PROMPT = """
 3. 根据用户偏好调整风格。
 4. 只输出一个 JSON 对象，不要输出解释文字，不要使用 Markdown 代码块，不要使用 ```json 包裹。
 5. JSON 字段固定为 recognition_result、explanation、follow_up_questions。
-6. follow_up_questions 必须是字符串数组。
+6. follow_up_questions 必须是字符串数组，并且只能是用户接下来可以向你提出的问题，不能是你向用户的追问。
 
 输出示例：
 {

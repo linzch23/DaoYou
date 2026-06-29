@@ -1162,10 +1162,40 @@ Content-Type: application/json
     "follow_up_questions": [
       "帮我把下午改轻松一点",
       "附近适合休息的地方有哪些？"
-    ]
+    ],
+    "clarification_options": []
   }
 }
 ```
+
+`follow_up_questions` 只包含用户可以继续向 Agent 提出的问题，前端点击后可原样发送。
+当 Agent 需要用户在有限选项中做选择时，问题写在 `reply`，并返回结构化的
+`clarification_options`：
+
+```json
+{
+  "reply": "第二天你想完全空着，还是安排一个轻松拍照的地点？",
+  "intent": "chat",
+  "action_options": [],
+  "follow_up_questions": [],
+  "clarification_options": [
+    {
+      "option_id": "clarify_001",
+      "label": "完全空着",
+      "message": "我想让第二天完全空着。"
+    },
+    {
+      "option_id": "clarify_002",
+      "label": "轻松拍照",
+      "message": "我希望第二天安排一个轻松、适合拍照的地点。"
+    }
+  ]
+}
+```
+
+前端展示 `label`，但用户选择后必须把完整的第一人称 `message` 发送给 Agent。
+`follow_up_questions` 与 `clarification_options` 不能同时非空；同时出现时以前者为空、
+优先使用 `clarification_options`。
 
 响应示例：识别为改线意图
 
@@ -1208,7 +1238,8 @@ Content-Type: application/json
         }
       }
     ],
-    "follow_up_questions": []
+    "follow_up_questions": [],
+    "clarification_options": []
   }
 }
 ```
@@ -1231,7 +1262,8 @@ Agent 输出约定：
   "intent": "chat",
   "reply": "给用户的自然语言回复",
   "action_options": [],
-  "follow_up_questions": []
+  "follow_up_questions": [],
+  "clarification_options": []
 }
 ```
 
@@ -1616,7 +1648,8 @@ Content-Type: application/json
   "intent": "chat",
   "reply": "给用户展示的自然语言回复",
   "action_options": [],
-  "follow_up_questions": []
+  "follow_up_questions": [],
+  "clarification_options": []
 }
 ```
 

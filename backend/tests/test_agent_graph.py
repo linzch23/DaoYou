@@ -57,12 +57,16 @@ def test_chat_agent_returns_reply(monkeypatch) -> None:
     assert result["intent"] == "chat"
     assert result["reply"]
     assert result["action_options"] == []
-    assert isinstance(result["follow_up_questions"], list)
+    assert result["follow_up_questions"] == [
+        "帮我把下午安排得轻松一点",
+        "推荐附近适合休息的地方",
+    ]
+    assert result["clarification_options"] == []
 
 
 def test_chat_agent_uses_llm_when_available(monkeypatch) -> None:
     def fake_call_llm(messages: list[dict[str, str]]) -> str:
-        return '{"reply": "这是模型生成的旅行建议。", "follow_up_questions": ["要继续优化吗？"]}'
+        return '{"reply": "这是模型生成的旅行建议。", "suggested_questions": ["帮我继续优化行程"]}'
 
     monkeypatch.setattr("app.agent.nodes.call_llm", fake_call_llm)
 
@@ -77,14 +81,15 @@ def test_chat_agent_uses_llm_when_available(monkeypatch) -> None:
 
     assert result["intent"] == "chat"
     assert result["reply"] == "这是模型生成的旅行建议。"
-    assert result["follow_up_questions"] == ["要继续优化吗？"]
+    assert result["follow_up_questions"] == ["帮我继续优化行程"]
+    assert result["clarification_options"] == []
 
 
 def test_chat_agent_parses_markdown_json_payload(monkeypatch) -> None:
     def fake_call_llm(messages: list[dict[str, str]]) -> str:
         return (
             '```json\n{"reply":"模型建议下午放慢节奏。",'
-            '"follow_up_questions":["要调整下一站吗？"]}\n```'
+            '"suggested_questions":["帮我调整下一站"],"clarification_options":[]}\n```'
         )
 
     monkeypatch.setattr("app.agent.nodes.call_llm", fake_call_llm)
@@ -99,14 +104,14 @@ def test_chat_agent_parses_markdown_json_payload(monkeypatch) -> None:
     )
 
     assert result["reply"] == "模型建议下午放慢节奏。"
-    assert result["follow_up_questions"] == ["要调整下一站吗？"]
+    assert result["follow_up_questions"] == ["帮我调整下一站"]
 
 
 def test_chat_agent_extracts_json_from_text_payload(monkeypatch) -> None:
     def fake_call_llm(messages: list[dict[str, str]]) -> str:
         return (
             '好的：{"reply":"模型建议先休息再去海边。",'
-            '"follow_up_questions":["要找附近咖啡馆吗？"]}'
+            '"suggested_questions":["帮我找附近的咖啡馆"],"clarification_options":[]}'
         )
 
     monkeypatch.setattr("app.agent.nodes.call_llm", fake_call_llm)
@@ -121,7 +126,57 @@ def test_chat_agent_extracts_json_from_text_payload(monkeypatch) -> None:
     )
 
     assert result["reply"] == "模型建议先休息再去海边。"
-    assert result["follow_up_questions"] == ["要找附近咖啡馆吗？"]
+    assert result["follow_up_questions"] == ["帮我找附近的咖啡馆"]
+
+
+def test_chat_agent_returns_structured_clarification_options(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.agent.nodes.call_llm",
+        lambda messages: (
+            '{"reply":"第二天你想怎么安排？",'
+            '"suggested_questions":[],"clarification_options":['
+            '{"option_id":"clarify_001","label":"完全空着",'
+            '"message":"我想让第二天完全空着。"},'
+            '{"option_id":"clarify_002","label":"轻松拍照",'
+            '"message":"我希望第二天安排一个轻松、适合拍照的地点。"}]}'
+        ),
+    )
+
+    result = run_agent({"user_id": 1, "user_message": "帮我安排第二天"})
+
+    assert result["follow_up_questions"] == []
+    assert result["clarification_options"][0] == {
+        "option_id": "clarify_001",
+        "label": "完全空着",
+        "message": "我想让第二天完全空着。",
+    }
+
+
+def test_chat_agent_prefers_valid_clarification_options_and_filters_invalid_items(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.agent.nodes.call_llm",
+        lambda messages: (
+            '{"reply":"请选择第二天的节奏。",'
+            '"suggested_questions":["帮我推荐第二天的景点"],'
+            '"clarification_options":['
+            '{"option_id":"clarify_001","label":"慢节奏",'
+            '"message":"我希望第二天按慢节奏安排。"},'
+            '{"option_id":"clarify_002","label":"缺少消息"},"invalid"]}'
+        ),
+    )
+
+    result = run_agent({"user_id": 1, "user_message": "第二天怎么安排"})
+
+    assert result["follow_up_questions"] == []
+    assert result["clarification_options"] == [
+        {
+            "option_id": "clarify_001",
+            "label": "慢节奏",
+            "message": "我希望第二天按慢节奏安排。",
+        }
+    ]
 
 
 def test_vivo_auth_headers_include_required_fields() -> None:

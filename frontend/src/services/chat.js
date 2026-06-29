@@ -23,7 +23,7 @@
 //
 // 出参形状(spec §6.1 ChatReplyData / §6.2 chatHistoryMock):
 //   sendChatMessage → Promise<{ code: 0, message, data: ChatReplyData }>
-//     ChatReplyData: { reply, intent, action_options, follow_up_questions }
+//     ChatReplyData: { reply, intent, action_options, follow_up_questions, clarification_options }
 //   getChatHistory → Promise<{ code: 0, message, data: { messages: ChatMessage[] } }>
 //
 // 失败映射(spec §3.7 Error 表):
@@ -82,6 +82,7 @@ export { ApiError } from './preferences.js'
  * @property {string} intent                   3 枚举:chat | replan | apply-plan
  * @property {any[]} action_options            MVP 占位 any[],per spec §6.4 PD-001 #3
  * @property {string[]} follow_up_questions    追问建议,长度 0-5
+ * @property {{option_id:string,label:string,message:string}[]} clarification_options 助手澄清问题的候选回答
  *
  * @typedef {import('../api/types').ApiResponse<ChatReplyData>} SendChatResponse
  * @typedef {import('../api/types').ApiResponse<{ messages: ChatMessage[] }>} GetChatHistoryResponse

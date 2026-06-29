@@ -58,6 +58,7 @@ def test_send_chat_message_saves_user_and_assistant_messages(db: Session) -> Non
     messages = db.query(ChatMessage).order_by(ChatMessage.id).all()
     assert result["intent"] == "chat"
     assert result["reply"]
+    assert "clarification_options" in result
     assert [message.role for message in messages] == ["user", "assistant"]
     assert [message.trip_id for message in messages] == [trip_id, trip_id]
     assert messages[0].content == "下午想轻松一点，怎么安排？"

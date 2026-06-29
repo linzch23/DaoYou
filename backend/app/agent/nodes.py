@@ -70,10 +70,14 @@ def chat_response_node(state: AgentState) -> AgentState:
     message = str(state.get("user_message") or "")
     llm_result = _generate_chat_with_llm(state, preferences, message)
     reply = llm_result["reply"] or _mock_chat_reply(message, preferences)
-    follow_up_questions = llm_result["follow_up_questions"] or [
-        "要不要帮你把下午改轻松一点？",
-        "需要我推荐附近适合休息的地方吗？",
-    ]
+    clarification_options = llm_result["clarification_options"]
+    follow_up_questions = [] if clarification_options else (
+        llm_result["follow_up_questions"]
+        or [
+            "帮我把下午安排得轻松一点",
+            "推荐附近适合休息的地方",
+        ]
+    )
 
     final_response = {
         "intent": "chat",
@@ -81,6 +85,7 @@ def chat_response_node(state: AgentState) -> AgentState:
         "action_options": [],
         "structured_data": {},
         "follow_up_questions": follow_up_questions,
+        "clarification_options": clarification_options,
     }
     return {**state, "final_response": final_response}
 
@@ -110,6 +115,7 @@ def photo_explain_node(state: AgentState) -> AgentState:
         "reply": explanation,
         "structured_data": structured_data,
         "follow_up_questions": payload["follow_up_questions"],
+        "clarification_options": [],
     }
     return {
         **state,
@@ -130,6 +136,7 @@ def reminder_node(state: AgentState) -> AgentState:
         "reply": reply,
         "structured_data": reminder_result,
         "follow_up_questions": [],
+        "clarification_options": [],
     }
     return {
         **state,
@@ -184,6 +191,7 @@ def replan_node(state: AgentState) -> AgentState:
         "action_options": action_options,
         "structured_data": structured_data,
         "follow_up_questions": [],
+        "clarification_options": [],
     }
     return {
         **state,
@@ -221,18 +229,50 @@ def _generate_chat_with_llm(
         ]
     )
     if not llm_text:
-        return {"reply": "", "follow_up_questions": []}
+        return {"reply": "", "follow_up_questions": [], "clarification_options": []}
 
     data = _parse_json_object(llm_text)
     if data is None:
-        return {"reply": llm_text, "follow_up_questions": []}
+        return {"reply": llm_text, "follow_up_questions": [], "clarification_options": []}
 
     reply = data.get("reply")
-    questions = data.get("follow_up_questions")
+    questions = _sanitize_suggested_questions(data.get("suggested_questions"))
+    clarification_options = _sanitize_clarification_options(data.get("clarification_options"))
+    if clarification_options:
+        questions = []
     return {
         "reply": reply if isinstance(reply, str) else "",
-        "follow_up_questions": questions if isinstance(questions, list) else [],
+        "follow_up_questions": questions,
+        "clarification_options": clarification_options,
     }
+
+
+def _sanitize_suggested_questions(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item.strip() for item in value if isinstance(item, str) and item.strip()][:5]
+
+
+def _sanitize_clarification_options(value: object) -> list[dict[str, str]]:
+    if not isinstance(value, list):
+        return []
+    options: list[dict[str, str]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        option_id = item.get("option_id")
+        label = item.get("label")
+        message = item.get("message")
+        if not all(isinstance(field, str) and field.strip() for field in (option_id, label, message)):
+            continue
+        options.append(
+            {
+                "option_id": option_id.strip(),
+                "label": label.strip(),
+                "message": message.strip(),
+            }
+        )
+    return options[:5]
 
 
 def _mock_chat_reply(message: str, preferences: dict[str, object]) -> str:

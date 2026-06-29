@@ -144,15 +144,34 @@
                     v-for="(q, qIdx) in msg.follow_up_questions"
                     :key="qIdx"
                     class="follow-up-chip"
-                  :class="{ 'follow-up-chip-disabled': viewMode === 'sending' }"
+                  :class="{ 'follow-up-chip-disabled': viewMode === 'sending' || idx !== chatStore.messages.length - 1 }"
                     role="button"
                     :aria-label="q"
-                    :aria-disabled="viewMode === 'sending' ? 'true' : 'false'"
+                    :aria-disabled="viewMode === 'sending' || idx !== chatStore.messages.length - 1 ? 'true' : 'false'"
                     hover-class="follow-up-chip-hover"
                     :hover-stay-time="50"
-                    @click="onFollowUpClick(q)"
+                    @click="onFollowUpClick(q, idx)"
                   >
                     <text class="follow-up-chip-text">💡 {{ q }}</text>
+                  </view>
+                </view>
+                <view
+                  v-if="msg.role === 'assistant' && msg.clarification_options && msg.clarification_options.length > 0"
+                  class="follow-up-chips"
+                >
+                  <view
+                    v-for="option in msg.clarification_options"
+                    :key="option.option_id"
+                    class="follow-up-chip"
+                    :class="{ 'follow-up-chip-disabled': viewMode === 'sending' || idx !== chatStore.messages.length - 1 }"
+                    role="button"
+                    :aria-label="option.label"
+                    :aria-disabled="viewMode === 'sending' || idx !== chatStore.messages.length - 1 ? 'true' : 'false'"
+                    hover-class="follow-up-chip-hover"
+                    :hover-stay-time="50"
+                    @click="onClarificationOptionClick(option, idx)"
+                  >
+                    <text class="follow-up-chip-text">{{ option.label }}</text>
                   </view>
                 </view>
               </view>
@@ -341,6 +360,7 @@ import ImagePreviewModal from './components/ImagePreviewModal.vue'
  * @property {string} content
  * @property {string} [created_at]
  * @property {string[]} [follow_up_questions]
+ * @property {{option_id:string,label:string,message:string}[]} [clarification_options]
  * @property {string} [image]            v0.2.0 新增,role='user' 拍照 msg 时携带图片本地路径
  * @property {boolean} [image_failed]    v0.2.0 新增,sendPhotoMessage 失败时标 ❌(MVP 预留 hook)
  *
@@ -771,13 +791,33 @@ async function onSendTap() {
 /**
  * follow-up chip 点击 → 自动填入 input + 触发发送(per spec §5.2 Step 4)
  * @param {string} q
+ * @param {number} messageIndex
  */
-function onFollowUpClick(q) {
+function onFollowUpClick(q, messageIndex) {
   if (viewMode.value === 'sending') return
+  if (messageIndex !== chatStore.messages.length - 1) return
   if (!q) return
   draftMessage.value = q
   logger.info('[ChatPage] follow-up clicked', { text: q })
   // 自动触发发送
+  onSendTap()
+}
+
+/**
+ * 澄清选项显示 label，但向模型发送完整的用户第一人称回答 message。
+ * @param {{option_id:string,label:string,message:string}} option
+ * @param {number} messageIndex
+ */
+function onClarificationOptionClick(option, messageIndex) {
+  if (viewMode.value === 'sending') return
+  if (messageIndex !== chatStore.messages.length - 1) return
+  const message = typeof option?.message === 'string' ? option.message.trim() : ''
+  if (!message) return
+  draftMessage.value = message
+  logger.info('[ChatPage] clarification option clicked', {
+    optionId: option.option_id,
+    label: option.label,
+  })
   onSendTap()
 }
 
