@@ -46,11 +46,18 @@ def intent_detect_node(state: AgentState) -> AgentState:
             "加个",
             "安排一个",
             "插入",
+            "删除",
+            "删掉",
+            "移除",
+            "不去了",
+            "不要了",
         ]
     ) or (
         "安排" in message
         and any(keyword in message for keyword in ["景点", "餐", "咖啡", "休息", "活动", "项目"])
     ):
+        return {**state, "intent": "replan"}
+    if _is_trip_item_clarification_reply(state):
         return {**state, "intent": "replan"}
     if any(keyword in message for keyword in ["提醒", "来得及", "出发", "风险"]):
         return {**state, "intent": "reminder"}
@@ -385,6 +392,7 @@ def _generate_replan_with_llm(
                 "content": json.dumps(
                     {
                         "user_message": state.get("user_message") or "",
+                        "chat_history": state.get("chat_history") or [],
                         "current_trip": trip,
                         "current_location": state.get("current_location") or {},
                         "user_preferences": preferences,
@@ -543,10 +551,12 @@ def _explicit_first_trip_item_payload(
     trip: dict[str, object],
 ) -> dict[str, object] | None:
     message = str(state.get("user_message") or "").strip()
-    match = re.search(
+    patterns = [
         r"把(?P<title>.+?)(?:添加|加入|安排)(?:为|到)?第一个行程项",
-        message,
-    )
+        r"把(?P<title>.+?)(?:添加|加入|安排)(?:到|进)(?:本次)?旅行(?:的)?第一天",
+        r"把(?P<title>.+?)(?:添加|加入|安排)(?:到|进)第一天",
+    ]
+    match = next((match for pattern in patterns if (match := re.search(pattern, message))), None)
     start_date = str(trip.get("start_date") or "")
     if match is None or not start_date:
         return None
@@ -579,7 +589,10 @@ def _explicit_first_trip_item_payload(
 
 
 def _is_trip_item_create_request(message: str) -> bool:
-    if any(keyword in message for keyword in ["不想去", "换", "取消", "改"]):
+    if any(
+        keyword in message
+        for keyword in ["不想去", "不去了", "不要了", "换", "取消", "改", "删除", "删掉", "移除"]
+    ):
         return False
     return any(
         keyword in message
@@ -588,3 +601,25 @@ def _is_trip_item_create_request(message: str) -> bool:
         "安排" in message
         and any(keyword in message for keyword in ["景点", "餐", "咖啡", "休息", "活动", "项目"])
     )
+
+
+def _is_trip_item_clarification_reply(state: AgentState) -> bool:
+    history = state.get("chat_history")
+    if not isinstance(history, list):
+        return False
+
+    recent_messages = [message for message in history[-8:] if isinstance(message, dict)]
+    has_create_request = any(
+        message.get("role") == "user"
+        and _is_trip_item_create_request(str(message.get("content") or ""))
+        for message in recent_messages
+    )
+    has_clarification = any(
+        message.get("role") == "assistant"
+        and any(
+            keyword in str(message.get("content") or "")
+            for keyword in ["请问", "哪一天", "什么时间", "几点", "确认日期"]
+        )
+        for message in recent_messages
+    )
+    return has_create_request and has_clarification

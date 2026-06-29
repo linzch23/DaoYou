@@ -45,6 +45,7 @@
       <view class="apply-plan-actions">
         <view
           class="apply-plan-btn apply-plan-btn-cancel"
+          :class="{ 'apply-plan-btn-disabled': submitting }"
           role="button"
           :aria-label="btnCancelLabel"
           hover-class="apply-plan-btn-cancel-hover"
@@ -56,6 +57,10 @@
 
         <view
           class="apply-plan-btn apply-plan-btn-confirm"
+          :class="{
+            'apply-plan-btn-disabled': submitting,
+            'apply-plan-btn-confirm-danger': danger,
+          }"
           role="button"
           :aria-label="btnConfirmLabel"
           hover-class="apply-plan-btn-confirm-hover"
@@ -70,7 +75,7 @@
 </template>
 
 <script setup>
-defineProps({
+const props = defineProps({
   visible: {
     type: Boolean,
     required: true,
@@ -91,15 +96,25 @@ defineProps({
     type: String,
     required: true,
   },
+  submitting: {
+    type: Boolean,
+    default: false,
+  },
+  danger: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const emit = defineEmits(['confirm', 'cancel'])
 
 function onConfirm() {
+  if (props.submitting) return
   emit('confirm')
 }
 
 function onCancel() {
+  if (props.submitting) return
   emit('cancel')
 }
 
@@ -107,6 +122,7 @@ function onCancel() {
  * 蒙层点击 = 等同「取消」(per spec §8.4)
  */
 function onMaskClick() {
+  if (props.submitting) return
   emit('cancel')
 }
 </script>
@@ -204,6 +220,16 @@ function onMaskClick() {
 .apply-plan-btn-confirm-hover {
   transform: scale(0.96);
   box-shadow: 0 2rpx 8rpx rgba(45, 106, 94, 0.35);
+}
+
+.apply-plan-btn-confirm-danger {
+  background: #C4473A;
+  box-shadow: 0 4rpx 16rpx rgba(196, 71, 58, 0.3);
+}
+
+.apply-plan-btn-disabled {
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 .apply-plan-btn-confirm-text {

@@ -1395,6 +1395,10 @@ export const ChatPageStrings = {
   actionOptionsApplied: '行程已更新',
   actionOptionsApplyFailed: '应用失败,请稍后重试',
   actionOptionsInvalid: '方案已失效,请重新获取',
+  deleteActionTitle: '永久删除该行程项?',
+  deleteActionMessage: '删除后无法恢复,请确认是否继续。',
+  deleteActionConfirm: '确认删除',
+  deleteActionCancel: '返回',
 
   // ApplyPlan 弹窗(spec §3.10 ApplyPlanConfirmDialog + §4.4)
   applyPlanTitle: '确认应用改线方案?',

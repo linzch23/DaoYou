@@ -332,13 +332,13 @@ Agent 识别到行程编辑意图时，通过该结构返回可供用户选择�
 | option_id | string | 本次 Chat 响应内的选项标识 |
 | label | string | 前端展示的选项标题 |
 | description | string | 选项说明和推荐理由 |
-| operation | string | `create_trip_item` / `update_trip_item` |
+| operation | string | `create_trip_item` / `update_trip_item` / `delete_trip_item` |
 | trip_id | int | 当前聊天绑定的旅行 ID，前端执行前必须校验 |
 | trip_day_id | int \| null | 目标 TripDay 已存在时返回 |
 | target_date | string \| null | TripDay 不存在时返回，必须在旅行日期范围内 |
 | target_day_index | int \| null | TripDay 不存在时返回，从 1 开始 |
 | item_id | int \| null | 修改节点时必填，必须属于当前旅行 |
-| payload | object | 提交给 TripItem 创建或更新接口的字段，不包含 `user_id`、归属 ID |
+| payload | object | 创建或更新字段；删除操作固定为空对象，不包含 `user_id`、归属 ID |
 
 
 ## 4. 健康检查
@@ -1219,6 +1219,8 @@ Content-Type: application/json
 + 前端展示 `action_options`，并在执行前校验选项的 `trip_id` 与当前聊天一致。
 + `create_trip_item` 有 `trip_day_id` 时直接调用 `POST /api/trip-items`；只有合法目标日期但 TripDay 尚不存在时，先调用 `POST /api/trips/{trip_id}/days`，再创建 TripItem。
 + `update_trip_item` 使用 `item_id + payload` 调用 `PUT /api/trip-items/{item_id}`。
++ `delete_trip_item` 必须经过永久删除二次确认，再使用 `item_id` 调用 `DELETE /api/trip-items/{item_id}`。
++ 修改和删除目标按 ID、完整标题、唯一包含匹配、日期时间线索和最近聊天提及逐级解析；候选不唯一时返回追问，不生成操作选项。
 + 前端 Service 补充当前 `user_id`；Chat 流程不提供独立的应用接口。
 + Agent 无法可靠确定旅行日或目标节点时，先返回自然语言追问，并将 `action_options` 置为空数组。
 

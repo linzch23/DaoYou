@@ -279,6 +279,18 @@
       @cancel="onApplyPlanCancel"
     />
 
+    <ApplyPlanConfirmDialog
+      :visible="deleteConfirmVisible"
+      :title="ChatPageStrings.deleteActionTitle"
+      :message="ChatPageStrings.deleteActionMessage"
+      :btn-confirm-label="ChatPageStrings.deleteActionConfirm"
+      :btn-cancel-label="ChatPageStrings.deleteActionCancel"
+      :submitting="isApplyingAction"
+      :danger="true"
+      @confirm="onDeleteActionConfirm"
+      @cancel="onDeleteActionCancel"
+    />
+
     <!-- v0.2.0 新增 2 modal(per spec §3.10 PhotoActionSheet + §3.12 ImagePreviewModal) -->
     <PhotoActionSheet
       :visible="actionSheetVisible"
@@ -309,7 +321,7 @@ import { useChatStore } from '../../stores/chatStore.js'
 import { storeToRefs } from 'pinia'  // 2026-06-28 retro fix 修 silent drop:把 page-local actionOptions ref 改读 store.currentActionOptions
 import { useHomeStore } from '../../stores/homeStore.js'
 import { ApiError } from '../../services/chat.js'
-import { createTripDay, createTripItem, updateTripItem } from '../../services/trips.js'
+import { createTripDay, createTripItem, deleteTripItem, updateTripItem } from '../../services/trips.js'
 import { getCurrentLocation, checkLocationPermission } from '../../utils/location.js'
 import ActionOptionsModal from './components/ActionOptionsModal.vue'
 import ApplyPlanConfirmDialog from './components/ApplyPlanConfirmDialog.vue'
@@ -527,6 +539,10 @@ const historyError = ref(null)
 const actionOptionsVisible = ref(false)
 /** @type {import('vue').Ref<boolean>} 行程项操作写入中，防止重复确认 */
 const isApplyingAction = ref(false)
+/** @type {import('vue').Ref<boolean>} 永久删除二次确认弹窗 */
+const deleteConfirmVisible = ref(false)
+/** @type {import('vue').Ref<any | null>} 等待最终确认的删除选项 */
+const pendingDeleteOption = ref(null)
 /** @type {import('vue').Ref<boolean>} ApplyPlanConfirmDialog 显示标记 */
 const applyPlanDialogVisible = ref(false)
 /** @type {import('vue').Ref<number>} scroll-view 滚动位置(新 reply 到达后设 999999 强制滚到底) */
@@ -653,6 +669,8 @@ async function onLoadPage() {
   historyError.value = null
   actionOptionsVisible.value = false
   applyPlanDialogVisible.value = false
+  deleteConfirmVisible.value = false
+  pendingDeleteOption.value = null
   scrollTop.value = 0
   lastMessageCount.value = 0
   // v0.2.0 新增:PhotoActionSheet + ImagePreviewModal 重置(spec §5.4 兜底)
@@ -719,6 +737,8 @@ async function onSendTap() {
   selectedOptionIdx.value = null
   actionOptionsVisible.value = false
   applyPlanDialogVisible.value = false
+  deleteConfirmVisible.value = false
+  pendingDeleteOption.value = null
 
   logger.info('[ChatPage] send start', { len: text.length })
 
@@ -772,13 +792,24 @@ function onFollowUpClick(q) {
  */
 async function onActionOptionConfirm(selectedOption) {
   if (isApplyingAction.value) return
+  if (selectedOption?.operation === 'delete_trip_item') {
+    pendingDeleteOption.value = selectedOption
+    actionOptionsVisible.value = false
+    deleteConfirmVisible.value = true
+    return
+  }
+  await applyActionOption(selectedOption)
+}
+
+async function applyActionOption(selectedOption) {
+  if (isApplyingAction.value) return false
 
   const boundTripId = useHomeStore().currentTripId
   const optionTripId = Number(selectedOption?.trip_id)
   if (!Number.isInteger(optionTripId) || optionTripId !== boundTripId) {
     uni.showToast({ title: ChatPageStrings.actionOptionsInvalid, icon: 'none' })
     logger.warn('[ChatPage] action option trip mismatch', { optionTripId, boundTripId })
-    return
+    return false
   }
 
   const operation = selectedOption?.operation
@@ -806,6 +837,10 @@ async function onActionOptionConfirm(selectedOption) {
       const itemId = Number(selectedOption?.item_id)
       if (!Number.isInteger(itemId) || itemId <= 0) throw new Error('invalid item_id')
       await updateTripItem(itemId, payload)
+    } else if (operation === 'delete_trip_item') {
+      const itemId = Number(selectedOption?.item_id)
+      if (!Number.isInteger(itemId) || itemId <= 0) throw new Error('invalid item_id')
+      await deleteTripItem(itemId)
     } else {
       throw new Error('unsupported action operation')
     }
@@ -814,12 +849,30 @@ async function onActionOptionConfirm(selectedOption) {
     actionOptions.value = []
     uni.showToast({ title: ChatPageStrings.actionOptionsApplied, icon: 'success' })
     logger.info('[ChatPage] action option applied', { operation, optionTripId })
+    return true
   } catch (err) {
     uni.showToast({ title: ChatPageStrings.actionOptionsApplyFailed, icon: 'none' })
     logger.error('[ChatPage] action option apply failed', err)
+    return false
   } finally {
     isApplyingAction.value = false
   }
+}
+
+async function onDeleteActionConfirm() {
+  if (!pendingDeleteOption.value || isApplyingAction.value) return
+  const applied = await applyActionOption(pendingDeleteOption.value)
+  if (applied) {
+    deleteConfirmVisible.value = false
+    pendingDeleteOption.value = null
+  }
+}
+
+function onDeleteActionCancel() {
+  if (isApplyingAction.value) return
+  deleteConfirmVisible.value = false
+  pendingDeleteOption.value = null
+  actionOptionsVisible.value = true
 }
 
 function sanitizeActionPayload(operation, source) {
@@ -1063,6 +1116,8 @@ onUnmounted(() => {
   // 兜底重置可见性(per spec §5.4;2026-06-24 Fix D:清空 dialog 已删)
   actionOptionsVisible.value = false
   applyPlanDialogVisible.value = false
+  deleteConfirmVisible.value = false
+  pendingDeleteOption.value = null
   // v0.2.0 新增:PhotoActionSheet + ImagePreviewModal 兜底关闭(spec §5.4)
   actionSheetVisible.value = false
   imagePreviewVisible.value = false
