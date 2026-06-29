@@ -1378,7 +1378,7 @@ GET /api/preferences?user_id=1
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | user_id | int | 是 | 用户 ID |
-| preferences | object | 是 | 完整偏好对象，结构见 3.6 |
+| preferences | object | 是 | 需要更新的偏好字段子集，字段结构见 3.6 |
 
 
 请求体：
@@ -1394,6 +1394,9 @@ GET /api/preferences?user_id=1
   }
 }
 ```
+
+更新采用浅层合并语义：未提交字段保持原值；首次更新时未提交字段使用系统默认偏好。
+提交空数组或 `null` 属于显式更新，不会被当作“未提交”。
 
 请求示例：
 
