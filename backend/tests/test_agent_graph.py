@@ -57,12 +57,16 @@ def test_chat_agent_returns_reply(monkeypatch) -> None:
     assert result["intent"] == "chat"
     assert result["reply"]
     assert result["action_options"] == []
-    assert isinstance(result["follow_up_questions"], list)
+    assert result["follow_up_questions"] == [
+        "帮我把下午安排得轻松一点",
+        "推荐附近适合休息的地方",
+    ]
+    assert result["clarification_options"] == []
 
 
 def test_chat_agent_uses_llm_when_available(monkeypatch) -> None:
     def fake_call_llm(messages: list[dict[str, str]]) -> str:
-        return '{"reply": "这是模型生成的旅行建议。", "follow_up_questions": ["要继续优化吗？"]}'
+        return '{"reply": "这是模型生成的旅行建议。", "suggested_questions": ["帮我继续优化行程"]}'
 
     monkeypatch.setattr("app.agent.nodes.call_llm", fake_call_llm)
 
@@ -77,14 +81,15 @@ def test_chat_agent_uses_llm_when_available(monkeypatch) -> None:
 
     assert result["intent"] == "chat"
     assert result["reply"] == "这是模型生成的旅行建议。"
-    assert result["follow_up_questions"] == ["要继续优化吗？"]
+    assert result["follow_up_questions"] == ["帮我继续优化行程"]
+    assert result["clarification_options"] == []
 
 
 def test_chat_agent_parses_markdown_json_payload(monkeypatch) -> None:
     def fake_call_llm(messages: list[dict[str, str]]) -> str:
         return (
             '```json\n{"reply":"模型建议下午放慢节奏。",'
-            '"follow_up_questions":["要调整下一站吗？"]}\n```'
+            '"suggested_questions":["帮我调整下一站"],"clarification_options":[]}\n```'
         )
 
     monkeypatch.setattr("app.agent.nodes.call_llm", fake_call_llm)
@@ -99,14 +104,14 @@ def test_chat_agent_parses_markdown_json_payload(monkeypatch) -> None:
     )
 
     assert result["reply"] == "模型建议下午放慢节奏。"
-    assert result["follow_up_questions"] == ["要调整下一站吗？"]
+    assert result["follow_up_questions"] == ["帮我调整下一站"]
 
 
 def test_chat_agent_extracts_json_from_text_payload(monkeypatch) -> None:
     def fake_call_llm(messages: list[dict[str, str]]) -> str:
         return (
             '好的：{"reply":"模型建议先休息再去海边。",'
-            '"follow_up_questions":["要找附近咖啡馆吗？"]}'
+            '"suggested_questions":["帮我找附近的咖啡馆"],"clarification_options":[]}'
         )
 
     monkeypatch.setattr("app.agent.nodes.call_llm", fake_call_llm)
@@ -121,7 +126,57 @@ def test_chat_agent_extracts_json_from_text_payload(monkeypatch) -> None:
     )
 
     assert result["reply"] == "模型建议先休息再去海边。"
-    assert result["follow_up_questions"] == ["要找附近咖啡馆吗？"]
+    assert result["follow_up_questions"] == ["帮我找附近的咖啡馆"]
+
+
+def test_chat_agent_returns_structured_clarification_options(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.agent.nodes.call_llm",
+        lambda messages: (
+            '{"reply":"第二天你想怎么安排？",'
+            '"suggested_questions":[],"clarification_options":['
+            '{"option_id":"clarify_001","label":"完全空着",'
+            '"message":"我想让第二天完全空着。"},'
+            '{"option_id":"clarify_002","label":"轻松拍照",'
+            '"message":"我希望第二天安排一个轻松、适合拍照的地点。"}]}'
+        ),
+    )
+
+    result = run_agent({"user_id": 1, "user_message": "帮我安排第二天"})
+
+    assert result["follow_up_questions"] == []
+    assert result["clarification_options"][0] == {
+        "option_id": "clarify_001",
+        "label": "完全空着",
+        "message": "我想让第二天完全空着。",
+    }
+
+
+def test_chat_agent_prefers_valid_clarification_options_and_filters_invalid_items(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(
+        "app.agent.nodes.call_llm",
+        lambda messages: (
+            '{"reply":"请选择第二天的节奏。",'
+            '"suggested_questions":["帮我推荐第二天的景点"],'
+            '"clarification_options":['
+            '{"option_id":"clarify_001","label":"慢节奏",'
+            '"message":"我希望第二天按慢节奏安排。"},'
+            '{"option_id":"clarify_002","label":"缺少消息"},"invalid"]}'
+        ),
+    )
+
+    result = run_agent({"user_id": 1, "user_message": "第二天怎么安排"})
+
+    assert result["follow_up_questions"] == []
+    assert result["clarification_options"] == [
+        {
+            "option_id": "clarify_001",
+            "label": "慢节奏",
+            "message": "我希望第二天按慢节奏安排。",
+        }
+    ]
 
 
 def test_vivo_auth_headers_include_required_fields() -> None:
@@ -483,7 +538,11 @@ def test_replan_agent_builds_create_trip_item_option(monkeypatch) -> None:
     assert "trip_day_id" not in option["payload"]
 
 
-def test_replan_agent_can_target_missing_first_trip_day(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    "message",
+    ["把陈家祠添加为第一个行程项", "把陈家祠添加到旅行第一天"],
+)
+def test_replan_agent_can_target_missing_first_trip_day(monkeypatch, message: str) -> None:
     monkeypatch.setattr("app.agent.nodes.call_llm", lambda messages: None)
     trip = {
         "id": 8,
@@ -497,7 +556,7 @@ def test_replan_agent_can_target_missing_first_trip_day(monkeypatch) -> None:
         {
             "user_id": 1,
             "trip_id": 8,
-            "user_message": "把陈家祠添加为第一个行程项",
+            "user_message": message,
             "current_trip": trip,
         }
     )
@@ -508,6 +567,79 @@ def test_replan_agent_can_target_missing_first_trip_day(monkeypatch) -> None:
     assert option["target_date"] == "2026-07-01"
     assert option["target_day_index"] == 1
     assert "trip_day_id" not in option
+
+
+def test_replan_clarification_reply_keeps_trip_item_intent(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.agent.nodes.call_llm",
+        lambda messages: (
+            '{"needs_clarification":false,"clarifying_question":"",'
+            '"summary":"已准备把陈家祠安排到第一天早上九点。",'
+            '"reason":"用户补充了开始时间。",'
+            '"operations":[{"operation":"create_trip_item",'
+            '"target_date":"2026-07-01","target_day_index":1,'
+            '"label":"第一天九点新增陈家祠",'
+            '"payload":{"city":"广州","title":"陈家祠",'
+            '"item_type":"attraction","start_time":"09:00"}}]}'
+        ),
+    )
+    trip = {
+        "id": 8,
+        "title": "广州",
+        "start_date": "2026-07-01",
+        "end_date": "2026-07-03",
+        "days": [],
+    }
+
+
+def _guangzhou_trip_context() -> dict[str, object]:
+    return {
+        "id": 9,
+        "title": "广州三日游",
+        "start_date": "2026-07-01",
+        "end_date": "2026-07-03",
+        "days": [
+            {
+                "id": 20,
+                "day_index": 2,
+                "trip_date": "2026-07-02",
+                "items": [
+                    {
+                        "id": 10,
+                        "city": "广州",
+                        "title": "广州塔游览",
+                        "start_time": "10:00",
+                        "status": "planned",
+                    },
+                    {
+                        "id": 11,
+                        "city": "广州",
+                        "title": "咖啡馆休息",
+                        "start_time": "15:00",
+                        "status": "planned",
+                    },
+                ],
+            }
+        ],
+    }
+
+    result = run_agent(
+        {
+            "user_id": 1,
+            "trip_id": 8,
+            "user_message": "早上九点",
+            "current_trip": trip,
+            "chat_history": [
+                {"role": "user", "content": "把陈家祠添加到旅行第一天"},
+                {"role": "assistant", "content": "请问第一天什么时间去陈家祠？"},
+                {"role": "user", "content": "早上九点"},
+            ],
+        }
+    )
+
+    assert result["intent"] == "replan"
+    assert result["action_options"][0]["operation"] == "create_trip_item"
+    assert result["action_options"][0]["payload"]["start_time"] == "09:00"
 
 
 def test_replan_agent_asks_for_missing_create_target(monkeypatch) -> None:
@@ -545,6 +677,118 @@ def test_replan_agent_rejects_item_from_another_trip(monkeypatch) -> None:
             "trip_id": 1,
             "user_message": "把博物馆改到下午三点。",
             "current_trip": _trip_context(),
+        }
+    )
+
+    assert result["action_options"] == []
+    assert result["structured_data"]["needs_clarification"] is True
+
+
+def test_replan_agent_builds_generic_delete_option(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.agent.nodes.call_llm",
+        lambda messages: (
+            '{"needs_clarification":false,"clarifying_question":"",'
+            '"summary":"已准备删除咖啡馆休息。","reason":"用户明确取消该节点。",'
+            '"operations":[{"operation":"delete_trip_item",'
+            '"target_item_title":"咖啡馆","target_day_index":2,'
+            '"label":"删除咖啡馆休息","payload":{}}]}'
+        ),
+    )
+
+    result = run_agent(
+        {
+            "user_id": 1,
+            "trip_id": 9,
+            "user_message": "第二天下午的咖啡馆不去了，删掉吧",
+            "current_trip": _guangzhou_trip_context(),
+        }
+    )
+
+    option = result["action_options"][0]
+    assert option["operation"] == "delete_trip_item"
+    assert option["item_id"] == 11
+    assert option["trip_id"] == 9
+    assert option["payload"] == {}
+
+
+def test_replan_agent_resolves_update_from_recent_context(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.agent.nodes.call_llm",
+        lambda messages: (
+            '{"needs_clarification":false,"clarifying_question":"",'
+            '"summary":"建议改为越秀公园。","reason":"用户改变计划。",'
+            '"operations":[{"operation":"update_trip_item",'
+            '"label":"改为越秀公园",'
+            '"payload":{"city":"广州","title":"越秀公园"}}]}'
+        ),
+    )
+
+    result = run_agent(
+        {
+            "user_id": 1,
+            "trip_id": 9,
+            "user_message": "算了，改成越秀公园",
+            "current_trip": _guangzhou_trip_context(),
+            "chat_history": [
+                {"role": "assistant", "content": "已为你准备第二天上午的广州塔游览。"},
+                {"role": "user", "content": "算了，改成越秀公园"},
+            ],
+        }
+    )
+
+    option = result["action_options"][0]
+    assert option["operation"] == "update_trip_item"
+    assert option["item_id"] == 10
+    assert option["payload"]["title"] == "越秀公园"
+
+
+def test_replan_agent_asks_when_title_match_is_ambiguous(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.agent.nodes.call_llm",
+        lambda messages: (
+            '{"needs_clarification":false,"clarifying_question":"",'
+            '"summary":"准备修改广州塔安排。","reason":"用户提出修改。",'
+            '"operations":[{"operation":"update_trip_item",'
+            '"target_item_title":"广州塔","payload":{"start_time":"11:00"}}]}'
+        ),
+    )
+    trip = _guangzhou_trip_context()
+    trip["days"][0]["items"] = [
+        {"id": 10, "city": "广州", "title": "广州塔东门游览", "status": "planned"},
+        {"id": 12, "city": "广州", "title": "广州塔西门游览", "status": "planned"},
+    ]
+
+    result = run_agent(
+        {
+            "user_id": 1,
+            "trip_id": 9,
+            "user_message": "把广州塔改到十一点",
+            "current_trip": trip,
+        }
+    )
+
+    assert result["action_options"] == []
+    assert result["structured_data"]["needs_clarification"] is True
+
+
+def test_replan_agent_rejects_delete_item_from_another_trip(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.agent.nodes.call_llm",
+        lambda messages: (
+            '{"needs_clarification":false,"clarifying_question":"",'
+            '"summary":"准备删除目标。","reason":"测试越权。",'
+            '"operations":[{"operation":"delete_trip_item",'
+            '"target_item_id":999,"payload":{}}]}'
+        ),
+    )
+
+    result = run_agent(
+        {
+            "user_id": 1,
+            "trip_id": 9,
+            "user_message": "删除那个景点",
+            "current_trip": _guangzhou_trip_context(),
         }
     )
 

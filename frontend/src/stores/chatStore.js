@@ -50,6 +50,7 @@ import { useHomeStore } from './homeStore.js'
  * @property {string} content
  * @property {string} [created_at]               ISO 8601;server-side ChatMessage.created_at;page-local 临时 msg 可无
  * @property {string[]} [follow_up_questions]    仅最后一条 assistant msg 含此字段(从 ChatReplyData 派生);历史 assistant msg 不含
+ * @property {{option_id:string,label:string,message:string}[]} [clarification_options] 助手澄清问题的候选回答
  * @property {string} [image]                    v0.2.0 新增,user msg 拍照时携带图片本地路径
  * @property {boolean} [image_failed]            v0.2.0 新增,sendPhotoMessage 失败时(预留 hook,本任务 MVP 标 true 但 UI 未消费)
  *
@@ -204,6 +205,14 @@ export const useChatStore = defineStore('chat', () => {
         content: data.reply,
         created_at: new Date().toISOString(),
         follow_up_questions: Array.isArray(data.follow_up_questions) ? data.follow_up_questions : [],
+        clarification_options: Array.isArray(data.clarification_options)
+          ? data.clarification_options.filter((option) => (
+            option
+            && typeof option.option_id === 'string'
+            && typeof option.label === 'string'
+            && typeof option.message === 'string'
+          ))
+          : [],
       }
       messages.value.push(assistantMsg)
       currentIntent.value = (typeof data.intent === 'string' ? data.intent : 'chat')

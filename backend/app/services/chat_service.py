@@ -87,6 +87,7 @@ def send_chat_message(payload: ChatRequest, *, db: Session) -> dict[str, object]
         "intent": agent_result["intent"],
         "action_options": agent_result["action_options"],
         "follow_up_questions": agent_result["follow_up_questions"],
+        "clarification_options": agent_result.get("clarification_options", []),
     }
 
 

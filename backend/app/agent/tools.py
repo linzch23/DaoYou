@@ -1,5 +1,6 @@
 import base64
 import mimetypes
+import re
 import uuid
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -86,6 +87,9 @@ def trip_item_tool(
         return {"error": "当前聊天绑定的旅行与行程上下文不一致"}
 
     operation_name = str(operation.get("operation") or "")
+    if operation_name == "delete_trip_item":
+        return _build_delete_trip_item_action(state, trip_id, trip, operation)
+
     payload_source = operation.get("payload")
     if not isinstance(payload_source, dict):
         return {"error": "行程项方案缺少 payload"}
@@ -93,7 +97,7 @@ def trip_item_tool(
     if operation_name == "create_trip_item":
         return _build_create_trip_item_action(trip_id, trip, operation, payload_source)
     if operation_name == "update_trip_item":
-        return _build_update_trip_item_action(trip_id, trip, operation, payload_source)
+        return _build_update_trip_item_action(state, trip_id, trip, operation, payload_source)
     return {"error": "不支持的行程项操作"}
 
 
@@ -136,12 +140,13 @@ def _build_create_trip_item_action(
 
 
 def _build_update_trip_item_action(
+    state: AgentState,
     trip_id: int,
     trip: dict[str, object],
     operation: dict[str, object],
     payload_source: dict[str, object],
 ) -> dict[str, object]:
-    target_item = _resolve_trip_item(trip, operation)
+    target_item = _resolve_trip_item(state, trip, operation)
     if target_item is None:
         return {"error": "请明确要修改当前旅行中的哪一项安排"}
 
@@ -163,6 +168,33 @@ def _build_update_trip_item_action(
             "trip_id": trip_id,
             "item_id": item_id,
             "payload": payload,
+        }
+    }
+
+
+def _build_delete_trip_item_action(
+    state: AgentState,
+    trip_id: int,
+    trip: dict[str, object],
+    operation: dict[str, object],
+) -> dict[str, object]:
+    target_item = _resolve_trip_item(state, trip, operation)
+    if target_item is None:
+        return {"error": "请明确要删除当前旅行中的哪一项安排"}
+
+    item_id = _positive_int(target_item.get("id"))
+    if item_id is None:
+        return {"error": "目标行程项缺少有效 ID"}
+    title = str(target_item.get("title") or "当前安排")
+    return {
+        "action_option": {
+            "option_id": str(operation.get("option_id") or "option_001"),
+            "label": str(operation.get("label") or f"删除{title}"),
+            "description": str(operation.get("description") or "永久删除该行程项"),
+            "operation": "delete_trip_item",
+            "trip_id": trip_id,
+            "item_id": item_id,
+            "payload": {},
         }
     }
 
@@ -231,11 +263,16 @@ def _build_missing_trip_day(
 
 
 def _resolve_trip_item(
+    state: AgentState,
     trip: dict[str, object],
     operation: dict[str, object],
 ) -> dict[str, object] | None:
     items = [
-        item
+        {
+            **item,
+            "_day_index": day.get("day_index"),
+            "_trip_date": day.get("trip_date"),
+        }
         for day in trip.get("days", [])
         if isinstance(day, dict)
         for item in day.get("items", [])
@@ -249,10 +286,141 @@ def _resolve_trip_item(
         )
 
     target_title = str(operation.get("target_item_title") or "").strip()
-    if not target_title:
+    hinted_items = _filter_trip_items_by_hints(state, items, operation)
+    search_items = hinted_items or items
+    if target_title:
+        exact_matches = [
+            item
+            for item in search_items
+            if _normalize_item_title(item.get("title")) == _normalize_item_title(target_title)
+        ]
+        if len(exact_matches) == 1:
+            return exact_matches[0]
+        contains_matches = _items_mentioned_in_text(search_items, target_title)
+        return contains_matches[0] if len(contains_matches) == 1 else None
+
+    message = str(state.get("user_message") or "")
+    message_matches = _items_mentioned_in_text(search_items, message)
+    if len(message_matches) == 1:
+        return message_matches[0]
+    if len(message_matches) > 1:
         return None
-    matches = [item for item in items if str(item.get("title") or "") == target_title]
-    return matches[0] if len(matches) == 1 else None
+
+    if len(hinted_items) == 1:
+        return hinted_items[0]
+
+    history = state.get("chat_history")
+    if isinstance(history, list):
+        for history_message in reversed(history[-12:]):
+            if not isinstance(history_message, dict):
+                continue
+            matches = _items_mentioned_in_text(
+                search_items,
+                str(history_message.get("content") or ""),
+            )
+            if len(matches) == 1:
+                return matches[0]
+            if len(matches) > 1:
+                return None
+
+    return search_items[0] if len(search_items) == 1 else None
+
+
+def _filter_trip_items_by_hints(
+    state: AgentState,
+    items: list[dict[str, object]],
+    operation: dict[str, object],
+) -> list[dict[str, object]]:
+    message = str(state.get("user_message") or "")
+    target_date = str(operation.get("target_date") or "")
+    target_day_index = _positive_int(operation.get("target_day_index"))
+    if target_day_index is None:
+        target_day_index = _extract_day_index(message)
+    target_start_time = str(operation.get("target_start_time") or "")
+    if not target_start_time:
+        target_start_time = _extract_start_time(message)
+
+    has_hint = bool(target_date or target_day_index is not None or target_start_time)
+    if not has_hint:
+        return []
+    return [
+        item
+        for item in items
+        if (not target_date or str(item.get("_trip_date") or "") == target_date)
+        and (target_day_index is None or item.get("_day_index") == target_day_index)
+        and (
+            not target_start_time
+            or str(item.get("start_time") or "")[:5] == target_start_time
+        )
+    ]
+
+
+def _items_mentioned_in_text(
+    items: list[dict[str, object]],
+    text: str,
+) -> list[dict[str, object]]:
+    normalized_text = _normalize_item_title(text)
+    if not normalized_text:
+        return []
+    return [
+        item
+        for item in items
+        if any(
+            len(alias) >= 2 and alias in normalized_text
+            for alias in _item_title_aliases(item.get("title"))
+        )
+        or (
+            len(normalized_text) >= 2
+            and normalized_text in _normalize_item_title(item.get("title"))
+        )
+    ]
+
+
+def _item_title_aliases(value: object) -> set[str]:
+    title = _normalize_item_title(value)
+    aliases = {title} if title else set()
+    for suffix in ["游览", "参观", "景点", "行程", "活动"]:
+        if title.endswith(suffix) and len(title) > len(suffix):
+            aliases.add(title[: -len(suffix)])
+    return aliases
+
+
+def _normalize_item_title(value: object) -> str:
+    return re.sub(r"[\s，。！？、,.!?：:（）()\-]", "", str(value or "")).lower()
+
+
+def _extract_day_index(message: str) -> int | None:
+    match = re.search(r"第([一二三四五六七八九十\d]+)天", message)
+    if match is None:
+        return None
+    value = match.group(1)
+    chinese_numbers = {
+        "一": 1,
+        "二": 2,
+        "三": 3,
+        "四": 4,
+        "五": 5,
+        "六": 6,
+        "七": 7,
+        "八": 8,
+        "九": 9,
+        "十": 10,
+    }
+    return chinese_numbers.get(value) or _positive_int(value)
+
+
+def _extract_start_time(message: str) -> str:
+    match = re.search(r"(?:上午|下午|晚上|早上)?\s*(\d{1,2})\s*[点时](?:(\d{1,2})分?)?", message)
+    if match is None:
+        return ""
+    hour = int(match.group(1))
+    prefix = message[max(0, match.start() - 2) : match.start() + 2]
+    if any(period in prefix for period in ["下午", "晚上"]) and hour < 12:
+        hour += 12
+    minute = int(match.group(2) or 0)
+    if hour > 23 or minute > 59:
+        return ""
+    return f"{hour:02d}:{minute:02d}"
 
 
 def _filter_trip_item_payload(
