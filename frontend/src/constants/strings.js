@@ -680,12 +680,13 @@ export const GuideResultStrings = {
 }
 
 /**
- * PersonalProfilePage 专用文案(specs/PersonalProfilePage.md §4.5,~23 键)
+ * PersonalProfilePage 专用文案(specs/PersonalProfilePage.md §4.5,~32 键)
  *
  * 字段分类:
  *   顶栏(2) + 加载(1) + 表单头(2)
  *   + 段 1 性别(3) + 段 2 年龄段(3) + 段 3 必填标红(1)
- *   + _FormHeader 辅助(6)
+ *   + 段 4 旅行节奏(2) + 段 5 特殊需求(2) 🆕 v0.2.0
+ *   + _FormHeader 辅助(9) 🆕 v0.2.0 新增 3 键
  *   + 提交按钮(1) + 提交态(1) + 完成态(1) + Toast(1) + 草稿恢复(1) + H5 aria(1)
  *
  * 复用约定(spec §3.6 + §4.5 备注):
@@ -693,7 +694,17 @@ export const GuideResultStrings = {
  *   - 「重试」按钮文案走 `OnboardingStrings.retry`
  *   - 段 3 标题 / 提示 复用 `OnboardingStrings.stepTitle` / `stepHint`(OnboardingPage 5 选 N 文案)
  *   - chip label 走 `PersonalProfileGenderOptions` / `PersonalProfileAgeOptions`(本规格 §4.6 / §4.7)
+ *     + `PersonalProfileTravelPaceOptions` / `PersonalProfileSpecialNeedOptions`(v0.2.0 §4.8 / §4.9)
  *   - InterestGrid label 走 `OnboardingInterestOptions`(`constants/strings.js:39-45` 5 键,1:1 对齐后端 Interest)
+ *
+ * v0.2.0(2026-06-28)修订:
+ *   - 段数扩 3 → 5:新增段 4 旅行节奏 + 段 5 特殊需求(per §6.4.6 Resolved「5 段 vs 3 段」决策)
+ *   - `formHint` 修订:`'3 段必填,缺一不可;保存后立即生效'` → `'5 段可填,前 3 段必填;保存后立即生效'`
+ *     (明确后 2 段可选,避免歧义)
+ *   - `draftRestoredToast` 修订:`'已恢复上次编辑的草稿'` → `'已恢复本地编辑草稿'`(明确本地数据源)
+ *   - 新增 7 键:`sectionTitleTravelPace` / `sectionHintTravelPace` / `sectionTitleSpecialNeeds` /
+ *     `sectionHintSpecialNeeds` / `formHeaderTravelPaceEmpty` / `formHeaderSpecialNeedsEmpty` /
+ *     `formHeaderSpecialNeedsUnit`
  */
 export const PersonalProfileStrings = {
   // 顶栏(spec §3.2 + §4.5)
@@ -705,7 +716,8 @@ export const PersonalProfileStrings = {
 
   // 表单头(spec §3.5 + §4.5)
   formTitle: '设置你的偏好',               // _FormHeader 标题
-  formHint: '3 段必填,缺一不可;保存后立即生效', // 副提示
+  // v0.2.0 修订:'3 段必填,缺一不可;保存后立即生效' → '5 段可填,前 3 段必填;保存后立即生效'
+  formHint: '5 段可填,前 3 段必填;保存后立即生效', // 副提示
 
   // 段 1 性别(spec §3.3 段 1 + §4.5)
   sectionTitleGender: '性别',              // 段 1 标题
@@ -720,13 +732,25 @@ export const PersonalProfileStrings = {
   // 段 3 必填标红(spec §3.3 段 3 + §4.5)
   interestsRequiredMark: '请至少选择 1 项感兴趣领域', // interests.length === 0 时 InterestGrid 下方红字
 
+  // 段 4 旅行节奏 🆕 v0.2.0(spec §3.3 段 4 + §4.5)
+  sectionTitleTravelPace: '旅行节奏',       // 段 4 标题
+  sectionHintTravelPace: '3 选 1(可选)',    // 段 4 提示(明确可选,与段 1/2 必填形成对比)
+
+  // 段 5 特殊需求 🆕 v0.2.0(spec §3.3 段 5 + §4.5)
+  sectionTitleSpecialNeeds: '特殊需求',     // 段 5 标题
+  sectionHintSpecialNeeds: '可多选(可选)', // 段 5 提示(明确可选)
+
   // _FormHeader 辅助(spec §3.5 + §4.5)
   formHeaderIdPrefix: '账号: ',            // 「账号: 1」前缀
   formHeaderGenderEmpty: '未选',           // 性别未选时的占位
   formHeaderAgeEmpty: '未选',              // 年龄段未选时的占位
   formHeaderInterestsEmpty: '0 项',        // interests 为空时的占位
   formHeaderInterestsUnit: '项',           // interests count 单位
-  formHeaderSeparator: ' | ',              // _FormHeader 三段之间的分隔符
+  // 🆕 v0.2.0:旅行节奏 / 特殊需求 摘要占位(沿 StyleSettingPage §3.5 字面)
+  formHeaderTravelPaceEmpty: '默认',        // 旅行节奏 null 时的占位
+  formHeaderSpecialNeedsEmpty: '0 项',     // 特殊需求空数组时的占位
+  formHeaderSpecialNeedsUnit: '项',        // 特殊需求 count 单位
+  formHeaderSeparator: ' | ',              // _FormHeader 五段之间的分隔符
 
   // 提交按钮(spec §3.4 + §4.5)
   btnSave: '保存',                         // _ActionBar 单 CTA
@@ -741,7 +765,8 @@ export const PersonalProfileStrings = {
   saveSuccessToast: '修改成功',            // PUT 成功后短暂 Toast(短版,沿用 successText)
 
   // 草稿恢复(spec §4.5 + §5.3.E)
-  draftRestoredToast: '已恢复上次编辑的草稿', // 进入页面时若 userId 有草稿,自动恢复后短暂 Toast
+  // v0.2.0 修订:'已恢复上次编辑的草稿' → '已恢复本地编辑草稿'(明确本地数据源,避免歧义)
+  draftRestoredToast: '已恢复本地编辑草稿', // 进入页面时若 userId 有草稿,自动恢复后短暂 Toast
 
   // H5 aria(spec §10 可访问性)
   pageAria: '编辑个人信息页',              // page root aria-label
@@ -779,6 +804,38 @@ export const PersonalProfileAgeOptions = Object.freeze([
   { value: '25_34',    label: '25-34 岁' },
   { value: '35_44',    label: '35-44 岁' },
   { value: '45_plus',  label: '45 岁以上' },
+])
+
+/**
+ * PersonalProfileTravelPaceOptions 3 旅行节奏选项 🆕 v0.2.0(spec §3.3 段 4 + §4.8)
+ *
+ * 1:1 对齐 `api/types.ts:149` `TravelPace` 3 枚举(`compact` / `normal` / `slow`)
+ * label 沿用 `specs/StyleSettingPage.md §3.5` mode 命名:紧凑型 / 舒适型 / 悠闲型
+ * (与 `StyleSettingStrings.styleTitleXxx` 短标签语义对齐;StyleSettingPage 是讲解风格,
+ *  本页面是旅行节奏,字段不同但字面命名复用)
+ *
+ * @type {ReadonlyArray<{ value: 'compact' | 'normal' | 'slow', label: string }>}
+ */
+export const PersonalProfileTravelPaceOptions = Object.freeze([
+  { value: 'compact', label: '紧凑型' },
+  { value: 'normal',  label: '舒适型' },
+  { value: 'slow',    label: '悠闲型' },
+])
+
+/**
+ * PersonalProfileSpecialNeedOptions 3 特殊需求选项 🆕 v0.2.0(spec §3.3 段 5 + §4.9)
+ *
+ * 1:1 对齐 `api/types.ts:151` `SpecialNeed` 3 枚举(`less_walking` / `less_queue` / `accessible`)
+ *
+ * 备注:本字段后端有对应列(per `api/types.ts:157` Preferences.special_needs: SpecialNeed[]),
+ * 与 `gender` / `age_range` 字段(后端无,client-only)不同,PUT body 携带(per spec AC-17)
+ *
+ * @type {ReadonlyArray<{ value: 'less_walking' | 'less_queue' | 'accessible', label: string }>}
+ */
+export const PersonalProfileSpecialNeedOptions = Object.freeze([
+  { value: 'less_walking', label: '少步行' },
+  { value: 'less_queue',   label: '少排队' },
+  { value: 'accessible',   label: '无障碍' },
 ])
 
 /**
@@ -1361,6 +1418,11 @@ export const ChatPageStrings = {
   applyPlanCancel: '取消',
   applyPlanConfirm: '确认',
   applyPlanComingSoon: '改线应用功能即将上线',
+
+  // 改线(replan)v0.3.0 真接 PUT /api/trip-items/{item_id} 提示文案(spec §3.9 step 4-6 + AC-22/23/24)
+  replanSuccess: '改线已应用',                    // 二次确认 PUT 成功 Toast
+  replanError: '改线失败',                        // 二次确认 PUT 失败 Toast(不弹 _ErrorOverlay)
+  replanInvalid: '改线选项无效,请重新选择',      // ActionOptionsModal 顶部 banner(校验前置失败时)
 
   // 错误兜底(spec §3.7 Error 表 + §4.4)
   // 3 键本页面独有(spec §4.4 备注:与 OnboardingStrings.errorXxx / NewTripStrings.errorXxx 字面**不**完全一致)

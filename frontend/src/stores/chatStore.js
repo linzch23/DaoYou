@@ -12,8 +12,10 @@
 //                                              retro fix 修 silent drop,per issues/Spec/ChatPage-action-options-silent-drop-001.md)
 //
 // action
-//   fetchHistory()  : Promise<void>          调 services/chat.getChatHistory();成功更新 messages + error=null;失败更新 error
-//   sendMessage(text): Promise<void>          调 services/chat.sendChatMessage({ message: text });成功 append user msg + assistant msg + 更新 currentIntent;失败回退 user msg + 更新 error
+//   fetchHistory()              : Promise<void>          调 services/chat.getChatHistory();成功更新 messages + error=null;失败更新 error
+//   sendMessage(text)           : Promise<void>          调 services/chat.sendChatMessage({ message: text });成功 append user msg + assistant msg + 更新 currentIntent;失败回退 user msg + 更新 error
+//   sendPhotoMessage(imagePath) : Promise<void>          (v0.2.0)调 services/photos.explainPhoto;成功 append user msg(image)+ assistant msg(recognition_result + explanation);失败回退 user msg + 更新 error
+//   applyReplanOption(option)   : Promise<void>          (v0.3.0)调 services/trips.updateTripItem(option.item_id, option.payload);成功 → fetchHistory 刷新;失败 → rethrow ApiError(per spec §3.9 + §6.6 + AC-22/23/24)
 // (2026-06-24 Fix D:后端无对应端点,清空 action 整体移除,见 L218 audit trail)
 //
 // 复用(per AGENTS.md §5 store 惯例 + spec §3.12):
@@ -34,6 +36,7 @@ import {
   getChatHistory as svcGetChatHistory,
 } from '../services/chat.js'
 import { explainPhoto as svcExplainPhoto } from '../services/photos.js'
+import { updateTripItem as svcUpdateTripItem } from '../services/trips.js'
 import { ApiError } from '../services/preferences.js'
 import { logger } from '../utils/logger.js'
 import { useHomeStore } from './homeStore.js'
@@ -359,6 +362,65 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  /**
+   * v0.3.0(2026-06-28)新增 — replan option 二次确认 → 调 PUT /api/trip-items/{item_id}
+   * (per spec §3.9 step 1-6 + §6.6 端点契约 + AC-22/23/24)
+   *
+   * 实现:
+   *   - 1) 校验 option 形状(option.item_id + option.payload 必填,缺则抛 Error 给 page 层 catch)
+   *   - 2) 调 services/trips.updateTripItem(option.item_id, option.payload)
+   *      (user_id 由 service 内部从 MVP_USER_ID 注入,page / store 不感知)
+   *   - 3) Success → 刷新 chat history(per §3.9 step 4 + AC-22)
+   *   - 4) Failure → rethrow ApiError(page 层 catch 后关闭 modal + Toast「改线失败」,**不**弹 _ErrorOverlay)
+   *
+   * 注:
+   *   - 复用 services/trips.js:updateTripItem(per spec §6.6 端点契约 + AGENTS.md §4 跨 service 复用)
+   *   - 复用 services/preferences.ApiError 跨 service 错误归一
+   *   - 错误向上抛,**不**静默吞(per AGENTS.md §5 协议)
+   *   - 不新建 services/chat-replan.js(spec §6.4 决策 #6 MVP YAGNI 显式登记)
+   *
+   * @param {any} option 后端 action_options[] 单元素形态
+   *   { item_id: number, payload: object /* UpdateTripItemRequest subset *\/ }
+   * @returns {Promise<void>} 成功 / 失败通知由 caller 处理(Toast)
+   * @throws  {ApiError} PUT 失败透传
+   * @throws  {Error} option 字段不全防御性兜底
+   */
+  async function applyReplanOption(option) {
+    // 1) 防御性兜底:option / item_id / payload 缺失 → 抛 Error 让 page 层 catch
+    if (
+      !option
+      || typeof option.item_id !== 'number'
+      || !option.payload
+      || typeof option.payload !== 'object'
+    ) {
+      logger.warn('[chatStore.applyReplanOption] invalid option shape', { option })
+      throw new Error('replan option 字段不全(item_id / payload 缺失)')
+    }
+
+    const tripItemId = option.item_id
+    const payload = option.payload
+
+    logger.info('[chatStore.applyReplanOption] start', {
+      tripItemId,
+      payloadKeys: Object.keys(payload),
+    })
+
+    try {
+      // 2) 调 service(沿 services/trips.updateTripItem v0.5.0 PUT partial-update + user_id 自动注入)
+      await svcUpdateTripItem(tripItemId, payload)
+      // 3) Success → 刷新 chat history(per spec §3.9 step 4 + AC-22)
+      //   注:不解析 PUT 返回 data(per spec §6.6 备注「前端 MVP **不**消费 data 字段」);
+      //   仅刷 history 让 user 看到含 replan 上下文的最新 messages。
+      await fetchHistory()
+      logger.info('[chatStore.applyReplanOption] ok', { tripItemId })
+    } catch (err) {
+      // 4) Failure → rethrow ApiError(page 层 catch 后走 §3.9 step 5 failure 分支:
+      //   关闭 modal + Toast「改线失败」 + **不**自动重试 + **不**弹 _ErrorOverlay)
+      logger.error('[chatStore.applyReplanOption] failed', err)
+      throw err
+    }
+  }
+
   return {
     // state
     messages,
@@ -370,5 +432,6 @@ export const useChatStore = defineStore('chat', () => {
     fetchHistory,
     sendMessage,
     sendPhotoMessage,
+    applyReplanOption,      // v0.3.0 新增:per spec §3.9 + §6.6 + AC-22
   }
 })

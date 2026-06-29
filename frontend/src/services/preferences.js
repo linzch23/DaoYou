@@ -11,8 +11,12 @@
 // 调用约定(OnboardingPage 场景):
 //   updatePreferences({ interests: ['history', 'photo'] })
 //   ↑ 只送本次修改的字段;后端对未携带字段保持既有值(PUT 语义)。
-//   **前端不替用户保留其它字段**(explanation_style / travel_pace / special_needs),
+//   **前端不替用户保留其它字段**(explanation_style),
 //   这些由 PersonalProfilePage / StyleSettingPage 各自负责。
+//
+// v0.3.1(2026-06-28)PersonalProfilePage v0.2.0 扩段:
+//   - updateUserInfo 签名由 `{ interests }` 扩展为 `{ interests, travel_pace, special_needs }`
+//   - 内部过滤 undefined 字段后转发 updatePreferences(沿 PUT partial-update 语义)
 //
 // 返回:
 //   成功:Promise<{ code: 0, message: 'success', data: { updated: true } }>
@@ -235,19 +239,33 @@ export function updatePreferences(payload) {
 /**
  * PUT /api/preferences —— PersonalProfilePage 专用更新入口
  *
- * 用途(specs/PersonalProfilePage.md §6.2 + §6.4.1 PD-001 决策):
- *   - 只更新 `interests` 字段(后端 Preferences 4 字段,本页面**仅**传 interests)
+ * 用途(specs/PersonalProfilePage.md §6.2 + §6.4.5 v0.2.0 扩):
+ *   - 接受 3 字段:`interests` / `travel_pace` / `special_needs`
  *   - `gender` / `age_range` 后端无对应字段,走 `uni.setStorageSync` 本地存储(per §6.4.2)
  *   - 与 `OnboardingPage` 复用同一个 PUT 端点;Page 端**不**直接调用此函数,
- *     经由 `userStore.updateProfile({ interests })` 走 store 层(spec §3.6 + §7.1 复用)
+ *     经由 `userStore.updateProfile(payload)` 走 store 层(spec §3.6 + §7.1 复用)
+ *
+ * v0.3.1(2026-06-28)PersonalProfilePage v0.2.0 扩展:
+ *   - 签名由 `{ interests }` 扩展为 `{ interests, travel_pace, special_needs }`
+ *   - 内部过滤 undefined 字段后转发 updatePreferences(沿 PUT partial-update 语义)
+ *   - `travel_pace: null` / `special_needs: []` 仍携带(spec AC-17 显式允许)
  *
  * 实现:薄包装 `updatePreferences(payload)`,1:1 转发,保证 user_id 注入 + 错误映射与
  * `updatePreferences` 完全一致(复用 `ApiError` class + `mapSuccess/mapFail` helper)
  *
- * @param {{ interests: Array<import('../api/types').Interest> }} body
+ * @param {{
+ *   interests?: Array<import('../api/types').Interest>,
+ *   travel_pace?: import('../api/types').TravelPace | null,
+ *   special_needs?: Array<import('../api/types').SpecialNeed>,
+ * }} body
  * @returns {Promise<{ code: 0, message: string, data: { updated: true } }>}
  * @throws  {ApiError}
  */
-export function updateUserInfo({ interests }) {
-  return updatePreferences({ interests })
+export function updateUserInfo(body) {
+  // 过滤 undefined 字段(沿 PUT partial-update 语义,后端对未携带字段保持既有值)
+  // null / [] 保留(per spec AC-17 显式允许空字段携带,后端保留语义待 backend 文档化)
+  const payload = Object.fromEntries(
+    Object.entries(body).filter(([, v]) => v !== undefined),
+  )
+  return updatePreferences(payload)
 }

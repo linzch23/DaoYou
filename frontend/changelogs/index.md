@@ -12,6 +12,7 @@
 | [SpotDetailSheet](#spotdetailsheet) | 2026-06-02 | v0.1.0 | 独立 route 浮层详情页(深链 ?spotId=xxx);4 视图态(loading/sheet/notfound/error);复用 components/SpotDetailSheet.vue(refactor 后)+ 私有 _ErrorOverlay |
 | [NewTripPage](#newtrippage) | 2026-06-03 | v0.1.0 | 独立 route 新建行程页(无 URL param);6 视图态(input/analyzing/form/submitting/completed/error);7 字段表单(3 必填 + 4 选填 client-only);前端 setTimeout 模拟 AI + 极简正则提取;草稿存 `trip_drafts` 本地 storage;3 按钮 _DraftConfirmDialog |
 | [NewTripPage](#newtrippage) | 2026-06-06 | v0.2.0 | UI-025 修复 — form 视图新增「行程安排」(itineraryArrange)字段(per issues/UI/UI-025-itinerary-arrange-drag.md):横向 scroll-view 渲染 item 卡(280rpx × 220rpx) + 长按 200ms 进入拖动模式(自写 @touchstart + @touchmove + @touchend 跨 H5 + Android 兼容,**不**用 HTML5 drag-and-drop) + 滑动跨 50% 阈值自动交换顺序 + 「+ 添加行程」inline 表单(地点名/起止时间/item_type 5 选 1) + 每项右上角 ✕ 删除;新增 1 私有子组件 `pages/new-trip/components/ItineraryArrangeField.vue`(沿 _DraftConfirmDialog 模式 **不**抽公共 components/);formData 8 字段(原 7 + itineraryArrange 沿 spec §3.5 字段顺序,在 `budget_range` 之后 `transport_preference` 之前);`api/types.ts` 扩展:`ItineraryItem` interface(5 字段 id/title/start_time/end_time/item_type)+ `ItemType` 加 'other' 5 枚举 + `CreateTripRequest` + `UpdateTripRequest` 扩展 `itineraryArrange?: ItineraryItem[]`;`constants/strings.js` 增量 `ItineraryArrangeStrings` 12 键(fieldLabel/fieldHint/5 typeLabel/3 placeholder/2 btn add+remove/dragHint)+ `ItineraryArrangeItemTypeOptions` 5 键 Object.freeze(沿 HomeItemTypeEmoji ItemTypeEmoji 4 枚举 + 'other' 5 键);`services/trips.js` 增量 `createTrip` 接受 itineraryArrange 字段(POST body 自动携带);`MOCK_TRIP_FOR_COPY` 扩展 itineraryArrange 4 项预填(任务 4 复制模式 UI-025 联动:兵马俑 / 午餐 / 古城墙骑行 / 回民街夜市);`MOCK_TRIP_FOR_COPY` 改用 `Trip & { itineraryArrange? }` intersection 类型(per spec §硬规则 "不**改**既有 trips shape",TypeScript 兼容);7 关键事件 logger 完整覆盖(0 console.*);onUnmounted 兜底 `clearLongPressTimer`;EditTripPage 跨页反向 import NewTripPage 私有子组件(沿 §8.4 guide-result → photo-guide _ClearChatConfirmDialog 模式,**不**抽公共 components/);Review.{ui,spec,test}=Pending + FinalStatus=ReadyForReview 等待 3 reviewer 复审 |
+| [NewTripPage](#newtrippage) | 2026-06-28 | v0.7.0 | 实施 — 同步 specs/NewTripPage.md v0.7.0 简化到 code(6 视图态 → 4 视图态);删除 input/analyzing 视图态 + extractFormDataFromText AI 模拟函数 + form 顶部 inputText 折叠预览 + _InputPanel/_AnalyzingPanel template 节点 + inputText/attachedFiles/hasShownAnalyzingDelay/isAnalyzing 4 ref + analyzingTimerId/clearAnalyzingTimer/onSubmit(进 analyzing)/onAttachFile/onRemoveFile 函数;currentStep 默认 'input' → 'form';hasContent 派生从 3 字段收敛为 1 字段(formData);TripDraft 5 → 3 字段(删 inputText + attachedFiles);onDialogSave 失败回退路径 + onDialogContinue 'input' → 'form';沿 retro fix 协议 0 改动 Review.{ui,spec,test}=Pass + FinalStatus: Done(spec-writer 越权边界 + 跨页 refactor 不触发 review 重审);0 触动 constants/strings.js(字符串零改,obsolete 字符串保留)+ 0 触动其他 13 page + 0 触动 mock + 0 触动 api/types.ts;详见 outputs/ntp-code-v0-7-impl/deliverable.md |
 | [EditTripPage](#edittrippage) | 2026-06-06 | v0.2.0 | UI-025 修复 — form 视图新增「行程安排」(itineraryArrange)字段(per issues/UI/UI-025-itinerary-arrange-drag.md):跨页反向 import `pages/new-trip/components/ItineraryArrangeField.vue`(沿 §8.4 guide-result → photo-guide _ClearChatConfirmDialog 模式,spec §10 R-2 不抽公共 components/);formData 9 字段(原 8 + itineraryArrange,沿 spec §3.5 字段顺序,在 `budget_range` 之后 `transport_preference` 之前);`buildUpdateRequest` 扩展 itineraryArrange partial-update 携带(ID 序列浅比较 `currentIds !== originalIds` 触发,仅当与 originalData 不同时携带);`hasChanged` 派生 + itineraryCount ID 序列比较;`formDataFromTrip` 后端无 itineraryArrange 回显时 = 空数组(`Trip & { itineraryArrange? }` intersection 类型);saveEditDraft 沿用 `{ ...formData.value }` 自动持久化 itineraryArrange 字段;saveEditDraft 写入 `edit_trip_drafts` keyed by tripId(loadEditDraft 反序列化时自动恢复,沿 §3.6 复用);**0 触动** spec(spec-writer 越权边界)+ 0 触动 mock _seed.ts 既有 trips shape(spec §硬规则)+ 0 触动 6 视图态(loading/editing/saving/success/notfound/error)+ 0 触动 status 3 chips 必填 + 0 触动 2 必填(title/status)校验;3 关键事件 logger 完整覆盖(save start 增量 itineraryCount / onLoad / onRetry 等 0 触动,0 console.*);Review.{ui,spec,test}=Pending + FinalStatus=ReadyForReview 等待 3 reviewer 复审 |
 | [TripDetailPage](#tripdetailpage) | 2026-06-03 | v0.1.0 | 独立 route 行程详情页(深链 ?tripId=xxx);4 视图态(loading/detail/notfound/error)+ 5 子态矩阵(inProgress/upcoming/expired/finished/draft);复用 SpotCard/SpotDetailSheet/_ErrorBanner;软删除 → 跳 TrashPage;_DeleteConfirmDialog 2 按钮 modal |
 | [EditTripPage](#edittrippage) | 2026-06-03 | v0.1.0 | 独立 route 编辑行程页(深链 ?tripId=xxx);6 视图态(loading/editing/saving/success/notfound/error);8 字段表单(title 必填 + city/dates 灰色 disabled + 4 选填 client-only + status 3 chips 必填);触发 PD-001(UpdateTripRequest 2 字段 vs 8 字段表单 — UI 全展示但 PUT 仅发 title/status);草稿存 `edit_trip_drafts` 本地 storage keyed by tripId;3 按钮 _DraftConfirmDialog |
@@ -1640,3 +1641,65 @@ silent drop retro fix — `data.action_options` 字段前端 silent drop(spec §
 
 详见 outputs/fix-chat-action-options-silent-drop/deliverable.md
 
+---
+
+## PersonalProfilePage — 2026-06-28 — v0.2.0
+
+### v0.2.0 — 5 段表单 + PUT 3 字段扩展
+
+#### 背景(spec 修订依据)
+- per orchestrator directive 2026-06-28 plan_b5405691 step-1(spec-writer 已落 v0.2.0 spec,1402 行 / 18 AC / 5 段 / 4 Object.freeze options 表 / §6.4.6 Resolved「5 段 vs 3 段」决策)
+- step-2 code-writer 实现落地
+
+#### 落地 6 文件
+| 文件 | 改动 | 备注 |
+|---|---|---|
+| `src/services/preferences.js` | `updateUserInfo` 签名扩 `{ interests, travel_pace, special_needs }` + 内部 filter undefined 走 PUT partial-update | 沿用 updatePreferences + ApiError,0 触动其它逻辑 |
+| `src/constants/strings.js` | PersonalProfileStrings 加 7 新键 + 修订 2 键(formHint / draftRestoredToast)+ 新增 PersonalProfileTravelPaceOptions + PersonalProfileSpecialNeedOptions(各 3 键)Object.freeze 表 | ~23 键 → ~32 键(扩 9 键,改 2 键) |
+| `src/pages/personal-profile/components/TravelPaceChipGroup.vue` 🆕 | 152 行,单选 chip 组(3 选 1,可空,沿 GenderChipGroup 模板) | PascalCase 无前缀(沿 §8.8 bug 2 修复命名)+ §8.10 import 深度 N+1 3 层 `../../../` |
+| `src/pages/personal-profile/components/SpecialNeedChipGroup.vue` 🆕 | 181 行,多选 chip 组(3 选 N,可空数组,min=0 默认允许降到 0) | 同上 |
+| `src/pages/personal-profile/index.vue` | 1019 → 1134 行,净增 115 行 — 5 视图态 loading/editing/saving/saved/error 严格互斥 v-if 链 + 5 段表单结构 + formData 5 字段 + originalData snapshot 5 字段 + hasChanged 5 字段 diff + summaryLine 5 段派生 + PUT body 3 字段 + 段 4 / 段 5 inline 渲染 + 2 回调 + 0 抽公共组件 | 严格 5 视图态 enum(spec §3.4)0 触动 |
+| `workflow/PageStatus.yaml` | PersonalProfilePage.Development 块注释追 1 行 v0.2.0 实现 + Review.{ui,spec,test}=Pending + FinalStatus=NeedReview | 沿 AGENT_CONTRACTS §2.4 + §4.3 invariant 2 |
+
+#### 5 段表单结构(spec §3.3 + §4.1)
+| 段 | 字段 | 必填 | 组件 | 类型 |
+|---|---|---|---|---|
+| 段 1 | gender | ✓ | `GenderChipGroup` | 单选 3 选 1(已有) |
+| 段 2 | ageRange | ✓ | `AgeChipGroup` | 单选 5 选 1(已有) |
+| 段 3 | interests | ✓(≥ 1) | `components/InterestGrid.vue` ⭐ | 多选 5 选 N(已有) |
+| 段 4 🆕 | travelPace | ✗(可空) | `TravelPaceChipGroup` 🆕 | 单选 3 选 1(可空 null) |
+| 段 5 🆕 | specialNeeds | ✗(空数组) | `SpecialNeedChipGroup` 🆕 | 多选 3 选 N(可空数组) |
+
+#### PUT body 扩 3 字段(spec AC-17)
+- 旧:`{ user_id: 1, preferences: { interests } }`
+- 新:`{ user_id: 1, preferences: { interests, travel_pace, special_needs } }`
+- `gender` / `ageRange` 仍 client-only localStorage(后端无字段,per §6.4.2)
+- 空字段 `travel_pace: null` / `special_needs: []` 也携带(走 partial-update 后端保留)
+- `updateUserInfo` 内部 `Object.fromEntries(Object.entries(body).filter(([, v]) => v !== undefined))` 过滤 undefined 字段,避免 `preferences: { interests, travel_pace: undefined }` 干扰 PUT partial-update 语义
+
+#### 文案修订(2 键)
+- `formHint`: `'3 段必填,缺一不可;保存后立即生效'` → `'5 段可填,前 3 段必填;保存后立即生效'`
+- `draftRestoredToast`: `'已恢复上次编辑的草稿'` → `'已恢复本地编辑草稿'`(明确本地数据源,避免歧义)
+
+#### 0 触动
+- `api/types.ts`(TravelPace / SpecialNeed / Preferences 已 1:1 对齐,无需扩)
+- `api/mock/preferences.ts`(mock 已含 travel_pace + special_needs 字段)
+- `docs/API接口文档.md`(沿既有 PUT /api/preferences 端点)
+- `userStore.updateProfile` 签名(已 `Partial<Preferences>` typedef 适配 3 字段)
+- 既有 9 AC / 5 视图态 / 4 状态分支 / 4 路径 onBack + 1 兜底 / 既有 _FormHeader 视觉 / 既有 3 必填校验 / 既有草稿 storage 结构
+- 既有 14 page entry(仅 PersonalProfilePage 改动)
+- 既有 9 components / 2 stores / 3 services 中除 preferences.js 外其它文件
+
+#### spec 偏差登记
+- **0 spec 偏差**:task 描述字面与 spec v0.2.0 §6.4.6 Resolved 完全对齐(5 段 / 3 字段 / 4 AC / 2 子组件 / 2 options / 文案修订),沿 spec 字面落地无偏离
+- **0 spec 笔误**:spec v0.2.0 1402 行 reviewer 已签字(spec-writer spec 报告 L7「16 子任务全部 1:1 落地」),code-writer 0 触动 spec
+
+#### Issue Status 不动(per AGENT_CONTRACTS §2.4 + §3.1)
+- 本次新功能走 review 复审路径,**0 创建** issues/Spec/PersonalProfilePage-XXX.md(spec 修订 + code 实现 + reviewer 复核的完整 3 步流程,Issue 由 reviewer 单独决策)
+- **0 创** issues/UI/PersonalProfilePage-XXX.md(纯代码变更 + 视觉 0 触动既有,UI reviewer 抽样审计 + 自报已知妥协原则下无新失败项)
+- **0 创** issues/Test/PersonalProfilePage-XXX.md(8 类场景 0 触发回归,test-agent 沿 spec §5 5 视图态 + §6.4 决策路径复核)
+
+#### reviewer 派单建议(orchestrator 决策)
+- `ui-reviewer`:7 项核心 7/7 ✓(沿 PersonalProfilePage 历史 + 13 页面惯例)+ 2 子组件 88rpx 触达命中 + 段 4 / 段 5 chip 视觉一致性
+- `spec-auditor`:AC 9/9 + AC-15/16/17/18 = 13/13 字面 + API updateUserInfo 签名扩 + 5 视图态 0 触动 + Component 2 新私有子组件 props/emits/slots 1:1 对齐 spec §8.5 / §8.6
+- `test-agent`:8 类场景 0 触发回归(5 视图态 + 3 intent 路由 + sendMessage 失败回退逻辑 0 改动 + 5 段表单 + PUT 3 字段 + 段 4 允许 null + 段 5 允许空数组)

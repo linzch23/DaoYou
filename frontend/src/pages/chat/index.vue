@@ -265,6 +265,7 @@
       :btn-confirm-label="ChatPageStrings.actionOptionsConfirm"
       :btn-cancel-label="ChatPageStrings.actionOptionsCancel"
       :submitting="isApplyingAction"
+      :invalid-message="actionOptionsInvalidMessage"
       @confirm="onActionOptionConfirm"
       @cancel="onActionOptionCancel"
     />
@@ -527,6 +528,11 @@ const historyError = ref(null)
 const actionOptionsVisible = ref(false)
 /** @type {import('vue').Ref<boolean>} 行程项操作写入中，防止重复确认 */
 const isApplyingAction = ref(false)
+/**
+ * v0.3.0 新增:ActionOptionsModal 校验失败顶部 banner 提示文案
+ * (per spec §3.9 step 6 + AC-24;空串 = 隐藏 banner,非空 = 显示 banner + confirm 按钮 disabled)
+ */
+const actionOptionsInvalidMessage = ref('')
 /** @type {import('vue').Ref<boolean>} ApplyPlanConfirmDialog 显示标记 */
 const applyPlanDialogVisible = ref(false)
 /** @type {import('vue').Ref<number>} scroll-view 滚动位置(新 reply 到达后设 999999 强制滚到底) */
@@ -768,16 +774,42 @@ function onFollowUpClick(q) {
 
 /**
  * ActionOptionsModal:确认后按 operation 调用现有 TripItem API。
- * @param {any} selectedOption
+ *
+ * v0.3.0 升级(per spec §3.9 + §6.6 + AC-22/23/24):
+ *   - 步骤 1 校验前置:item_id 缺失 OR payload 字段不全 → 显示
+ *     `ChatPageStrings.replanInvalid` 内联 banner + **不**发起请求(spec §3.9 step 6 + AC-24)
+ *   - 步骤 2 trip_id 校验:option 的 trip_id 必须匹配 homeStore.currentTripId
+ *   - 步骤 3 调对应 operation:
+ *       - `create_trip_item` → services/trips.createTripItem(必要时先 createTripDay 自动建日)
+ *       - `update_trip_item` → chatStore.applyReplanOption(per spec §3.9 真接 PUT,内部统一日志 + 成功后 fetchHistory 刷新)
+ *   - 步骤 4 success:关闭 modal + Toast + 清 banner
+ *   - 步骤 5 failure:关闭 modal + Toast「应用失败」 + **不**弹 _ErrorOverlay + **不**自动重试
+ *
+ * @param {any} selectedOption 后端 action_options[] 单元素形态
+ *   { item_id?: number, operation: 'create_trip_item' | 'update_trip_item', payload: object, trip_id: number, trip_day_id?: number, target_day_index?: number, target_date?: string }
  */
 async function onActionOptionConfirm(selectedOption) {
   if (isApplyingAction.value) return
+
+  // v0.3.0 spec §3.9 step 6 + AC-24:item_id 缺失 OR payload 字段不全 → 显示 banner + 不发起请求
+  if (
+    !selectedOption
+    || typeof selectedOption.item_id !== 'number'
+    || !selectedOption.payload
+    || typeof selectedOption.payload !== 'object'
+  ) {
+    logger.warn('[ChatPage] action option invalid', { selectedOption })
+    actionOptionsInvalidMessage.value = ChatPageStrings.replanInvalid
+    // 不关闭 modal,让 user 看到 banner 提示 + 重新选 / 取消
+    return
+  }
 
   const boundTripId = useHomeStore().currentTripId
   const optionTripId = Number(selectedOption?.trip_id)
   if (!Number.isInteger(optionTripId) || optionTripId !== boundTripId) {
     uni.showToast({ title: ChatPageStrings.actionOptionsInvalid, icon: 'none' })
     logger.warn('[ChatPage] action option trip mismatch', { optionTripId, boundTripId })
+    actionOptionsInvalidMessage.value = ''
     return
   }
 
@@ -802,21 +834,43 @@ async function onActionOptionConfirm(selectedOption) {
         if (!Number.isInteger(tripDayId) || tripDayId <= 0) throw new Error('invalid created trip_day_id')
       }
       await createTripItem({ trip_day_id: tripDayId, ...payload })
+      actionOptionsVisible.value = false
+      actionOptionsInvalidMessage.value = ''
+      actionOptions.value = []
+      uni.showToast({ title: ChatPageStrings.actionOptionsApplied, icon: 'success' })
+      logger.info('[ChatPage] action option applied', { operation, optionTripId })
     } else if (operation === 'update_trip_item') {
       const itemId = Number(selectedOption?.item_id)
       if (!Number.isInteger(itemId) || itemId <= 0) throw new Error('invalid item_id')
-      await updateTripItem(itemId, payload)
+      // v0.3.0 spec §3.9:update 走 chatStore.applyReplanOption(统一日志 + 成功后 fetchHistory 刷新)
+      await chatStore.applyReplanOption({ item_id: itemId, payload })
+      actionOptionsVisible.value = false
+      actionOptionsInvalidMessage.value = ''
+      actionOptions.value = []
+      uni.showToast({ title: ChatPageStrings.replanSuccess, icon: 'success', duration: 2000 })
+      logger.info('[ChatPage] replan applied', { item_id: itemId })
     } else {
       throw new Error('unsupported action operation')
     }
-
-    actionOptionsVisible.value = false
-    actionOptions.value = []
-    uni.showToast({ title: ChatPageStrings.actionOptionsApplied, icon: 'success' })
-    logger.info('[ChatPage] action option applied', { operation, optionTripId })
   } catch (err) {
-    uni.showToast({ title: ChatPageStrings.actionOptionsApplyFailed, icon: 'none' })
-    logger.error('[ChatPage] action option apply failed', err)
+    // 步骤 5 failure:关闭 modal + Toast + **不**弹 _ErrorOverlay + **不**自动重试
+    actionOptionsVisible.value = false
+    actionOptionsInvalidMessage.value = ''
+    // 区分 create 失败文案与 replan 失败文案(per spec §3.9 step 5 / AC-23)
+    const failTitle = operation === 'update_trip_item'
+      ? ChatPageStrings.replanError
+      : ChatPageStrings.actionOptionsApplyFailed
+    uni.showToast({ title: failTitle, icon: 'none', duration: 2000 })
+    logger.error('[ChatPage] action option apply failed', {
+      operation,
+      optionTripId,
+      item_id: selectedOption?.item_id,
+      error: err?.message,
+      code: err?.code,
+      statusCode: err?.statusCode,
+      isNetworkError: err?.isNetworkError,
+    })
+    // 不自动重试;user 可重新触发 ActionOptionsModal 同一 option 触发新一次 PUT
   } finally {
     isApplyingAction.value = false
   }
