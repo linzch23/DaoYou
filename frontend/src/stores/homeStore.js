@@ -10,13 +10,9 @@
 //   isFetchingTrips   : boolean
 //   error             : ErrorInfo | null
 //   lastFetchedAt     : string | null(ISO 8601)
-//   activeReminder    : Reminder | null    # v0.4.0 §6.5.4 新增
-//   isCheckingReminders: boolean          # v0.4.0 §6.5.4 新增(互斥锁,仅 store 内部用)
 //
 // getter
 //   hasActiveOrUpcomingTrip : boolean    today !== null
-//   unreadCount             : number     today?.unread_reminders ?? 0
-//   hasActiveReminder       : boolean    # v0.4.0 §6.5.7.1 新增;activeReminder !== null
 //
 // action
 //   fetchTrips()    : Promise<void>      GET /api/trips
@@ -24,8 +20,6 @@
 //   refreshAll()    : Promise<void>      先刷新 trips,再基于 active trip 拉今日行程
 //   markSpotVisited(itemId) : Promise<void>   乐观更新 status='done'(MVP 不发远端)
 //   clearHome()     : void               登出场景
-//   triggerRemindersCheck() : Promise<void>  # v0.4.0 §6.5.7.2 新增;best-effort POST /api/reminders/check
-//   dismissReminder() : void             # v0.4.0 §6.5.7.2 新增;清 activeReminder(不调 API / 不持久化)
 //
 // 4 态决策(交给页面,不在 store 内部决定):
 //   page.compute viewMode(store.today, store.trips) → 'diary' | 'trips' | 'empty'
@@ -36,7 +30,6 @@ import {
   getToday as svcGetToday,
   listTrips as svcListTrips,
 } from '../services/home.js'
-import { checkReminders as svcCheckReminders } from '../services/reminders.js'
 import { deleteTrip as svcDeleteTrip } from '../services/trips.js'
 import { ApiError } from '../services/preferences.js'
 import { logger } from '../utils/logger.js'
@@ -45,14 +38,12 @@ import { logger } from '../utils/logger.js'
  * @typedef {import('../api/types').TripItem} TripItem
  * @typedef {import('../api/types').TripSummary} TripSummary
  * @typedef {import('../api/types').ItemStatus} ItemStatus
- * @typedef {import('../api/types').Reminder} Reminder
  *
  * @typedef {Object} TodayData
  * @property {number} trip_id
  * @property {string} trip_title
  * @property {string} date           // 'YYYY-MM-DD'
  * @property {TripItem[]} today_items
- * @property {number} unread_reminders
  * // (city 字段已移除 per 2026-06-24 trip_id 一致性审计清理)
  *
  * @typedef {'network' | 'server' | 'badrequest' | 'notfound'} ErrorType
@@ -83,7 +74,6 @@ export const useHomeStore = defineStore('home', () => {
 
   // ───────── Getters ─────────
   const hasActiveOrUpcomingTrip = computed(() => today.value !== null)
-  const unreadCount = computed(() => today.value?.unread_reminders ?? 0)
   // v0.5.0(2026-06-24)trip_id 修复:暴露当前 trip id 供跨页派生
   //   chatStore / chat page / photo-guide page 复用
   //   派生规则:
@@ -348,93 +338,6 @@ export const useHomeStore = defineStore('home', () => {
     lastFetchedAt.value = null
   }
 
-  // ───────── v0.4.0 Reminders/Check 扩展(spec §6.5.7,0 触动既有 5 action)─────────
-
-  /**
-   * 当前激活的智能提醒(spec §6.5.4)
-   * `null` = 无提醒;`POST /api/reminders/check` 返回 `has_risk=true` 时由 store 写入
-   * **不**持久化(per spec §6.5.7.4 MVP YAGNI)
-   * @type {import('vue').Ref<Reminder | null>}
-   */
-  const activeReminder = ref(null)
-
-  /**
-   * `triggerRemindersCheck` 飞行中标记(互斥锁,spec §6.5.4)
-   * 仅供 store 内部防重入,**不**暴露给 UI
-   * @type {import('vue').Ref<boolean>}
-   */
-  const isCheckingReminders = ref(false)
-
-  /**
-   * `activeReminder !== null` 的语义化别名(spec §6.5.7.1 getter)
-   * 供 `<ReminderBanner v-if="hasActiveReminder">` 使用
-   */
-  const hasActiveReminder = computed(() => activeReminder.value !== null)
-
-  /**
-   * 主动触发一次智能提醒检查(spec §6.5.7.2 + AC-16/17/19)
-   *
-   * 实现(spec §6.5.5 State Flow + AGENTS.md §8.4 best-effort 模式):
-   *   1. if (isCheckingReminders) return         // 互斥锁防重入
-   *   2. isCheckingReminders = true
-   *   3. try { 调 services/reminders.checkReminders({ current_time })
-   *        if (has_risk && reminder)  → activeReminder = reminder + logger.info risk
-   *        else                       → activeReminder = null    + logger.info no risk
-   *      } catch (err) { activeReminder = null + logger.warn failed (silent)
-   *        // **不**修改 homeStore.error(**不**触发 sectionVisibility.showError)
-   *        // **不**弹 toast,**不**切 error 视图(best-effort 静默降级)
-   *      } finally { isCheckingReminders = false }
-   *
-   * @returns {Promise<void>}
-   */
-  async function triggerRemindersCheck() {
-    if (isCheckingReminders.value) {
-      logger.debug('[homeStore.triggerRemindersCheck] already running, skip')
-      return
-    }
-    isCheckingReminders.value = true
-    try {
-      const res = await svcCheckReminders({
-        current_time: new Date().toISOString(),
-      })
-      if (res.data && res.data.has_risk && res.data.reminder) {
-        activeReminder.value = res.data.reminder
-        logger.info('[HomePage] reminders check: risk', {
-          type: res.data.reminder.type,
-          id: res.data.reminder.id,
-        })
-      } else {
-        activeReminder.value = null
-        logger.info('[HomePage] reminders check: no risk')
-      }
-    } catch (err) {
-      // best-effort:失败静默降级,activeReminder=null,**不**写 homeStore.error(per R-16 + AC-19)
-      activeReminder.value = null
-      logger.warn('[HomePage] reminders check failed (silent)', {
-        error: err?.message || String(err),
-      })
-    } finally {
-      isCheckingReminders.value = false
-    }
-  }
-
-  /**
-   * 用户点 ReminderBanner 关闭按钮 → 清 activeReminder(spec §6.5.7.2 + AC-18)
-   *
-   * 实现:
-   *   - activeReminder = null
-   *   - hasActiveReminder 派生 → false → banner 立即退场
-   *   - **不**调任何 API,**不**持久化(MVP YAGNI;下次 onShow 重新触发 triggerRemindersCheck)
-   *
-   * @returns {void}
-   */
-  function dismissReminder() {
-    if (activeReminder.value) {
-      logger.info('[HomePage] reminder dismissed', { id: activeReminder.value.id })
-    }
-    activeReminder.value = null
-  }
-
   /**
    * 2026-06-24 扩展(per task「每行程有独立 chatSession」):page 显式 set 当前 tripId,
    * 让 chatStore.fetchHistory 拿对 trip session(per Q1 决策 chatStore 自动从 homeStore
@@ -499,7 +402,6 @@ export const useHomeStore = defineStore('home', () => {
     lastFetchedAt,
     // getters
     hasActiveOrUpcomingTrip,
-    unreadCount,
     currentTripId,  // v0.5.0(2026-06-24)trip_id 修复
     // actions
     fetchTrips,
@@ -512,12 +414,6 @@ export const useHomeStore = defineStore('home', () => {
     clearCurrentTripId,
     // 2026-06-24 UserRound2-001 §3 Bug C 新增:删除行程
     deleteTrip,
-    // v0.4.0 Reminders/Check 扩展(spec §6.5.7)
-    activeReminder,
-    isCheckingReminders,
-    hasActiveReminder,
-    triggerRemindersCheck,
-    dismissReminder,
     // internal(为测试导出)
     buildErrorInfo,
   }

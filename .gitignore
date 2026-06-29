@@ -9,6 +9,15 @@ __pycache__/
 # Environment
 .env
 
+# Generated Android / HBuilderX artifacts
+/frontend/nativeplugins/VivoPushPlugin/android/VivoPushPlugin-release.aar
+/frontend/dist/
+/frontend/unpackage/
+*.apk
+*.aab
+*.jks
+*.keystore
+
 # Local reference documents
 /AGENTS.md
 /SPEC.md

@@ -8,7 +8,6 @@ import type {
   TripSummary,
   TripItem,
   TripDay,
-  Reminder,
   ChatMessage,
   Preferences,
   MemoryRecord,
@@ -256,25 +255,6 @@ export const seedTripSummaries: TripSummary[] = seedTrips.map((t) => ({
 // ──────────── 今日行程（day 1 of trip 1） ────────────
 
 export const seedTodayItems: TripItem[] = [item1, item2, item3]
-
-// ──────────── Reminders ────────────
-
-export const seedReminders: Reminder[] = [
-  {
-    id: 501,
-    type: 'departure',
-    content: '下一项「大连贝壳博物馆」将于 14:00 出发，建议提前 30 分钟出门。',
-    status: 'unread',
-    created_at: '2026-07-01T13:25:00+08:00',
-  },
-  {
-    id: 502,
-    type: 'weather',
-    content: '明日棒棰岛有阵雨，建议携带雨具并调整户外停留时间。',
-    status: 'read',
-    created_at: '2026-07-01T18:00:00+08:00',
-  },
-]
 
 // ──────────── Chat 历史 ────────────
 

@@ -1,13 +1,23 @@
 <script>
+import {
+  startLocationReporter,
+  stopLocationReporter,
+} from './services/locationReporter.js'
+import { syncBackgroundLocation } from './services/backgroundLocation.js'
+import { ensurePushDeviceRegistered } from './services/pushRegistration.js'
+
 export default {
   onLaunch: function () {
     console.log('App Launch — DaoYou v0.1.0')
   },
   onShow: function () {
     console.log('App Show')
+    void startLocationReporter().finally(() => syncBackgroundLocation())
+    void ensurePushDeviceRegistered()
   },
   onHide: function () {
     console.log('App Hide')
+    stopLocationReporter()
   }
 }
 </script>

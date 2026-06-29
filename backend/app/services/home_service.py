@@ -1,10 +1,9 @@
 from datetime import date
 
-from sqlalchemy import case, func, select
+from sqlalchemy import case, select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
-from app.models.reminder import Reminder
 from app.models.trip import Trip, TripDay, TripItem
 from app.services.resource_service import require_user
 from app.services.serializers import serialize_trip_item
@@ -47,13 +46,6 @@ def get_today_home(
         if trip_day is not None
         else []
     )
-    unread_reminders = db.scalar(
-        select(func.count(Reminder.id)).where(
-            Reminder.user_id == user_id,
-            Reminder.trip_id == trip.id,
-            Reminder.status == "unread",
-        )
-    )
     return {
         "trip_id": trip.id,
         "trip_title": trip.title,
@@ -62,5 +54,4 @@ def get_today_home(
         "trip_start_date": trip.start_date.isoformat(),
         "date": query_date.isoformat(),
         "today_items": [serialize_trip_item(item) for item in items],
-        "unread_reminders": int(unread_reminders or 0),
     }

@@ -40,7 +40,26 @@ QWEN_VISION_MODEL=qwen-vl-plus
 OCR_PROVIDER=vivo
 VIVO_APP_ID=...
 VIVO_APP_KEY=...
+VIVO_BASE_URL=https://api-ai.vivo.com.cn
+VIVO_COMPLETIONS_URI=/vivogpt/completions
+VIVO_MODEL=vivo-BlueLM-TB
+
+VIVO_PUSH_APP_ID=...
+VIVO_PUSH_APP_KEY=...
+VIVO_PUSH_APP_SECRET=...
+VIVO_PUSH_API_BASE=https://api-push.vivo.com.cn
 ```
+
+Android 原生插件的源码 Manifest 只保留凭据占位符。正式打包前在根目录
+`.env` 填写 `VIVO_PUSH_APP_ID` 和 `VIVO_PUSH_APP_KEY`，再生成本地 AAR：
+
+```powershell
+& frontend\nativeplugins\VivoPushPlugin\android\build-plugin.ps1
+```
+
+生成的 `VivoPushPlugin-release.aar`、HBuilderX `dist/`、`unpackage/`、
+APK/AAB 和签名文件均为本地产物，不提交到 Git；HBuilderX 打包前只需确认
+AAR 已在插件的 `android/` 目录生成。
 
 ## Docker 一键启动
 
