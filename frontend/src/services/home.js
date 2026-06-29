@@ -3,7 +3,6 @@
 //
 //   GET /api/home/today      → getToday(date)
 //   GET /api/trips           → listTrips()
-//   GET /api/reminders       → listReminders(tripId, status)   ← 本页面不主动调,留作复用
 //   favorites 本地存储        → loadFavorites / saveFavorite / removeFavorite
 //
 // MVP 约定(见 docs/API接口文档.md §1.3):
@@ -22,7 +21,7 @@
 //   - 异常(quota 满 / storage 不可用) → 静默降级为内存数组,UI 仍可点击
 //
 // v0.3.0(2026-06-11)改造(per integrate-r1 task):
-//   - 3 个 HTTP 函数(`getToday` / `listTrips` / `listReminders`)各自加 mock fallback
+//   - 2 个 HTTP 函数(`getToday` / `listTrips`)各自加 mock fallback
 //   - HTTP 失败(isNetworkError / 5xx)→ 静默降级到 `api/mock/*` 的对应函数
 //   - `loadFavorites` / `saveFavorites` 保留为本地 storage,与后端无关
 //   - `BASE_URL` / `MVP_USER_ID` 改为 import 自 `services/config.js`
@@ -32,7 +31,6 @@ import { logger } from '../utils/logger.js'
 import { BASE_URL, MVP_USER_ID, USE_MOCK_FALLBACK } from './config.js'
 import { todayHomeMock } from '../../api/mock/home.ts'
 import { tripsMock } from '../../api/mock/trips.ts'
-import { remindersMock } from '../../api/mock/reminders.ts'
 
 const FAVORITES_STORAGE_KEY = 'favorites'
 
@@ -100,7 +98,7 @@ function isFallbackable(err) {
  * @param {string} date 查询日期,YYYY-MM-DD(演示场景用行程 start_date)
  * @returns {Promise<import('../api/types').ApiResponse<{
  *   trip_id: number, trip_title: string, city: string, date: string,
- *   today_items: import('../api/types').TripItem[], unread_reminders: number
+ *   today_items: import('../api/types').TripItem[]
  * }>>}
  * @throws  {ApiError} 不可 fallback 的错误(4xx 业务错)
  */
@@ -154,55 +152,6 @@ export function listTrips() {
         statusCode: httpErr.statusCode,
       })
       return Promise.resolve(tripsMock)
-    }
-    return Promise.reject(httpErr)
-  })
-}
-
-/**
- * GET /api/reminders —— 提醒列表(本页面**不主动**调,留作其他页面复用)
- *
- * v0.3.0(per integrate-r1 task):
- *   - 1) HTTP `GET /api/reminders` 优先
- *   - 2) HTTP 失败(isNetworkError / 5xx)→ 静默降级到 `remindersMock`
- *   - status 客户端过滤(后端无 status 参数实测会忽略)
- *
- * 注:本注释是 `listReminders` (`GET /api/reminders`) 的说明,**不**是
- *   `POST /api/reminders/check`(`services/reminders.js:checkReminders`)。
- *   两者是不同的端点(`/reminders` 列表 vs `/reminders/check` 触发检查)。
- *   2026-06-24 trip_id 一致性审计 §3.5 主动补位,避免后人误读。
- *
- * @param {number} tripId
- * @param {'unread' | 'read'} [status='unread']
- * @returns {Promise<import('../api/types').ApiResponse<{ reminders: import('../api/types').Reminder[] }>>}
- * @throws  {ApiError} 不可 fallback 的错误(4xx 业务错)
- */
-export function listReminders(tripId, status = 'unread') {
-  return new Promise((resolve, reject) => {
-    uni.request({
-      url: `${BASE_URL}/api/reminders`,
-      method: 'GET',
-      data: {
-        user_id: MVP_USER_ID,
-        trip_id: tripId,
-        status,
-      },
-      success: (res) => mapSuccess(res, resolve, reject),
-      fail: (err) => mapFail(err, reject),
-    })
-  }).catch((httpErr) => {
-    if (isFallbackable(httpErr)) {
-      logger.warn('[home.listReminders] HTTP failed, fallback to mock', {
-        isNetworkError: httpErr.isNetworkError,
-        statusCode: httpErr.statusCode,
-      })
-      // 客户端按 status 过滤(后端 mock 端实测 status 参数会被忽略)
-      const all = Array.isArray(remindersMock.data?.reminders) ? remindersMock.data.reminders : []
-      const filtered = status ? all.filter((r) => r.status === status) : all
-      return Promise.resolve({
-        ...remindersMock,
-        data: { reminders: filtered },
-      })
     }
     return Promise.reject(httpErr)
   })

@@ -36,5 +36,18 @@ services:
              uv run --no-sync python -m app.db.seed &&
              uv run --no-sync uvicorn app.main:app --host 0.0.0.0 --port 8000"
 
+  reminder-worker:
+    build:
+      context: ./backend
+    container_name: daoyou-reminder-worker
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://daoyou:daoyou@postgres:5432/daoyou
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uv run --no-sync python -m app.jobs.departure_alerts_worker
+
 volumes:
   postgres_data:

@@ -1,12 +1,23 @@
 {
   "name": "导友 DaoYou",
-  "appid": "__UNI__DAOYOU",
+  "appid": "__UNI__C28CF60",
   "description": "智能旅游日记 App",
   "versionName": "0.1.0",
   "versionCode": "1",
   "transformPx": false,
   "app-plus": {
     "usingComponents": true,
+    "nativePlugins": {
+      "VivoPushPlugin": {
+        "__plugin_info__": {
+          "name": "VivoPushPlugin",
+          "description": "vivo 推送与 Android 后台定位",
+          "platforms": "Android",
+          "url": "",
+          "android_package_name": ""
+        }
+      }
+    },
     "nvueStyleCompiler": "uni-app",
     "compilerVersion": 3,
     "splashscreen": {
@@ -20,17 +31,21 @@
     },
     "distribute": {
       "android": {
-        "package": "com.daoyou.trip",
+        "package": "com.example.vivomessagetest",
         "permissions": [
           "<uses-permission android:name=\"android.permission.ACCESS_FINE_LOCATION\"/>",
           "<uses-permission android:name=\"android.permission.ACCESS_COARSE_LOCATION\"/>",
+          "<uses-permission android:name=\"android.permission.ACCESS_BACKGROUND_LOCATION\"/>",
+          "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE\"/>",
+          "<uses-permission android:name=\"android.permission.FOREGROUND_SERVICE_LOCATION\"/>",
+          "<uses-permission android:name=\"android.permission.POST_NOTIFICATIONS\"/>",
           "<uses-permission android:name=\"android.permission.INTERNET\"/>"
         ]
       },
       "ios": {},
       "sdkConfigs": {
         "amap": {
-          "appid_android": "36ba3568b272a457c300b90a23b3d57e",
+          "appid_android": "76e203306d503737b3cda50cd505bbd4",
           "appid_ios": ""
         }
       }

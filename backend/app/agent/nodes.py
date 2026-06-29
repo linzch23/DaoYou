@@ -263,7 +263,10 @@ def _sanitize_clarification_options(value: object) -> list[dict[str, str]]:
         option_id = item.get("option_id")
         label = item.get("label")
         message = item.get("message")
-        if not all(isinstance(field, str) and field.strip() for field in (option_id, label, message)):
+        if not all(
+            isinstance(field, str) and field.strip()
+            for field in (option_id, label, message)
+        ):
             continue
         options.append(
             {

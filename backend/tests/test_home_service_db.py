@@ -4,13 +4,12 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
-from app.models.reminder import Reminder
 from app.models.trip import Trip, TripDay, TripItem
 from app.models.user import User
 from app.services.home_service import get_today_home
 
 
-def test_today_home_returns_items_and_unread_reminder_count(db: Session) -> None:
+def test_today_home_returns_items_without_in_app_reminders(db: Session) -> None:
     db.add(User(id=1, nickname="演示用户"))
     db.flush()
     trip = Trip(
@@ -39,20 +38,6 @@ def test_today_home_returns_items_and_unread_reminder_count(db: Session) -> None
                 title="上午行程",
                 start_time=time(9, 0),
             ),
-            Reminder(
-                user_id=1,
-                trip_id=trip.id,
-                type="departure",
-                content="该出发了",
-                status="unread",
-            ),
-            Reminder(
-                user_id=1,
-                trip_id=trip.id,
-                type="departure",
-                content="已读提醒",
-                status="read",
-            ),
         ]
     )
     db.commit()
@@ -63,7 +48,7 @@ def test_today_home_returns_items_and_unread_reminder_count(db: Session) -> None
     assert result["trip_title"] == "大连三日游"
     assert result["date"] == "2026-07-01"
     assert [item["title"] for item in result["today_items"]] == ["上午行程", "下午行程"]
-    assert result["unread_reminders"] == 1
+    assert "unread_reminders" not in result
 
 
 def test_today_home_ignores_deleted_trip(db: Session) -> None:

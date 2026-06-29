@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.daoyou.plugin.vivopush">
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application>
+        <service
+            android:name="com.daoyou.plugin.backgroundlocation.BackgroundLocationService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+        <!-- vivo Push SDK 应用凭证 -->
+        <meta-data
+            android:name="com.vivo.push.app_id"
+            android:value="__VIVO_PUSH_APP_ID__" />
+        <meta-data
+            android:name="com.vivo.push.api_key"
+            android:value="__VIVO_PUSH_APP_KEY__" />
+
+        <!-- vivo Push SDK 必需服务 -->
+        <service
+            android:name="com.vivo.push.sdk.service.CommandClientService"
+            android:exported="true" />
+
+        <!-- vivo Push SDK 代理 Activity（通知点击跳转） -->
+        <activity
+            android:name="com.vivo.push.sdk.LinkProxyClientActivity"
+            android:exported="false"
+            android:process=":push"
+            android:screenOrientation="portrait"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <receiver
+            android:name="com.daoyou.plugin.vivopush.VivoPushReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.vivo.pushclient.action.RECEIVE" />
+            </intent-filter>
+        </receiver>    </application>
+
+</manifest>
+
+

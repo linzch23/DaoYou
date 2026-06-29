@@ -21,7 +21,6 @@
  *   GET  /api/preferences         → preferencesMock
  *   GET  /api/home/today          → todayHomeMock
  *   GET  /api/trips               → tripsMock
- *   GET  /api/reminders           → remindersMock
  *   POST /api/trips               → createTripMock
  *   GET  /api/trips/{id}          → tripDetailMock
  *   PUT  /api/trips/{id}          → updateTripMock
@@ -41,8 +40,6 @@ import {
   updatePreferencesMock,
   todayHomeMock,
   tripsMock,
-  remindersMock,
-  reminderCheckMock,
   chatMock,
   chatHistoryMock,
   createTripMock,
@@ -81,7 +78,6 @@ const ROUTE_TABLE = [
   // Home
   { method: 'GET', pattern: /\/api\/home\/today\/?$/, response: () => todayHomeMock },
   { method: 'GET', pattern: /\/api\/trips\/?$/, response: () => tripsMock },
-  { method: 'GET', pattern: /\/api\/reminders\/?$/, response: () => remindersMock },
 
   // Trips CRUD
   { method: 'POST', pattern: /\/api\/trips\/?$/, response: () => createTripMock },
@@ -106,9 +102,6 @@ const ROUTE_TABLE = [
   // Chat
   { method: 'POST', pattern: /\/api\/chat\/?$/, response: () => chatMock },
   { method: 'GET', pattern: /\/api\/chat\/history\/?$/, response: () => chatHistoryMock },
-
-  // Reminders
-  { method: 'POST', pattern: /\/api\/reminders\/check\/?$/, response: () => reminderCheckMock },
 
   // Memory
   { method: 'POST', pattern: /\/api\/memory\/summary\/?$/, response: () => memorySummaryMock },

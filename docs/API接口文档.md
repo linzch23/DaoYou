@@ -58,7 +58,7 @@ MVP 暂不实现完整登录注册，默认使用：
 | --- | --- | --- |
 | 0 | 成功 | 请求正常完成 |
 | 4000 | 请求参数错误 | 缺少必填字段、字段类型错误、日期格式错误 |
-| 4001 | 资源不存在 | user、trip、trip_day、trip_item、photo、reminder 不存在 |
+| 4001 | 资源不存在 | user、trip、trip_day、trip_item、photo 或 push device 不存在 |
 | 4002 | 文件上传失败 | 文件为空、类型不支持、大小超限、保存失败 |
 | 5000 | 后端服务错误 | 未分类服务端异常 |
 | 5001 | 大模型调用失败 | LLM API 超时、限流、鉴权失败 |
@@ -79,7 +79,7 @@ MVP 暂不实现完整登录注册，默认使用：
 
 + `LLM_PROVIDER=openai`、`LLM_BASE_URL=https://api.deepseek.com/v1`、`LLM_API_KEY`、`LLM_MODEL` 配置后，`POST /api/chat` 可返回非固定 LLM 回复。
 + `VISION_PROVIDER=qwen`、`QWEN_API_KEY` 配置后，`POST /api/photos/explain` 可识别测试图片主体；未配置时会回退到固定演示识别结果。
-+ vivo 相关 `VIVO_APP_ID`、`VIVO_APP_KEY` 已可由配置读取；OCR 调用失败时返回空文本 fallback。
++ vivo AI/OCR 使用 `VIVO_APP_ID`、`VIVO_APP_KEY`；vivo Push 独立使用 `VIVO_PUSH_APP_ID`、`VIVO_PUSH_APP_KEY`、`VIVO_PUSH_APP_SECRET`，不能混用。
 
 外部能力失败时，后端仍应返回结构稳定的业务响应或明确错误码，不能把原始异常透传给前端。
 
@@ -87,7 +87,7 @@ MVP 暂不实现完整登录注册，默认使用：
 | 模块 | 方法 | 路径 | 说明 | 前端直接调用 | 调用 Agent |
 | --- | --- | --- | --- | --- | --- |
 | 健康检查 | GET | `/health` | 检查后端服务 | 是 | 否 |
-| 首页 | GET | `/api/home/today` | 今日行程和未读提醒 | 是 | 否 |
+| 首页 | GET | `/api/home/today` | 今日行程 | 是 | 否 |
 | 用户位置 | PUT | `/api/location` | 上传用户最新位置 | 是 | 否 |
 | 行程 | POST | `/api/trips` | 创建旅行 | 是 | 否 |
 | 行程 | GET | `/api/trips` | 获取旅行列表 | 是 | 否 |
@@ -105,8 +105,8 @@ MVP 暂不实现完整登录注册，默认使用：
 | 对话 | POST | `/api/chat` | 发送消息并获取回复 | 是 | 是 |
 | 对话 | GET | `/api/chat/history` | 查询聊天历史 | 是 | 否 |
 | 拍照讲解 | POST | `/api/photos/explain` | 上传图片并生成讲解 | 是 | 是 |
-| 提醒 | POST | `/api/reminders/check` | 检查行程风险 | 是 | 是 |
-| 提醒 | GET | `/api/reminders` | 查询提醒列表 | 是 | 否 |
+| 推送设备 | POST | `/api/push/devices` | 注册或刷新 vivo regId | 是 | 否 |
+| 推送设备 | DELETE | `/api/push/devices/{reg_id}` | 禁用 vivo regId | 是 | 否 |
 | 偏好 | GET | `/api/preferences` | 查询用户偏好 | 是 | 否 |
 | 偏好 | PUT | `/api/preferences` | 更新用户偏好 | 是 | 否 |
 | 记忆 | POST | `/api/memory/summary` | 总结用户记忆 | 可选 | 是 |
@@ -283,29 +283,7 @@ MVP 可在 `users` 中预置演示经纬度，但默认记录的 `location_updat
 | created_at | string | ISO 8601 创建时间 |
 
 
-### 3.8 Reminder
-```json
-{
-  "id": 1,
-  "type": "departure",
-  "content": "建议现在出发。",
-  "status": "unread",
-  "created_at": "2026-07-01T09:20:00+08:00"
-}
-```
-
-字段说明：
-
-| 字段 | 类型 | 说明 |
-| --- | --- | --- |
-| id | int | 提醒 ID |
-| type | string | `departure` / `conflict` / `weather` / `rest` |
-| content | string | 提醒内容 |
-| status | string | `unread` / `read` |
-| created_at | string \| null | ISO 8601 创建时间；即时检查响应中可省略 |
-
-
-### 3.9 AgentActionOption
+### 3.8 AgentActionOption
 Agent 识别到行程编辑意图时，通过该结构返回可供用户选择的行程项新增或修改方案。
 
 ```json
@@ -367,7 +345,7 @@ GET /health
 
 ## 5. 首页接口
 ### 5.1 GET `/api/home/today`
-获取当前旅行的今日行程和未读提醒数量。
+获取当前旅行的今日行程，不返回站内提醒或未读数量。
 
 查询参数：
 
@@ -404,8 +382,7 @@ GET /api/home/today?user_id=1&date=2026-07-01
         "address": "大连市中山区滨海路",
         "status": "planned"
       }
-    ],
-    "unread_reminders": 1
+    ]
   }
 }
 ```
@@ -1369,125 +1346,29 @@ curl -X POST "http://localhost:8000/api/photos/explain" \
 + 数据库保存相对路径。
 + 文件保存失败时返回 `4002`。
 
-## 10. 智能提醒接口
-### 10.1 POST `/api/reminders/check`
-手动检查当前行程风险。用户点击时触发；后台 `reminder-worker` 也会读取 `users` 中未过期的最新位置执行主动监测。
-
-请求字段：
-
-| 字段 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| user_id | int | 是 | 用户 ID |
-| current_time | string | 是 | ISO 8601 当前时间 |
-| current_location | object | 否 | 本次检查的当前位置；未传时读取用户最新位置 |
-
-
-请求体：
+## 10. 推送设备接口
+### 10.1 POST `/api/push/devices`
+注册或刷新 vivo 设备。相同 `provider + reg_id` 重复提交时更新归属、设备信息、
+`last_seen_at` 并重新启用。
 
 ```json
 {
   "user_id": 1,
-  "current_time": "2026-07-01T09:20:00+08:00",
-  "current_location": {
-    "latitude": 38.92,
-    "longitude": 121.64
-  }
+  "reg_id": "vivo-reg-id",
+  "device_name": "vivo device",
+  "app_version": "0.1.0"
 }
 ```
 
-请求示例：
+### 10.2 DELETE `/api/push/devices/{reg_id}`
+通过查询参数 `user_id` 禁用当前用户的设备：
 
-```latex
-POST /api/reminders/check
-Content-Type: application/json
-
-{"user_id":1,"current_time":"2026-07-01T09:20:00+08:00","current_location":{"latitude":38.92,"longitude":121.64}}
+```http
+DELETE /api/push/devices/{reg_id}?user_id=1
 ```
 
-响应示例：存在风险
-
-```json
-{
-  "code": 0,
-  "message": "success",
-  "data": {
-    "has_risk": true,
-    "reminder": {
-      "id": 1,
-      "type": "departure",
-      "content": "距离下一个景点还有约 40 分钟路程，建议现在出发，这样能比较从容地赶上 10:00 的安排。",
-      "status": "unread"
-    }
-  }
-}
-```
-
-响应示例：暂无风险
-
-```json
-{
-  "code": 0,
-  "message": "success",
-  "data": {
-    "has_risk": false,
-    "reminder": null
-  }
-}
-```
-
-提醒类型：
-
-| type | 说明 | MVP 优先级 |
-| --- | --- | --- |
-| departure | 出发提醒 | P0 |
-| conflict | 时间冲突提醒 | P0 |
-| weather | 天气提醒 | P1 |
-| rest | 休息提醒 | P1 |
-
-位置选择规则：
-
-+ 请求携带 `current_location` 时，本次手动检查优先使用该位置，但不会隐式更新 `users`。
-+ 未携带时，读取 `users.latitude`、`users.longitude` 和 `users.location_updated_at`。
-+ `location_updated_at` 距检查时间不超过 30 分钟时位置有效。
-+ 默认位置、缺失位置或超过 30 分钟的位置均视为不可用，不进行依赖精确起点的路线时间计算；可继续检查时间冲突和天气等不依赖实时位置的风险。
-
-### 10.2 GET `/api/reminders`
-查询提醒列表。
-
-查询参数：
-
-| 参数 | 类型 | 必填 | 说明 |
-| --- | --- | --- | --- |
-| user_id | int | 是 | 用户 ID |
-| trip_id | int | 是 | 当前旅行 ID |
-| status | string | 否 | `unread` / `read` |
-
-
-请求示例：
-
-```latex
-GET /api/reminders?user_id=1&trip_id=1&status=unread
-```
-
-响应示例：
-
-```json
-{
-  "code": 0,
-  "message": "success",
-  "data": {
-    "reminders": [
-      {
-        "id": 1,
-        "type": "departure",
-        "content": "距离下一个景点还有约 40 分钟路程，建议现在出发。",
-        "status": "unread",
-        "created_at": "2026-07-01T09:20:00+08:00"
-      }
-    ]
-  }
-}
-```
+出发提醒没有前端查询接口。`reminder-worker` 每 15 分钟读取最新位置和下一目的地，
+调用高德驾车 API 计算 ETA，并通过 vivo Direct Push 发送系统通知。
 
 ## 11. 用户偏好接口
 ### 11.1 GET `/api/preferences`
@@ -1531,7 +1412,7 @@ GET /api/preferences?user_id=1
 | 字段 | 类型 | 必填 | 说明 |
 | --- | --- | --- | --- |
 | user_id | int | 是 | 用户 ID |
-| preferences | object | 是 | 完整偏好对象，结构见 3.6 |
+| preferences | object | 是 | 需要更新的偏好字段子集，字段结构见 3.6 |
 
 
 请求体：
@@ -1547,6 +1428,9 @@ GET /api/preferences?user_id=1
   }
 }
 ```
+
+更新采用浅层合并语义：未提交字段保持原值；首次更新时未提交字段使用系统默认偏好。
+提交空数组或 `null` 属于显式更新，不会被当作“未提交”。
 
 请求示例：
 
@@ -1671,7 +1555,6 @@ frontend/api/mock/
 ├── trash.ts
 ├── chat.ts
 ├── photos.ts
-├── reminders.ts
 └── preferences.ts
 ```
 

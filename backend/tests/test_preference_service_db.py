@@ -61,6 +61,39 @@ def test_update_preferences_upserts_profile_record(db: Session) -> None:
     assert get_preferences(user_id=1, db=db)["preferences"]["travel_pace"] == "slow"
 
 
+def test_update_preferences_merges_partial_payload(db: Session) -> None:
+    db.add(User(id=1, nickname="演示用户"))
+    db.commit()
+    update_preferences(
+        UpdatePreferencesRequest(
+            user_id=1,
+            preferences={
+                "explanation_style": "children",
+                "travel_pace": "normal",
+                "interests": ["family"],
+                "special_needs": ["less_queue"],
+            },
+        ),
+        db=db,
+    )
+
+    update_preferences(
+        UpdatePreferencesRequest(
+            user_id=1,
+            preferences={"travel_pace": "slow"},
+        ),
+        db=db,
+    )
+
+    result = get_preferences(user_id=1, db=db)["preferences"]
+    assert result == {
+        "explanation_style": "children",
+        "travel_pace": "slow",
+        "interests": ["family"],
+        "special_needs": ["less_queue"],
+    }
+
+
 def test_summarize_memory_requires_owned_trip(db: Session) -> None:
     db.add_all(
         [

@@ -341,7 +341,8 @@ import { useChatStore } from '../../stores/chatStore.js'
 import { storeToRefs } from 'pinia'  // 2026-06-28 retro fix 修 silent drop:把 page-local actionOptions ref 改读 store.currentActionOptions
 import { useHomeStore } from '../../stores/homeStore.js'
 import { ApiError } from '../../services/chat.js'
-import { createTripDay, createTripItem, deleteTripItem, updateTripItem } from '../../services/trips.js'
+import { createTripDay, createTripItem, deleteTripItem } from '../../services/trips.js'
+import { validateActionOption } from '../../services/actionOptionValidation.js'
 import { getCurrentLocation, checkLocationPermission } from '../../utils/location.js'
 import ActionOptionsModal from './components/ActionOptionsModal.vue'
 import ApplyPlanConfirmDialog from './components/ApplyPlanConfirmDialog.vue'
@@ -836,8 +837,8 @@ function onClarificationOptionClick(option, messageIndex) {
  * ActionOptionsModal:确认后按 operation 调用现有 TripItem API。
  *
  * v0.3.0 升级(per spec §3.9 + §6.6 + AC-22/23/24):
- *   - 步骤 1 校验前置:item_id 缺失 OR payload 字段不全 → 显示
- *     `ChatPageStrings.replanInvalid` 内联 banner + **不**发起请求(spec §3.9 step 6 + AC-24)
+ *   - 步骤 1 校验前置:payload 必填；update 必须有 item_id；create 必须有
+ *     trip_day_id 或可创建目标日 → 无效时显示内联 banner 且不发请求
  *   - 步骤 2 trip_id 校验:option 的 trip_id 必须匹配 homeStore.currentTripId
  *   - 步骤 3 调对应 operation:
  *       - `create_trip_item` → services/trips.createTripItem(必要时先 createTripDay 自动建日)
@@ -854,6 +855,17 @@ async function onActionOptionConfirm(selectedOption) {
     pendingDeleteOption.value = selectedOption
     actionOptionsVisible.value = false
     deleteConfirmVisible.value = true
+    return
+  }
+
+  const validationCode = validateActionOption(selectedOption)
+  if (validationCode) {
+    logger.warn('[ChatPage] action option invalid', {
+      validationCode,
+      operation: selectedOption?.operation,
+    })
+    actionOptionsInvalidMessage.value = ChatPageStrings.replanInvalid
+    // 不关闭 modal,让 user 看到 banner 提示 + 重新选 / 取消
     return
   }
   await applyActionOption(selectedOption)

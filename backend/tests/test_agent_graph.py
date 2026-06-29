@@ -591,6 +591,24 @@ def test_replan_clarification_reply_keeps_trip_item_intent(monkeypatch) -> None:
         "days": [],
     }
 
+    result = run_agent(
+        {
+            "user_id": 1,
+            "trip_id": 8,
+            "user_message": "早上九点",
+            "current_trip": trip,
+            "chat_history": [
+                {"role": "user", "content": "把陈家祠添加到旅行第一天"},
+                {"role": "assistant", "content": "请问第一天什么时间去陈家祠？"},
+                {"role": "user", "content": "早上九点"},
+            ],
+        }
+    )
+
+    assert result["intent"] == "replan"
+    assert result["action_options"][0]["operation"] == "create_trip_item"
+    assert result["action_options"][0]["payload"]["start_time"] == "09:00"
+
 
 def _guangzhou_trip_context() -> dict[str, object]:
     return {
@@ -622,25 +640,6 @@ def _guangzhou_trip_context() -> dict[str, object]:
             }
         ],
     }
-
-    result = run_agent(
-        {
-            "user_id": 1,
-            "trip_id": 8,
-            "user_message": "早上九点",
-            "current_trip": trip,
-            "chat_history": [
-                {"role": "user", "content": "把陈家祠添加到旅行第一天"},
-                {"role": "assistant", "content": "请问第一天什么时间去陈家祠？"},
-                {"role": "user", "content": "早上九点"},
-            ],
-        }
-    )
-
-    assert result["intent"] == "replan"
-    assert result["action_options"][0]["operation"] == "create_trip_item"
-    assert result["action_options"][0]["payload"]["start_time"] == "09:00"
-
 
 def test_replan_agent_asks_for_missing_create_target(monkeypatch) -> None:
     monkeypatch.setattr("app.agent.nodes.call_llm", lambda messages: None)

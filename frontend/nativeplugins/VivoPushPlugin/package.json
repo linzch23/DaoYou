@@ -1,0 +1,26 @@
+{
+  "name": "VivoPushPlugin",
+  "id": "VivoPushPlugin",
+  "version": "1.0.0",
+  "description": "vivo Push SDK 原生插件 — 获取 regId 用于 vivo Direct API 测试推送",
+  "_dp_type": "nativeplugin",
+  "_dp_nativeplugin": {
+    "android": {
+      "plugins": [
+        {
+          "type": "module",
+          "name": "VivoPushPlugin",
+          "class": "com.daoyou.plugin.vivopush.VivoPushModule"
+        },
+        {
+          "type": "module",
+          "name": "BackgroundLocationPlugin",
+          "class": "com.daoyou.plugin.backgroundlocation.BackgroundLocationModule"
+        }
+      ],
+      "integrateType": "aar",
+      "minSdkVersion": "23",
+      "dependencies": []
+    }
+  }
+}

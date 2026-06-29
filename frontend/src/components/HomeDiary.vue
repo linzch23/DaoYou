@@ -10,7 +10,6 @@
   Emits
     selectSpot    : TripItem    用户点某 SpotCard,父组件打开 SpotDetailSheet
     viewFullTrip  : void        用户点"查看完整行程 >",父组件跳 TripDetailPage
-    reminderTap   : number      用户点某 ReminderChip(本页面 MVP 不挂载,父组件忽略)
   
   Slots:无
 -->
@@ -60,7 +59,7 @@ const props = defineProps({
    *   trip_id: number, trip_title: string,
    *   trip_start_date: string, // v0.6.0 新增(per user-round4-2026-06-26)
    *   date: string,
-   *   today_items: import('../api/types').TripItem[], unread_reminders: number
+ *   today_items: import('../api/types').TripItem[]
    *   (city 字段已移除 per 2026-06-24 审计清理)
    * }>} */
   today: {
@@ -74,7 +73,7 @@ const props = defineProps({
   },
 })
 
-const emit = defineEmits(['selectSpot', 'viewFullTrip', 'reminderTap'])
+const emit = defineEmits(['selectSpot', 'viewFullTrip'])
 
 // ───────── Computed ─────────
 

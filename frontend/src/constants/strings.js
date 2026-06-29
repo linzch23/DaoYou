@@ -69,7 +69,6 @@ export const HomeStrings = {
   // Header
   pageTitleDiary: '探险日记',
   pageTitleTrips: '我的行程',
-  unreadBadgeAria: '未读提醒',
 
   // DiaryHeader
   greetingMorning: '早上好,继续昨天的精彩吧',
@@ -129,19 +128,6 @@ export const HomeStrings = {
   tripStatusFinished: '已结束',
   tripDateFormat: '{start} ~ {end}',
 
-  // ReminderChip(MVP 本页面未挂载数据源,仅供 TripDetailPage 等复用,见 spec §3.2)
-  reminderWeather: '天气',
-  reminderDeparture: '出发',
-  reminderConflict: '冲突',
-  reminderRest: '休息',
-
-  // ReminderBanner(per v0.4.0 spec §6.5.8,v0.4.0 新增,HomePage 顶部智能提醒横幅)
-  reminderBannerDeparture: '即将出发',
-  reminderBannerConflict: '行程冲突',
-  reminderBannerWeather: '天气提醒',
-  reminderBannerRest: '休息提醒',
-  reminderClose: '关闭',
-
   // 行程列表 chat 入口(2026-06-24 新增,per task「每个行程有独立 chatSession」)
   // 沿 AGENTS.md §8.6 13 页面惯例:每个 user-facing 文案键必带 aria 标签
   // button label 用 emoji 💬(icon 简写,沿 follow-up chip 模式)
@@ -168,21 +154,6 @@ export const HomeStrings = {
   deleteFailToast: '删除失败',
   deleteActiveTripToast: '进行中的行程请走「我的-回收站」',
 }
-
-/**
- * Reminder type → emoji 映射(per spec v0.4.0 §6.5.8.1)
- *
- * 1:1 对齐 `api/types.ts:141` `ReminderType` 4 枚举 + `api/mock/reminders.ts:16` reminderCheckMock;
- * 调用方 `HomeReminderTypeEmoji[reminder.type] || '🔔'` 兜底,本页面挂载在 ReminderBanner.vue。
- *
- * @type {Readonly<Record<import('../api/types').ReminderType, string>>}
- */
-export const HomeReminderTypeEmoji = Object.freeze({
-  departure: '🚗',
-  conflict: '⚠️',
-  weather: '☔',
-  rest: '😴',
-})
 
 /**
  * SpotDetailSheet 专用文案(specs/SpotDetailSheet.md §10 R-1)
@@ -279,18 +250,6 @@ export const HomeTripStatusLabel = Object.freeze({
   inProgress: HomeStrings.tripStatusActive,
   // 显示别名(TrashPage 复用,非 TripStatus enum value)
   deleted: HomeStrings.tripStatusFinished,
-})
-
-/**
- * ReminderType → 中文短标签(spec §3.2 ReminderChip 副文案)
- * 1:1 对齐 api/types.ts ReminderType 4 枚举
- * @type {Readonly<Record<import('../api/types').ReminderType, string>>}
- */
-export const HomeReminderTypeLabel = Object.freeze({
-  weather: HomeStrings.reminderWeather,
-  departure: HomeStrings.reminderDeparture,
-  conflict: HomeStrings.reminderConflict,
-  rest: HomeStrings.reminderRest,
 })
 
 /**

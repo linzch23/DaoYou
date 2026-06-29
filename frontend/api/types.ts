@@ -5,7 +5,7 @@
 // 时间格式约定（§1.2）：
 //   日期：      'YYYY-MM-DD'，例如 '2026-07-01'
 //   时间：      'HH:mm'，     例如 '10:00'         ← TripItem.start_time / end_time
-//   日期时间：  ISO 8601，     例如 '2026-07-01T09:20:00+08:00'  ← ChatMessage/Reminder.created_at
+//   日期时间：  ISO 8601，     例如 '2026-07-01T09:20:00+08:00'  ← ChatMessage.created_at
 //
 // v0.3.0(2026-06-11):ChatRequest 补 trip_id + current_location 字段,与后端 ChatRequest 对齐
 // v0.3.1(2026-06-11):新增 LocationUpdate types,与后端 locations.py:UpdateLocationRequest 对齐
@@ -157,20 +157,6 @@ export interface Preferences {
   special_needs: SpecialNeed[]
 }
 
-// ───────────────── Reminder ─────────────────
-
-export type ReminderType = 'departure' | 'conflict' | 'weather' | 'rest'
-export type ReminderStatus = 'unread' | 'read'
-
-// §9.1 /check 响应的 reminder 缺 created_at；§9.2 /reminders 列表里有 —— 故 optional
-export interface Reminder {
-  id: number
-  type: ReminderType
-  content: string
-  status: ReminderStatus
-  created_at?: string // ISO 8601
-}
-
 // ───────────────── Chat ─────────────────
 
 export type ChatRole = 'user' | 'assistant' | 'system'
@@ -311,14 +297,6 @@ export interface PhotoExplainForm {
   // 不是浏览器/Node 的 File | Blob。原 2026-06-24 审计触发的类型修正。
   image: string
   current_location?: string // JSON 字符串:"{ latitude, longitude }"
-}
-
-export interface ReminderCheckRequest {
-  user_id: number
-  current_time: string // ISO 8601
-  current_location?: Location // Optional:未传时由后端读取用户最新位置(per spec §10.1 字段表「否」+ docs/API-前端一致性审计-v2.md §4.4 Resolved 决策 A)
-  // 2026-06-19: 删除 trip_id 字段(per b60dc3c 文档修订 + docs/API接口文档.md §10.1 L1320-1327 不再要求 trip_id)
-  // 2026-06-22: current_location 改可选(per docs/API-前端一致性审计-v2.md §7.3.1 orchestrator 1-line fix)
 }
 
 export interface UpdatePreferencesRequest {

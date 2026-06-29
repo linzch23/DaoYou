@@ -44,15 +44,22 @@ def update_preferences(payload: UpdatePreferencesRequest, *, db: Session) -> dic
         )
     )
     if record is None:
+        merged_preferences = {
+            **DEFAULT_PREFERENCES,
+            **payload.preferences,
+        }
         db.add(
             UserPreference(
                 user_id=payload.user_id,
                 preference_key=PROFILE_KEY,
-                preference_value=payload.preferences,
+                preference_value=merged_preferences,
             )
         )
     else:
-        record.preference_value = payload.preferences
+        record.preference_value = {
+            **record.preference_value,
+            **payload.preferences,
+        }
         record.updated_at = datetime.utcnow()
 
     db.commit()

@@ -1,169 +1,87 @@
 # vivo 消息推送实施与分工
 
-更新时间：2026-06-11
+更新时间：2026-06-29
 
-## 1. 文档目标
+## 1. 当前方案
 
-本文档用于指导《导友》MVP 实现面向 vivo Android 手机的行程提醒推送。
-
-MVP 采用以下技术方案：
-
-- FastAPI 后端负责定时检查行程、天气和交通时间，并生成提醒。
-- PostgreSQL 保存设备、提醒和推送状态。
-- UniPush 2.0 负责统一推送服务。
-- vivo 厂商离线通道负责在应用进入后台或被系统清理后显示系统通知。
-- UniApp Android 客户端负责设备注册、通知权限、消息接收和点击跳转。
-- UniApp Android 客户端每 15 分钟上报一次设备实际采集的用户位置。
-- vivo 云真机用于验证真实厂商推送链路。
-
-本阶段只支持 vivo Android 设备，不接入华为、小米、OPPO、荣耀、iOS 或 FCM。
-
-## 2. 总体架构
+本项目采用 vivo Direct Push，不使用 UniPush、uniCloud 中转、系统 cron 或站内提醒列表。
 
 ```text
-reminder-worker 定时执行
-        |
-        v
-查询未来行程节点
-        |
-        +----> users 最新位置（30 分钟有效）
-        |
-        +----> 天气服务
-        |
-        +----> 地图路线服务
-        |
-        v
-计算建议出发时间和天气风险
-        |
-        v
-写入 reminders，使用 dedup_key 去重
-        |
-        v
-调用受保护的 uniCloud 推送云函数
-        |
-        v
-UniPush 2.0 -> vivo 厂商离线通道
-        |
-        v
-vivo 系统通知栏
-        |
-        v
-用户点击通知 -> 打开指定行程或提醒页面
+UniApp Android
+  ├─ 启动/恢复前台立即上报位置
+  ├─ 前台每 15 分钟上报位置
+  ├─ 有效行程期间由原生 location 前台服务在后台直接上报
+  └─ VivoPushPlugin 获取 regId 并注册设备
+                    |
+                    v
+FastAPI + PostgreSQL
+                    ^
+                    |
+独立常驻 reminder-worker
+  ├─ 每 15 分钟对齐自然季度点执行
+  ├─ PostgreSQL advisory lock 防止多实例重复扫描
+  ├─ 高德驾车 API 计算 ETA
+  ├─ departure_alerts 保证幂等、重试和审计
+  └─ vivo Direct Push 发送系统通知
 ```
 
-FCM 不参与本方案。
+当前只支持 vivo Android、单用户 MVP 和驾车方式。
 
-## 3. 前置条件
+## 2. 数据模型
 
-团队需要准备并固定以下信息：
+### 2.1 device_push_tokens
 
-- DCloud AppID。
-- Android 应用包名。
-- Android 应用签名证书和对应指纹。
-- vivo 开放平台 AppID。
-- vivo 开放平台 AppKey。
-- vivo 开放平台 AppSecret。
-- 可使用的 uniCloud 服务空间。
-- vivo 云真机使用资格。
+保存 vivo 设备注册信息：
 
-只有 AppID 和 AppKey 通常不足以完成服务端厂商通道配置，还需要确认能够取得 AppSecret。
+- `user_id`
+- `provider`，当前固定为 `vivo`
+- `reg_id`
+- `device_name`
+- `app_version`
+- `enabled`
+- `last_seen_at`
+- `invalidated_at`
 
-包名、签名、DCloud AppID 和 vivo 平台配置必须一致。测试期间不要随意更换包名或签名。
+`provider + reg_id` 唯一。重复注册会刷新设备信息、最近出现时间并重新启用。
 
-## 4. 前端职责
+### 2.2 departure_alerts
 
-### 4.1 配置 UniPush 2.0
+该表仅供后端幂等、重试和审计使用，不是站内消息：
 
-前端负责人需要在 HBuilderX 和 DCloud 开发者中心完成：
+- `user_id`
+- `trip_id`
+- `trip_item_id`
+- `level`：`warning` / `critical`
+- `scheduled_at`
+- `evaluated_at`
+- `distance_meters`
+- `eta_seconds`
+- `remaining_seconds`
+- `push_status`
+- `request_id`
+- `provider_task_id`
+- `retry_count`
+- `last_error_code`
+- `last_error_message`
+- `pushed_at`
 
-1. 在 `manifest.json` 中启用 UniPush 2.0。
-2. 启用 Android 离线推送。
-3. 仅配置 vivo 厂商通道。
-4. 填写 vivo AppID、AppKey 和 AppSecret。
-5. 核对 Android 包名及签名信息。
-6. 制作自定义调试基座或云打包 APK。
+`trip_item_id + level` 唯一，因此同一节点最多发送一次 warning 和一次 critical。
 
-标准 HBuilderX 运行基座不能作为 vivo 离线推送的最终验证环境。
+### 2.3 trip_items 到达字段
 
-### 4.2 获取并注册设备 CID
+- `arrived_at`
+- `arrival_distance_meters`
 
-应用启动后调用：
+距离当前候选目的地小于 200 米时记录到达。同一轮最多确认一个节点，到达不会自动把
+`status` 改成 `done`。
 
-```ts
-uni.getPushClientId({
-  success(result) {
-    registerPushDevice({
-      cid: result.cid,
-      platform: "android",
-      vendor: "vivo"
-    })
-  }
-})
-```
+## 3. API
 
-前端将 CID 上传至：
+### 3.1 位置上报
 
 ```http
-POST /api/push/devices
+PUT /api/location
 ```
-
-请求示例：
-
-```json
-{
-  "cid": "unipush-device-cid",
-  "platform": "android",
-  "vendor": "vivo"
-}
-```
-
-应用每次启动时都应检查 CID。重装应用、清除数据或设备环境变化后，CID 可能变化。
-
-### 4.3 通知权限
-
-前端负责：
-
-- Android 13 及以上申请通知运行时权限。
-- 在应用设置页提供提醒通知开关。
-- 权限被拒绝时给出可操作提示。
-- 引导用户前往系统设置重新开启通知。
-
-### 4.4 接收消息
-
-应用应在启动阶段注册消息监听：
-
-```ts
-uni.onPushMessage((event) => {
-  const payload = event.data?.payload
-
-  if (event.type === "click" && payload?.trip_id) {
-    uni.navigateTo({
-      url: `/pages/trip-detail/index?id=${payload.trip_id}`
-    })
-  }
-})
-```
-
-前端需要处理：
-
-- 前台收到消息时刷新提醒列表。
-- 后台收到系统通知时不重复创建相同通知。
-- 用户点击通知时跳转到对应行程、节点或提醒详情。
-- 当前已位于目标页面时只刷新数据，避免重复跳转。
-- payload 缺少必要字段时跳转到通知列表，而不是直接报错。
-
-### 4.5 前端接口协作
-
-前端需要接入：
-
-```text
-POST   /api/push/devices
-DELETE /api/push/devices/{cid}
-GET    /api/reminders
-PUT    /api/location
-```
-
-Android 获得定位权限后，建议每 15 分钟上报一次；明显移动时可以提前上报。`timestamp` 必须是设备实际采集位置的 Unix 秒时间戳。
 
 ```json
 {
@@ -174,386 +92,187 @@ Android 获得定位权限后，建议每 15 分钟上报一次；明显移动�
 }
 ```
 
-应用进入后台后能否持续执行 15 分钟定时任务受 Android 系统限制。前端应在系统允许时上报，但后端必须依靠 `location_updated_at` 判断数据是否过期，不能假定客户端一定准时运行。
+时间戳是设备实际采集位置的 Unix 秒时间戳。后端只允许更新的采集时间覆盖已有位置，
+且只保存最新快照，不保存历史轨迹。
 
-开发环境可使用：
+### 3.2 注册设备
 
-```text
-POST /api/push/test
+```http
+POST /api/push/devices
 ```
-
-测试推送接口不得暴露在生产环境。
-
-### 4.6 前端验收标准
-
-- [ ] 云打包 APK 能安装到 vivo 云真机。
-- [ ] 应用可以取得有效 CID。
-- [ ] CID 能上传并绑定默认用户。
-- [ ] Android 能上传最新位置，并使用设备实际采集时间。
-- [ ] 应用前台时能收到消息并刷新提醒列表。
-- [ ] 应用后台时能显示 vivo 系统通知。
-- [ ] 应用被系统清理后仍能收到离线通知。
-- [ ] 点击通知能进入正确页面。
-- [ ] Android 13 以上通知权限流程正常。
-- [ ] 注销或关闭提醒后不再接收业务推送。
-
-## 5. 后端职责
-
-### 5.1 设备管理
-
-后端增加设备推送令牌表：
-
-```text
-device_push_tokens
-- id
-- user_id
-- cid
-- platform
-- vendor
-- enabled
-- last_seen_at
-- created_at
-- updated_at
-```
-
-约束：
-
-- `cid` 必须唯一。
-- 同一用户可以绑定多个设备。
-- CID 重复注册时更新用户归属和 `last_seen_at`。
-- 用户关闭通知或注销时将设备禁用。
-- 推送服务确认 CID 无效时将其禁用。
-- 日志中不得记录完整 CID。
-
-建议接口：
-
-```text
-POST   /api/push/devices
-DELETE /api/push/devices/{cid}
-POST   /api/push/test
-```
-
-即使 MVP 使用默认 `user_id=1`，查询和更新时仍需执行用户所有权检查。
-
-### 5.2 提醒定时任务
-
-定时任务使用独立进程或容器运行：
-
-```text
-backend-api
-reminder-worker
-postgres
-```
-
-不应将 Scheduler 直接运行在多个 Uvicorn Worker 中，否则相同任务可能被重复执行。
-
-MVP 建议每 5 分钟执行一次：
-
-1. 查询未来 2 小时内的行程节点。
-2. 读取用户最新位置，并检查采集时间是否在 30 分钟内。
-3. 查询目的地天气。
-4. 查询起点到目的地的交通时间。
-5. 计算建议出发时间。
-6. 判断是否达到提醒阈值。
-7. 写入提醒记录。
-8. 向用户有效设备发送推送。
-
-用户位置保存在 `users`：
-
-```text
-latitude
-longitude
-location_updated_at
-```
-
-位置规则：
-
-- 默认演示位置的 `location_updated_at` 为 `NULL`，不能当作真实定位。
-- 只有更晚的采集时间可以覆盖已有位置。
-- 位置超过 30 分钟时，不执行依赖精确起点的路线时间计算，也不发送精确到分钟的出发提醒。
-- 无有效位置时仍可执行天气、固定时间冲突等不依赖实时位置的规则。
-- MVP 不保存位置历史轨迹，日志不记录精确经纬度。
-
-计算示例：
-
-```text
-计划到达时间：15:00
-交通时间：40 分钟
-天气缓冲：15 分钟
-建议出发时间：14:05
-当前时间：14:00
-提醒结果：5 分钟后建议出发
-```
-
-### 5.3 提醒生成规则
-
-MVP 优先支持：
-
-- 出发提醒。
-- 降雨、强风、高温等天气提醒。
-- 交通时间增加导致的提前出发提醒。
-- 行程节点时间冲突提醒。
-
-天气或地图服务调用失败时：
-
-- 不生成未经验证的紧急提醒。
-- 记录失败原因。
-- 必要时使用明确标记的演示 fallback。
-- 不向客户端暴露第三方服务原始异常。
-
-### 5.4 去重与推送状态
-
-建议在 `reminders` 中增加：
-
-```text
-dedup_key
-push_status
-pushed_at
-push_error
-retry_count
-```
-
-示例：
-
-```text
-departure:1:trip_item:8:2026-06-10T14:05
-weather:1:trip_day:2:rain
-```
-
-`dedup_key` 应有数据库唯一约束，防止并发任务重复生成提醒。
-
-建议状态：
-
-```text
-pending
-sent
-failed
-cancelled
-```
-
-### 5.5 推送服务
-
-后端通过受保护的 uniCloud 云函数发送消息。
-
-请求示例：
 
 ```json
 {
-  "cid": "unipush-device-cid",
-  "title": "建议提前出发",
-  "content": "前往星海广场预计需要 40 分钟，请于 14:05 出发。",
-  "payload": {
-    "reminder_id": 23,
-    "trip_id": 1,
-    "trip_item_id": 8,
-    "type": "departure_reminder"
-  }
+  "user_id": 1,
+  "reg_id": "vivo-reg-id",
+  "device_name": "vivo device",
+  "app_version": "0.1.0"
 }
 ```
 
-云函数职责应保持精简：
+前端在 App Plus 环境中通过 `VivoPushPlugin` 获取 regId。首次启动、regId 变化或距上次
+成功注册超过 24 小时时重新提交。
 
-1. 验证 FastAPI 请求签名。
-2. 校验消息字段和长度。
-3. 调用 UniPush 2.0。
-4. 返回推送结果或标准化错误。
+### 3.3 禁用设备
 
-天气计算、交通计算、提醒规则和数据库业务不得放入云函数。
-
-### 5.6 后端安全要求
-
-- vivo AppSecret 不得进入前端代码。
-- vivo AppSecret、云函数密钥和第三方 API Key 不得提交到 Git。
-- FastAPI 与云函数之间必须使用 HTTPS。
-- FastAPI 调用云函数时使用签名、时间戳和防重放校验。
-- 测试推送接口仅允许开发环境使用。
-- 日志不得输出 AppSecret、完整 CID、授权头或用户敏感信息。
-- 日志不得输出用户精确经纬度。
-- 推送 payload 只包含页面跳转所需的资源 ID，不包含敏感数据。
-
-### 5.7 后端验收标准
-
-- [ ] 设备注册、更新和禁用逻辑可用。
-- [ ] 同一 CID 重复注册不会产生重复记录。
-- [ ] 定时任务只由一个 Worker 执行。
-- [ ] 天气和交通时间可以参与提醒计算。
-- [ ] 位置更新接口能拒绝旧时间戳覆盖，30 分钟过期规则生效。
-- [ ] `dedup_key` 能阻止重复提醒。
-- [ ] 提醒生成后写入 PostgreSQL。
-- [ ] 推送成功、失败和重试状态可追踪。
-- [ ] 无效 CID 会被禁用。
-- [ ] 第三方服务失败时有可控降级。
-- [ ] 日志和错误响应不泄露凭据。
-
-## 6. Agent 负责人职责
-
-本功能不应依赖大模型才能正常运行。确定性的时间、天气和交通提醒由后端规则引擎生成。
-
-Agent 负责人只需要：
-
-- 提供可选的自然语言提醒文案生成能力。
-- 保证输出符合结构化 schema。
-- 在 Agent 失败时允许后端使用固定模板。
-- 不直接调用推送服务。
-- 不直接写入设备令牌或通知表。
-
-推荐后端固定模板优先于大模型：
-
-```text
-前往{place_name}预计需要{travel_minutes}分钟，
-受{weather_condition}影响，建议于{departure_time}前出发。
+```http
+DELETE /api/push/devices/{reg_id}?user_id=1
 ```
 
-## 7. 数据流与状态
+当前没有 `/api/reminders/check`、`/api/reminders`、未读提醒接口或前端提醒列表。
 
-```text
-trip_items
-    |
-    v
-reminder-worker
-    |
-    +--> users 最新位置（30 分钟有效）
-    |
-    +--> weather adapter
-    |
-    +--> route adapter
-    |
-    v
-reminders(pending)
-    |
-    v
-push service
-    |
-    v
-uniCloud function
-    |
-    v
-UniPush/vivo
-    |
-    +--> 成功：reminders.sent
-    |
-    +--> 临时失败：reminders.failed，按策略重试
-    |
-    +--> CID 无效：禁用 device_push_tokens
+## 4. 出发提醒规则
+
+Worker 每轮按以下顺序处理：
+
+1. 读取用户 30 分钟内的最新位置。
+2. 从当天未到达且状态有效的节点中选择开始时间最早的下一目的地。
+3. 计算当前位置到目的地的直线距离。
+4. 距离小于 200 米时记录 `arrived_at`，本轮不继续跨节点判断。
+5. 未到达时调用高德 `GET /v3/direction/driving` 获取驾车 ETA。
+6. 计算 `slack = remaining_seconds - eta_seconds`。
+7. `slack > 15 分钟`：不提醒。
+8. `0 < slack <= 15 分钟`：发送 warning。
+9. `slack <= 0`：发送 critical。
+
+高德失败、位置过期、节点缺少时间或坐标时跳过，不使用固定 ETA 或演示 fallback 发送通知。
+
+## 5. Worker 与重试
+
+部署使用独立常驻进程：
+
+```bash
+uv run --no-sync python -m app.jobs.departure_alerts_worker
 ```
 
-推送成功只表示服务端接受消息，不等同于用户已经阅读。MVP 不要求实现可靠的已读回执。
+Docker Compose 服务名为 `reminder-worker`。Worker 对齐每小时的 `00/15/30/45` 分钟执行，
+并使用 PostgreSQL advisory lock 保证同一轮只有一个实例运行。
 
-## 8. 实施顺序
+投递状态保存到 `departure_alerts`。失败时只记录脱敏错误摘要；后续轮次可以重试同一条
+记录，但唯一约束禁止创建重复提醒。
 
-### 阶段一：验证厂商链路
+## 6. Android 前台与后台定位
 
-1. 固定包名和签名。
-2. 配置 UniPush 2.0 和 vivo 厂商参数。
-3. 云打包 APK。
-4. 在 vivo 云真机安装应用。
-5. 获取 CID。
-6. 通过 DCloud 控制台向 CID 手动推送。
-7. 验证前台、后台、应用被清理和点击跳转。
+前台协调器行为：
 
-只有阶段一通过后，才进入后端定时提醒开发。
+- 冷启动立即上报。
+- 每次恢复前台立即上报。
+- 前台运行期间每 15 分钟上报。
+- 合并并发请求，避免重复定时器。
 
-### 阶段二：设备绑定
+后台定位由 `BackgroundLocationPlugin` 启动 Android location 前台服务：
 
-1. 后端建立 `device_push_tokens`。
-2. 实现设备注册和注销接口。
-3. 前端上传 CID。
-4. 验证 CID 更新和用户绑定。
+- 只在当天存在带有效坐标的 planned 节点时启动。
+- 显示“导友正在为当前行程提供位置提醒”常驻通知。
+- WebView 暂停后仍由原生层直接调用后端。
+- 原生 LocationManager 坐标转换为 GCJ-02 后上报。
+- 同一时刻只允许一个上传请求。
+- 缺少定位权限、配置无效或无有效行程时停止/不启动。
 
-### 阶段三：位置上报
+Android 无法绝对保证每 15 分钟唤醒；后端必须继续用 30 分钟位置有效期保护。
 
-1. 为 `users` 增加 `latitude`、`longitude`、`location_updated_at`。
-2. 实现 `PUT /api/location`。
-3. Android 接入定位权限和 15 分钟上报。
-4. 验证重复请求幂等、旧时间戳不覆盖新位置。
-5. 验证超过 30 分钟的位置被提醒 Worker 判定为过期。
+## 7. vivo 原生插件
 
-### 阶段四：程序化测试推送
+插件目录：
 
-1. 创建受保护的 uniCloud 推送云函数。
-2. 后端实现 Push Adapter。
-3. 增加仅开发环境可用的测试推送接口。
-4. 验证推送结果记录。
+```text
+frontend/nativeplugins/VivoPushPlugin/
+```
 
-### 阶段五：提醒规则
+模块：
 
-1. 实现天气 Adapter。
-2. 实现路线时间 Adapter。
-3. 实现建议出发时间计算。
-4. 实现 `dedup_key`。
-5. 写入 `reminders`。
-6. 增加规则单元测试。
+- `VivoPushPlugin`：初始化 SDK、开启推送、获取 regId。
+- `BackgroundLocationPlugin`：启动、停止和查询后台定位前台服务。
 
-### 阶段六：定时执行
+HBuilderX 本地原生插件要求实现 AAR 位于插件 `android/` 目录。实现 AAR 是本地生成物，
+不提交 Git；vivo 官方 SDK AAR 保留在插件目录。
 
-1. 创建独立 `reminder-worker`。
-2. 配置每 5 分钟执行。
-3. 接入推送重试和无效 CID 禁用。
-4. 完成端到端云真机测试。
+构建前在根目录 `.env` 填写：
 
-## 9. 云真机测试矩阵
+```ini
+VIVO_PUSH_APP_ID=
+VIVO_PUSH_APP_KEY=
+```
 
-| 场景 | 操作 | 预期结果 |
-| --- | --- | --- |
-| 应用前台 | 保持应用打开并发送通知 | 收到消息，提醒列表刷新 |
-| 应用后台 | 返回系统桌面后发送通知 | vivo 系统通知栏显示 |
-| 应用被清理 | 从最近任务清理后发送通知 | 仍能收到厂商离线通知 |
-| 点击通知 | 点击系统通知 | 打开对应行程或提醒页面 |
-| 通知权限关闭 | 关闭系统通知权限后发送 | 不显示通知，应用内可提示用户开启 |
-| CID 更新 | 清除数据或重装后启动 | 新 CID 上传，旧 CID 被替换或禁用 |
-| 位置首次上报 | 使用当前时间上传位置 | users 最新位置和采集时间更新 |
-| 位置乱序 | 先上传新时间，再上传旧时间 | 旧位置不覆盖新位置，接口返回 `updated=false` |
-| 位置过期 | 将采集时间设为 30 分钟以前 | 不生成依赖精确路线时间的出发提醒 |
-| 后台上报受限 | 系统限制后台定位执行 | Worker 根据过期规则安全降级，不使用陈旧位置 |
-| 重复任务 | 同一提醒执行两次 | 数据库只保留一个 `dedup_key` |
-| 天气服务失败 | 模拟天气接口异常 | 不发送错误天气提醒，记录标准化错误 |
-| 路线服务失败 | 模拟地图接口异常 | 使用明确 fallback 或跳过提醒 |
+执行：
 
-## 10. 团队交付清单
+```powershell
+& frontend\nativeplugins\VivoPushPlugin\android\build-plugin.ps1
+```
 
-### 前端交付
+脚本只在临时 Manifest 中注入凭据，源码 Manifest 保持占位符。生成文件：
 
-- UniPush 2.0 与 vivo 通道配置。
-- 可安装到 vivo 云真机的签名 APK。
-- CID 获取与上传。
-- Android 定位权限、15 分钟位置上报和失败重试。
-- Android 通知权限处理。
-- 消息监听与点击跳转。
-- 前台、后台、被清理状态测试记录。
+```text
+frontend/nativeplugins/VivoPushPlugin/android/VivoPushPlugin-release.aar
+```
 
-### 后端交付
+## 8. 后端配置
 
-- 设备令牌模型、迁移和接口。
-- users 最新位置字段、位置更新接口和过期判定。
-- 通知状态与去重字段迁移。
-- Push Adapter 和 uniCloud 调用。
-- 天气、路线 Adapter。
-- 提醒规则和独立定时 Worker。
-- 推送日志、失败重试和无效 CID 处理。
-- 单元测试和端到端联调记录。
+vivo AI/OCR 和 vivo Push 使用不同变量：
 
-### Agent 交付
+```ini
+# vivo AI / OCR
+VIVO_APP_ID=
+VIVO_APP_KEY=
+VIVO_BASE_URL=https://api-ai.vivo.com.cn
 
-- 可选的提醒文案生成 schema。
-- 固定 fallback 文案。
-- Agent 失败不阻断规则提醒的验证结果。
+# vivo Push
+VIVO_PUSH_APP_ID=
+VIVO_PUSH_APP_KEY=
+VIVO_PUSH_APP_SECRET=
+VIVO_PUSH_API_BASE=https://api-push.vivo.com.cn
+VIVO_PUSH_MODE=1
+VIVO_PUSH_TIMEOUT_SECONDS=10
+```
 
-## 11. MVP 完成定义
+`VIVO_PUSH_APP_SECRET` 只存在于后端 `.env`，不得写入 Manifest、前端源码、AAR 或日志。
 
-以下条件全部满足，才认为 vivo 消息提醒功能完成：
+## 9. 安全要求
 
-- vivo 云真机在应用被清理后仍能收到通知。
-- 用户点击通知能进入正确的行程页面。
-- 后端能根据真实或演示天气和交通时间生成提醒。
-- Android 能上报位置，旧位置不会覆盖新位置，过期位置不会参与精确出发提醒。
-- 相同提醒不会重复推送。
-- 推送状态可以在数据库中追踪。
-- 无效 CID、外部服务失败和权限关闭都有可控处理。
-- AppSecret 和服务端密钥未进入客户端或 Git。
-- 核心规则测试和端到端测试均有执行记录。
+- 生产后端地址必须使用 HTTPS。
+- AppID/AppKey 通过本地 `.env` 注入生成 AAR，不提交源码仓库。
+- AppSecret 和第三方 API Key 不得进入前端。
+- 日志不记录完整 regId、授权头、密钥或精确经纬度。
+- Android 包名、签名、高德 Android Key 和 vivo 平台应用配置必须匹配。
+- 测试模式 `VIVO_PUSH_MODE=1` 仅用于联调，正式值按 vivo 平台审核结果配置。
 
-## 12. 参考资料
+## 10. 当前完成情况
 
-- UniPush 2.0：<https://uniapp.dcloud.net.cn/unipush-v2.html>
-- UniPush 厂商通道配置：<https://uniapp.dcloud.net.cn/unipush_vendor_config.html>
-- vivo 开放平台：<https://dev.vivo.com.cn/>
+已完成：
+
+- `device_push_tokens`、`departure_alerts` 和到达字段迁移。
+- 设备注册/禁用接口。
+- 高德驾车 Provider。
+- vivo Direct Push Provider 和鉴权缓存。
+- 规则判断、幂等、重试与 Worker。
+- 前台 15 分钟位置上报。
+- Android 原生后台定位前台服务。
+- vivo regId 自动注册。
+- 原生插件构建和凭据注入。
+- 后端、前端和 App 资源本地自动化检查。
+
+尚需真实环境验收：
+
+- 生产 HTTPS 后端地址。
+- 正式包名、签名、高德 Android Key 和 vivo 应用配置一致性。
+- vivo 云真机前台、后台、锁屏、最近任务清理和省电模式。
+- 系统通知点击后的行程详情跳转。
+- 后台定位权限说明页和用户开关的完整交互。
+
+## 11. 云真机测试矩阵
+
+| 场景 | 预期 |
+| --- | --- |
+| 冷启动/恢复前台 | 立即上报一次位置，不产生多个定时器 |
+| 前台运行 15 分钟 | 再次上报位置 |
+| 后台/锁屏 | 常驻通知存在，系统允许时继续原生上报 |
+| 最近任务清理 | 记录服务和推送实际表现，不假定 JS 继续运行 |
+| 位置乱序 | 旧时间戳不覆盖新位置 |
+| 位置超过 30 分钟 | Worker 跳过提醒 |
+| 距目的地 199.9 米 | 记录到达 |
+| 距目的地 200 米 | 不判定到达 |
+| 余量 16/15/1/0/负数分钟 | 无提醒/warning/warning/critical/critical |
+| 相同节点重复扫描 | 每个等级最多一条记录 |
+| 高德失败 | 不发送错误提醒 |
+| vivo 临时失败 | 记录失败并按策略重试 |
+| 点击通知 | 打开对应行程；payload 不完整时进入首页 |

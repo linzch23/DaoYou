@@ -31,6 +31,12 @@ class Settings(BaseSettings):
     ocr_provider: str = "mock"
     vivo_ocr_uri: str = "/ocr/general_recognition"
     vivo_ocr_timeout_seconds: float = 20.0
+    vivo_push_app_id: int | None = None
+    vivo_push_app_key: str = ""
+    vivo_push_app_secret: str = ""
+    vivo_push_api_base: str = "https://api-push.vivo.com.cn"
+    vivo_push_mode: int = 1
+    vivo_push_timeout_seconds: float = 10.0
 
     model_config = SettingsConfigDict(env_file="../.env", env_file_encoding="utf-8", extra="ignore")
 

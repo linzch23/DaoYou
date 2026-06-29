@@ -11,7 +11,6 @@ from app.models.trip import Trip, TripDay, TripItem
 from app.models.user import User
 from app.schemas.chat import ChatRequest
 from app.schemas.common import Location
-from app.schemas.reminders import ReminderCheckRequest
 from app.schemas.trips import CreateTripItemRequest, CreateTripRequest, UpdateTripItemRequest
 from app.services.chat_service import send_chat_message
 
@@ -51,14 +50,6 @@ def test_location_route_and_user_columns_are_registered() -> None:
     assert "latitude" in User.__table__.columns
     assert "longitude" in User.__table__.columns
     assert "location_updated_at" in User.__table__.columns
-
-
-def test_reminder_current_time_requires_timezone() -> None:
-    with pytest.raises(ValidationError):
-        ReminderCheckRequest(
-            user_id=1,
-            current_time="2026-06-11T09:20:00",
-        )
 
 
 def test_chat_replan_returns_action_options(db: Session, monkeypatch) -> None:

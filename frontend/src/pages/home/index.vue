@@ -43,10 +43,6 @@
       class="header"
     >
       <text class="header-title">{{ headerTitle }}</text>
-      <UnreadBadge
-        v-if="showBadge"
-        :count="unreadCount"
-      />
     </view>
 
     <!-- Body(滚动区) -->
@@ -98,7 +94,6 @@
               :favorites="favoriteIds"
               @select-spot="onSelectSpot"
               @view-full-trip="onViewFullTrip"
-              @reminder-tap="onReminderTap"
             />
             <EmptyTodayState
               v-else
@@ -193,7 +188,6 @@ import TripList from '../../components/TripList.vue'
 import EmptyState from '../../components/EmptyState.vue'
 import SpotDetailSheet from '../../components/SpotDetailSheet.vue'
 import ErrorBanner from '../../components/ErrorBanner.vue'
-import UnreadBadge from '../../components/UnreadBadge.vue'
 import EmptyTodayState from './components/EmptyTodayState.vue'
 // 2026-06-24 UserRound2-001 §3 Bug C 新增:删除确认弹窗(私有子组件,沿 TrashPage PermanentDeleteConfirmDialog 同形态)
 import DeleteConfirmDialog from './components/DeleteConfirmDialog.vue'
@@ -252,11 +246,6 @@ const hasDiaryContent = computed(() =>
 
 const headerTitle = computed(() =>
   hasDiaryContent.value ? strings.pageTitleDiary : strings.pageTitleTrips
-)
-
-const unreadCount = computed(() => store.unreadCount)
-const showBadge = computed(
-  () => hasDiaryContent.value && store.unreadCount > 0
 )
 
 const errorMessage = computed(
@@ -538,18 +527,6 @@ function onDeleteCancel() {
   deleteConfirmVisible.value = false
   pendingDeleteTrip.value = null
   logger.debug('[HomePage] delete trip cancel')
-}
-
-/**
- * ReminderChip 点击(spec §3.2:跳 TripDetailPage)
- * 本页面 MVP 不挂载实际 chip 数据,仅 handler 留作后续
- */
-function onReminderTap(tripId) {
-  logger.info('[HomePage] reminder tap', { tripId })
-  uni.navigateTo({ url: `${AppRoutes.TripDetail}?tripId=${tripId}` })
-    .catch((err) => {
-      logger.warn('[HomePage] navigateTo(TripDetail) fail', err)
-    })
 }
 
 /**

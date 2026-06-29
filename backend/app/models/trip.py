@@ -1,7 +1,7 @@
 from datetime import date, datetime, time
 from decimal import Decimal
 
-from sqlalchemy import Date, DateTime, ForeignKey, Numeric, String, Text, Time
+from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, Time
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db.base import Base
@@ -49,3 +49,8 @@ class TripItem(Base):
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(10, 7), default=None)
     status: Mapped[str] = mapped_column(String(30), default="planned")
     notes: Mapped[str | None] = mapped_column(Text, default=None)
+    arrived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        default=None,
+    )
+    arrival_distance_meters: Mapped[int | None] = mapped_column(Integer, default=None)
