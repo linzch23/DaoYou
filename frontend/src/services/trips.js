@@ -866,9 +866,12 @@ export function loadDrafts() {
  * 调用方(NewTripPage)据此 Toast「草稿保存失败,内容已保留在页面」
  * 并保留在原态继续编辑(spec §5.3.K)。
  *
- * @param {object} draft TripDraft 形状(spec §4.3):
- *   { id: number, created_at: string, inputText: string,
- *     attachedFiles: Array<{name, size, path}>, formData: object }
+ * v0.7.0 简化:TripDraft 形状从 5 字段 → 3 字段(spec §4.3):
+ *   删除 `inputText` + `attachedFiles`(随 input 态 / 文件 chips 一起删除)
+ *   保留字段 = `id` + `created_at` + `formData`
+ *
+ * @param {object} draft TripDraft 形状(spec §4.3,v0.7.0 起):
+ *   { id: number, created_at: string, formData: object }
  * @returns {boolean} true = 写成功
  */
 export function saveDraft(draft) {

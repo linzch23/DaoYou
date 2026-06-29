@@ -284,6 +284,7 @@
       :btn-confirm-label="ChatPageStrings.actionOptionsConfirm"
       :btn-cancel-label="ChatPageStrings.actionOptionsCancel"
       :submitting="isApplyingAction"
+      :invalid-message="actionOptionsInvalidMessage"
       @confirm="onActionOptionConfirm"
       @cancel="onActionOptionCancel"
     />
@@ -563,6 +564,11 @@ const isApplyingAction = ref(false)
 const deleteConfirmVisible = ref(false)
 /** @type {import('vue').Ref<any | null>} 等待最终确认的删除选项 */
 const pendingDeleteOption = ref(null)
+/**
+ * v0.3.0 新增:ActionOptionsModal 校验失败顶部 banner 提示文案
+ * (per spec §3.9 step 6 + AC-24;空串 = 隐藏 banner,非空 = 显示 banner + confirm 按钮 disabled)
+ */
+const actionOptionsInvalidMessage = ref('')
 /** @type {import('vue').Ref<boolean>} ApplyPlanConfirmDialog 显示标记 */
 const applyPlanDialogVisible = ref(false)
 /** @type {import('vue').Ref<number>} scroll-view 滚动位置(新 reply 到达后设 999999 强制滚到底) */
@@ -828,7 +834,19 @@ function onClarificationOptionClick(option, messageIndex) {
 
 /**
  * ActionOptionsModal:确认后按 operation 调用现有 TripItem API。
- * @param {any} selectedOption
+ *
+ * v0.3.0 升级(per spec §3.9 + §6.6 + AC-22/23/24):
+ *   - 步骤 1 校验前置:item_id 缺失 OR payload 字段不全 → 显示
+ *     `ChatPageStrings.replanInvalid` 内联 banner + **不**发起请求(spec §3.9 step 6 + AC-24)
+ *   - 步骤 2 trip_id 校验:option 的 trip_id 必须匹配 homeStore.currentTripId
+ *   - 步骤 3 调对应 operation:
+ *       - `create_trip_item` → services/trips.createTripItem(必要时先 createTripDay 自动建日)
+ *       - `update_trip_item` → chatStore.applyReplanOption(per spec §3.9 真接 PUT,内部统一日志 + 成功后 fetchHistory 刷新)
+ *   - 步骤 4 success:关闭 modal + Toast + 清 banner
+ *   - 步骤 5 failure:关闭 modal + Toast「应用失败」 + **不**弹 _ErrorOverlay + **不**自动重试
+ *
+ * @param {any} selectedOption 后端 action_options[] 单元素形态
+ *   { item_id?: number, operation: 'create_trip_item' | 'update_trip_item', payload: object, trip_id: number, trip_day_id?: number, target_day_index?: number, target_date?: string }
  */
 async function onActionOptionConfirm(selectedOption) {
   if (isApplyingAction.value) return
@@ -846,53 +864,144 @@ async function applyActionOption(selectedOption) {
 
   const boundTripId = useHomeStore().currentTripId
   const optionTripId = Number(selectedOption?.trip_id)
+
   if (!Number.isInteger(optionTripId) || optionTripId !== boundTripId) {
-    uni.showToast({ title: ChatPageStrings.actionOptionsInvalid, icon: 'none' })
-    logger.warn('[ChatPage] action option trip mismatch', { optionTripId, boundTripId })
+    uni.showToast({
+      title: ChatPageStrings.actionOptionsInvalid,
+      icon: 'none',
+    })
+    logger.warn('[ChatPage] action option trip mismatch', {
+      optionTripId,
+      boundTripId,
+    })
+    actionOptionsInvalidMessage.value = ''
     return false
   }
 
   const operation = selectedOption?.operation
-  const payload = sanitizeActionPayload(operation, selectedOption?.payload)
+  const rawPayload = selectedOption?.payload
+
+  if (
+    !selectedOption
+    || !rawPayload
+    || typeof rawPayload !== 'object'
+    || Array.isArray(rawPayload)
+  ) {
+    actionOptionsInvalidMessage.value = ChatPageStrings.replanInvalid
+    logger.warn('[ChatPage] action option invalid', { selectedOption })
+    return false
+  }
+
+  const payload = sanitizeActionPayload(operation, rawPayload)
+
+  // create 不要求 item_id；update/delete 必须有合法 item_id。
+  if (
+    ['update_trip_item', 'delete_trip_item'].includes(operation)
+    && (!Number.isInteger(Number(selectedOption.item_id))
+      || Number(selectedOption.item_id) <= 0)
+  ) {
+    actionOptionsInvalidMessage.value = ChatPageStrings.replanInvalid
+    logger.warn('[ChatPage] action option missing item_id', {
+      operation,
+      itemId: selectedOption?.item_id,
+    })
+    return false
+  }
+
+  actionOptionsInvalidMessage.value = ''
   isApplyingAction.value = true
+
   try {
     if (operation === 'create_trip_item') {
       let tripDayId = Number(selectedOption?.trip_day_id)
+
       if (!Number.isInteger(tripDayId) || tripDayId <= 0) {
         const targetDayIndex = Number(selectedOption?.target_day_index)
         const targetDate = selectedOption?.target_date
-        if (!Number.isInteger(targetDayIndex) || targetDayIndex <= 0 || typeof targetDate !== 'string') {
+
+        if (
+          !Number.isInteger(targetDayIndex)
+          || targetDayIndex <= 0
+          || typeof targetDate !== 'string'
+        ) {
           throw new Error('invalid trip day target')
         }
+
         const dayResult = await createTripDay(optionTripId, {
           day_index: targetDayIndex,
           trip_date: targetDate,
           summary: '',
         })
+
         tripDayId = Number(dayResult?.data?.trip_day_id)
-        if (!Number.isInteger(tripDayId) || tripDayId <= 0) throw new Error('invalid created trip_day_id')
+
+        if (!Number.isInteger(tripDayId) || tripDayId <= 0) {
+          throw new Error('invalid created trip_day_id')
+        }
       }
-      await createTripItem({ trip_day_id: tripDayId, ...payload })
+
+      await createTripItem({
+        trip_day_id: tripDayId,
+        ...payload,
+      })
     } else if (operation === 'update_trip_item') {
-      const itemId = Number(selectedOption?.item_id)
-      if (!Number.isInteger(itemId) || itemId <= 0) throw new Error('invalid item_id')
-      await updateTripItem(itemId, payload)
+      const itemId = Number(selectedOption.item_id)
+
+      // 使用 main 新增的 store 方法，成功后会刷新聊天历史。
+      await chatStore.applyReplanOption({
+        item_id: itemId,
+        payload,
+      })
     } else if (operation === 'delete_trip_item') {
-      const itemId = Number(selectedOption?.item_id)
-      if (!Number.isInteger(itemId) || itemId <= 0) throw new Error('invalid item_id')
+      const itemId = Number(selectedOption.item_id)
       await deleteTripItem(itemId)
     } else {
       throw new Error('unsupported action operation')
     }
 
     actionOptionsVisible.value = false
+    actionOptionsInvalidMessage.value = ''
     actionOptions.value = []
-    uni.showToast({ title: ChatPageStrings.actionOptionsApplied, icon: 'success' })
-    logger.info('[ChatPage] action option applied', { operation, optionTripId })
+
+    const successTitle = operation === 'update_trip_item'
+      ? ChatPageStrings.replanSuccess
+      : ChatPageStrings.actionOptionsApplied
+
+    uni.showToast({
+      title: successTitle,
+      icon: 'success',
+      duration: 2000,
+    })
+
+    logger.info('[ChatPage] action option applied', {
+      operation,
+      optionTripId,
+      itemId: selectedOption?.item_id,
+    })
+
     return true
   } catch (err) {
-    uni.showToast({ title: ChatPageStrings.actionOptionsApplyFailed, icon: 'none' })
-    logger.error('[ChatPage] action option apply failed', err)
+    actionOptionsInvalidMessage.value = ''
+
+    const failTitle = operation === 'update_trip_item'
+      ? ChatPageStrings.replanError
+      : ChatPageStrings.actionOptionsApplyFailed
+
+    uni.showToast({
+      title: failTitle,
+      icon: 'none',
+      duration: 2000,
+    })
+
+    logger.error('[ChatPage] action option apply failed', {
+      operation,
+      optionTripId,
+      itemId: selectedOption?.item_id,
+      error: err?.message,
+      code: err?.code,
+      statusCode: err?.statusCode,
+    })
+
     return false
   } finally {
     isApplyingAction.value = false

@@ -1,39 +1,49 @@
 <!--
   pages/personal-profile/index.vue — 编辑个人信息页(独立 route 化表单页,非 Tab)
-  
-  Spec contract: specs/PersonalProfilePage.md v0.1.0
+
+  Spec contract: specs/PersonalProfilePage.md v0.2.0
   Route: /pages/personal-profile/index
   入口:MyPage BtnEdit → uni.navigateTo({url: AppRoutes.PersonalProfile})
   出口:PUT 成功后 navigateBack(保留 stack)→ MyPage.onShow 重新拉取
-  
+
   5 视图态(spec §3.7 / §4.1 / §5):
     loading   — 初始 / GET 飞行中(转圈 + 提示)
-    editing   — GET 拉取成功 + formData 预填就绪 + 3 段表单可编辑
+    editing   — GET 拉取成功 + formData 预填就绪 + 5 段表单可编辑
     saving    — 用户点「保存」且 3 必填已填 + 校验通过(并行 PUT + 写本地)
     saved     — PUT 成功 ✓ 大对勾(瞬时 ≤ 200ms 后 navigateBack)
     error     — GET / PUT 失败(error panel + 重试)
-  
+
+  v0.2.0(2026-06-28)修订(spec §6.4.6 Resolved「5 段 vs 3 段」决策):
+    - 表单段数 3 → 5:新增段 4 旅行节奏(单选,可空)+ 段 5 特殊需求(多选,可空数组)
+    - PUT body 扩 3 字段:{ interests, travel_pace, special_needs }(gender / ageRange 仍 client-only)
+    - formData 类型扩 5 字段:gender / ageRange / interests / travelPace / specialNeeds
+    - _FormHeader summaryLine 5 段派生(原 3 段)
+    - formHint 文案 3 段 → 5 段可填前 3 必填(明确后 2 段可选)
+    - draftRestoredToast 文案「已恢复上次编辑的草稿」→「已恢复本地编辑草稿」
+
   复用(spec §3.6 + §10):
     - AppColors(山水日志配色)
     - AppRoutes.PersonalProfile(已预声明 routes.js:16)
-    - PersonalProfileStrings / PersonalProfileGenderOptions / PersonalProfileAgeOptions(本规格新增)
+    - PersonalProfileStrings / PersonalProfileGenderOptions / PersonalProfileAgeOptions / 🆕 PersonalProfileTravelPaceOptions / 🆕 PersonalProfileSpecialNeedOptions(本规格新增)
     - OnboardingInterestOptions(段 3 InterestGrid 5 项 1:1 对齐后端 Interest 枚举)
     - OnboardingStrings.errorXxx / retry / stepTitle / stepHint(错误兜底 + 重试 + 段 3 标题)
     - useUserStore.fetchPreferences() + updateProfile()(onLoad + save)
     - services/preferences.ApiError(跨 service 复用,import 自 services/preferences.js)
     - components/InterestGrid.vue(段 3 多选 grid,⭐ 复用)
+    - pages/personal-profile/components/GenderChipGroup.vue + AgeChipGroup.vue + 🆕 TravelPaceChipGroup.vue + 🆕 SpecialNeedChipGroup.vue(私有子组件,沿 §8.8 bug 2 修复命名)
     - 注:error 态走 spec §3 显式定义的 _ErrorPanel(icon + message + btn-retry)而非 _ErrorBanner ⭐,
       因本页面 error 是顶层态(整页 5 选 1)而非 form 内联提示;_ErrorBanner 在 OnboardingPage / NewTripPage
       form 内嵌场景使用,本页面复用模板不贴切
-  
+
   不复用:NextButton(单 CTA 场景)/ SpotDetailSheet(浮层专用)/ EmptyState(本页面用 inline _ErrorPanel)
-  
+
   草稿(spec §4.3 + §5.4 + §6.4.3):
     - key = 'user_profile_drafts',value = Record<userId, PersonalProfileDraft>
     - MVP 单 userId='1' 固定
     - 进入页面时若 storage 有该 userId 草稿,formData 预填用草稿(优先于 GET 响应)+ Toast 提示
     - 取消/返回时自动保存草稿(若有修改)+ 直接 navigateBack(**不**弹 _DraftConfirmDialog,per §6.4.3 Resolved)
     - 草稿保存失败(quota 满)→ logger.warn + 不阻塞 navigateBack
+    - v0.2.0:PersonalProfileDraft.formData 扩 5 字段(原 3 字段)
 -->
 <template>
   <view
@@ -73,7 +83,7 @@
           <text class="panel-center-title">{{ strings.loadingText }}</text>
         </view>
 
-        <!-- ───────── editing 态(3 段表单) ───────── -->
+        <!-- ───────── editing 态(5 段表单) ───────── -->
         <view
           v-else-if="currentStep === 'editing'"
           class="panel-form"
@@ -156,6 +166,30 @@
             >{{ strings.interestsRequiredMark }}</text>
           </view>
 
+          <!-- 段 4 旅行节奏 🆕 v0.2.0(3 选 1,可空,TravelPaceChipGroup 私有子组件) -->
+          <view class="form-section">
+            <view class="form-section-header">
+              <text class="form-section-title">{{ strings.sectionTitleTravelPace }}</text>
+              <text class="form-section-hint">{{ strings.sectionHintTravelPace }}</text>
+            </view>
+            <TravelPaceChipGroup
+              v-model="formData.travelPace"
+              @change="onTravelPaceChange"
+            />
+          </view>
+
+          <!-- 段 5 特殊需求 🆕 v0.2.0(3 选 N,可空数组,SpecialNeedChipGroup 私有子组件) -->
+          <view class="form-section">
+            <view class="form-section-header">
+              <text class="form-section-title">{{ strings.sectionTitleSpecialNeeds }}</text>
+              <text class="form-section-hint">{{ strings.sectionHintSpecialNeeds }}</text>
+            </view>
+            <SpecialNeedChipGroup
+              v-model="formData.specialNeeds"
+              @change="onSpecialNeedChange"
+            />
+          </view>
+
           <!-- (sticky bottom in flow) _ActionBar 单按钮(spec §3.4) -->
           <view class="action-bar">
             <view
@@ -220,6 +254,8 @@ import {
   PersonalProfileStrings,
   PersonalProfileGenderOptions,
   PersonalProfileAgeOptions,
+  PersonalProfileTravelPaceOptions,
+  PersonalProfileSpecialNeedOptions,
   OnboardingStrings,
 } from '../../constants/strings.js'
 import { useUserStore } from '../../stores/userStore.js'
@@ -227,12 +263,16 @@ import { logger } from '../../utils/logger.js'
 import InterestGrid from '../../components/InterestGrid.vue'
 import GenderChipGroup from './components/GenderChipGroup.vue'
 import AgeChipGroup from './components/AgeChipGroup.vue'
+import TravelPaceChipGroup from './components/TravelPaceChipGroup.vue'
+import SpecialNeedChipGroup from './components/SpecialNeedChipGroup.vue'
 
 const strings = PersonalProfileStrings
 
 // ─────────────── 类型定义(spec §4.1) ───────────────
 /**
  * @typedef {import('../../api/types').Interest} Interest
+ * @typedef {import('../../api/types').TravelPace} TravelPace
+ * @typedef {import('../../api/types').SpecialNeed} SpecialNeed
  *
  * @typedef {'male' | 'female' | 'other'} Gender
  * @typedef {'under_18' | '18_24' | '25_34' | '35_44' | '45_plus'} AgeRange
@@ -241,6 +281,8 @@ const strings = PersonalProfileStrings
  * @property {Gender | null} gender
  * @property {AgeRange | null} ageRange
  * @property {Interest[]} interests
+ * @property {TravelPace | null} travelPace      // 🆕 v0.2.0 段 4 旅行节奏(可空)
+ * @property {SpecialNeed[]} specialNeeds        // 🆕 v0.2.0 段 5 特殊需求(可空数组)
  *
  * @typedef {Object} PersonalProfileDraft
  * @property {string} userId
@@ -259,6 +301,7 @@ const STORAGE_KEY = 'user_profile_drafts'                 // 草稿 storage key(
 
 /**
  * 创建空的 PersonalProfileFormData(spec §4.1 createEmpty)
+ * 🆕 v0.2.0:扩 5 字段(原 3 字段 + travelPace + specialNeeds)
  * @returns {PersonalProfileFormData}
  */
 function createEmptyFormData() {
@@ -266,13 +309,17 @@ function createEmptyFormData() {
     gender: null,
     ageRange: null,
     interests: [],
+    travelPace: null,
+    specialNeeds: [],
   }
 }
 
 /**
  * 从 GET 响应 + 草稿派生表单数据(spec §4.1 fromPrefsAndDraft)
  * - draft 优先(spec §5.1 Step 1)
- * - 无 draft:gender / ageRange 始终 null(后端无字段),interests 从 prefs 取或 []
+ * - 无 draft:gender / ageRange 始终 null(后端无字段,client-only localStorage),
+ *   interests / travel_pace / special_needs 从 prefs 取(后端已有字段)
+ * 🆕 v0.2.0:扩 5 字段(原 3 字段 + travelPace + specialNeeds)
  * @param {import('../../api/types').Preferences | null} prefs
  * @param {PersonalProfileDraft | null} draft
  * @returns {PersonalProfileFormData}
@@ -283,12 +330,16 @@ function formDataFromPrefsAndDraft(prefs, draft) {
       gender: draft.formData.gender,
       ageRange: draft.formData.ageRange,
       interests: [...draft.formData.interests],
+      travelPace: draft.formData.travelPace ?? null,
+      specialNeeds: [...(draft.formData.specialNeeds || [])],
     }
   }
   return {
     gender: null,
     ageRange: null,
     interests: Array.isArray(prefs?.interests) ? [...prefs.interests] : [],
+    travelPace: prefs?.travel_pace || null,
+    specialNeeds: Array.isArray(prefs?.special_needs) ? [...prefs.special_needs] : [],
   }
 }
 
@@ -369,16 +420,22 @@ const lastErrorSource = ref(/** @type {'get' | 'put' | null} */ (null))
 
 // ─────────────── Computed ───────────────
 
-/** 表单是否有变化(决定 onBack 时是否写草稿) */
+/** 表单是否有变化(决定 onBack 时是否写草稿)
+ * 🆕 v0.2.0:加 2 字段 diff(travelPace / specialNeeds)
+ */
 const hasChanged = computed(() => {
   return (
     formData.value.gender !== originalData.value.gender
     || formData.value.ageRange !== originalData.value.ageRange
     || formData.value.interests.join(',') !== originalData.value.interests.join(',')
+    || formData.value.travelPace !== originalData.value.travelPace
+    || formData.value.specialNeeds.join(',') !== originalData.value.specialNeeds.join(',')
   )
 })
 
-/** 3 段必填是否都已填(gender + ageRange + interests ≥ 1) */
+/** 3 段必填是否都已填(gender + ageRange + interests ≥ 1)
+ * v0.2.0 不变:travel_pace / special_needs 可选(段 4 / 段 5 不参与必填校验,per spec §5.1 + AC-17)
+ */
 const hasRequiredFields = computed(() => {
   return formData.value.gender !== null
     && formData.value.ageRange !== null
@@ -391,12 +448,16 @@ const canSave = computed(() => {
   return hasRequiredFields.value
 })
 
-/** _FormHeader 3 段当前值摘要(性别:X | 年龄:X | 兴趣:N 项) */
+/** _FormHeader 5 段当前值摘要(性别:X | 年龄:X | 兴趣:N 项 | 旅行节奏:X | 特殊需求:N 项)
+ * 🆕 v0.2.0:扩 5 段(原 3 段 + 旅行节奏 + 特殊需求)
+ */
 const summaryLine = computed(() => {
   const sep = strings.formHeaderSeparator
   const g = formData.value.gender
   const a = formData.value.ageRange
   const i = formData.value.interests
+  const tp = formData.value.travelPace
+  const sn = formData.value.specialNeeds
   const gLabel = g
     ? (PersonalProfileGenderOptions.find((o) => o.value === g)?.label ?? g)
     : strings.formHeaderGenderEmpty
@@ -406,7 +467,14 @@ const summaryLine = computed(() => {
   const iLabel = i.length === 0
     ? strings.formHeaderInterestsEmpty
     : `${i.length} ${strings.formHeaderInterestsUnit}`
-  return `${strings.sectionTitleGender}:${gLabel}${sep}${strings.sectionTitleAge}:${aLabel}${sep}${iLabel}`
+  // 旅行节奏 null 显示「默认」(沿 StyleSettingPage §3.5 字面)
+  const tpLabel = tp
+    ? (PersonalProfileTravelPaceOptions.find((o) => o.value === tp)?.label ?? tp)
+    : strings.formHeaderTravelPaceEmpty
+  const snLabel = sn.length === 0
+    ? strings.formHeaderSpecialNeedsEmpty
+    : `${sn.length} ${strings.formHeaderSpecialNeedsUnit}`
+  return `${strings.sectionTitleGender}:${gLabel}${sep}${strings.sectionTitleAge}:${aLabel}${sep}${iLabel}${sep}${strings.sectionTitleTravelPace}:${tpLabel}${sep}${snLabel}`
 })
 
 // ─────────────── Store ───────────────
@@ -432,7 +500,12 @@ function onLoadPage() {
   if (draft) {
     const fd = formDataFromPrefsAndDraft(null, draft)
     formData.value = fd
-    originalData.value = { ...fd, interests: [...fd.interests] }
+    // 🆕 v0.2.0:originalData snapshot 扩 5 字段(原 3 字段)
+    originalData.value = {
+      ...fd,
+      interests: [...fd.interests],
+      specialNeeds: [...fd.specialNeeds],
+    }
     draftRestored.value = true
     logger.info('[PersonalProfilePage] draft restored', { userId: MVP_USER_ID, savedAt: draft.savedAt })
     uni.showToast({
@@ -469,14 +542,22 @@ function handleFetchResult(result) {
     if (!draftRestored.value) {
       const fd = formDataFromPrefsAndDraft(userStore.preferences, null)
       formData.value = fd
-      originalData.value = { ...fd, interests: [...fd.interests] }
+      // 🆕 v0.2.0:originalData snapshot 扩 5 字段(原 3 字段)
+      originalData.value = {
+        ...fd,
+        interests: [...fd.interests],
+        specialNeeds: [...fd.specialNeeds],
+      }
     }
     currentStep.value = 'editing'
     submitError.value = null
     lastErrorSource.value = null
+    // 🆕 v0.2.0:logger 加 2 字段(travelPace / specialNeedsCount)
     logger.info('[PersonalProfilePage] fetch ok', {
       userId: MVP_USER_ID,
       interestsCount: formData.value.interests.length,
+      travelPace: formData.value.travelPace,
+      specialNeedsCount: formData.value.specialNeeds.length,
     })
     return
   }
@@ -495,7 +576,12 @@ function onBack() {
     const draft = {
       userId: MVP_USER_ID,
       savedAt: new Date().toISOString(),
-      formData: { ...formData.value, interests: [...formData.value.interests] },
+      // 🆕 v0.2.0:草稿 formData 扩 5 字段(原 3 字段)
+      formData: {
+        ...formData.value,
+        interests: [...formData.value.interests],
+        specialNeeds: [...formData.value.specialNeeds],
+      },
     }
     saveUserProfileDraft(draft)
   }
@@ -517,9 +603,12 @@ function onSave() {
   }
   currentStep.value = 'saving'
   submitError.value = null
+  // 🆕 v0.2.0:logger 加 2 字段(travelPace / specialNeedsCount)
   logger.info('[PersonalProfilePage] save start', {
     userId: MVP_USER_ID,
     interestsCount: formData.value.interests.length,
+    travelPace: formData.value.travelPace,
+    specialNeedsCount: formData.value.specialNeeds.length,
   })
   doSave()
 }
@@ -527,10 +616,17 @@ function onSave() {
 /**
  * 实际发起 PUT(spec §5.2 Step 3)+ 写本地草稿
  * - 2 个 action 独立:PUT 失败切 error,草稿存失败仅 logger.warn 不阻塞
+ *
+ * 🆕 v0.2.0:PUT body 扩 3 字段 { interests, travel_pace, special_needs }
+ * (per spec AC-17;gender / ageRange 仍 client-only localStorage 不进 body)
  */
 async function doSave() {
-  // A. PUT /api/preferences
-  const putPromise = userStore.updateProfile({ interests: [...formData.value.interests] })
+  // A. PUT /api/preferences(body 3 字段,gender / ageRange 不进)
+  const putPromise = userStore.updateProfile({
+    interests: [...formData.value.interests],
+    travel_pace: formData.value.travelPace,
+    special_needs: [...formData.value.specialNeeds],
+  })
     .then(() => ({ ok: true }))
     .catch((err) => ({ ok: false, err }))
 
@@ -539,7 +635,12 @@ async function doSave() {
     const draft = {
       userId: MVP_USER_ID,
       savedAt: new Date().toISOString(),
-      formData: { ...formData.value, interests: [...formData.value.interests] },
+      // 🆕 v0.2.0:草稿 formData 扩 5 字段
+      formData: {
+        ...formData.value,
+        interests: [...formData.value.interests],
+        specialNeeds: [...formData.value.specialNeeds],
+      },
     }
     return { ok: saveUserProfileDraft(draft) }
   })
@@ -624,6 +725,20 @@ function onAgeChange(e) {
 /** @param {{ value: Interest, selected: boolean }} e */
 function onInterestChange(e) {
   logger.debug('[PersonalProfilePage] interest changed', e)
+}
+
+/** 🆕 v0.2.0:段 4 旅行节奏回调(spec §8.5)
+ * @param {{ value: TravelPace, selected: boolean }} e
+ */
+function onTravelPaceChange(e) {
+  logger.debug('[PersonalProfilePage] travel_pace changed', e)
+}
+
+/** 🆕 v0.2.0:段 5 特殊需求回调(spec §8.6)
+ * @param {{ value: SpecialNeed, selected: boolean }} e
+ */
+function onSpecialNeedChange(e) {
+  logger.debug('[PersonalProfilePage] special_needs changed', e)
 }
 
 // ─────────────── Lifecycle ───────────────

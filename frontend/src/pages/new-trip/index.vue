@@ -1,36 +1,36 @@
 <!--
   pages/new-trip/index.vue — 新建行程页(独立 route 化表单页,非 Tab)
-  
-  Spec contract: specs/NewTripPage.md v0.1.0
+
+  Spec contract: specs/NewTripPage.md v0.7.0
   Route: /pages/new-trip/index
   入口:HomePage BtnAddTrip / EmptyState CTA → uni.navigateTo({url: AppRoutes.NewTrip})
   出口(fix-trip-bugs-v1 2026-06-18):POST 成功后 reLaunch 跳 AppRoutes.Home
     (原跳 TripDetailPage 已被废弃 — reLaunch 清空整页栈,TripDetailPage onBack
      navigateBack 必然失败 → 兜底 reLaunch Home(整页刷新,体验糟))
-  
-  6 视图态(spec §3.7 / §5):
-    input      — 默认(Greeting + textarea + 文件 chips + 取消/确定)
-    analyzing  — 模拟 AI 推理 1.5-2.5s(转圈 + 提示)
-    form       — 7 字段表单 + 取消/确认 + (3 必填未填时 _ErrorBanner)
+
+  4 视图态(spec §3.7 / §5,v0.7.0 简化,6 → 4):
+    form       — 默认(v0.7.0 起直接进 form,跳过 input + analyzing);4 字段表单 + 取消/确认 + (3 必填未填时 _ErrorBanner)
     submitting — POST 飞行中(转圈 + 提示;无取消按钮)
     completed  — ✓ 创建成功(瞬时 ≤ 200ms 后 reLaunch)
     error      — 提交失败(error overlay + 重试)
-  
+    ~~input~~      — v0.7.0 已删除(Greeting + textarea + 文件 chips + 取消/确定,直接进入 form)
+    ~~analyzing~~  — v0.7.0 已删除(AI 模拟 setTimeout 1.5-2.5s + extractFormDataFromText 整段删除,per §6.4.1)
+
   复用:
     - AppColors(山水日志配色)
     - AppRoutes.NewTrip / AppRoutes.Home
-    - NewTripStrings / NewTripTransportOptions / NewTripNeedsOptions
+    - NewTripStrings(obsolete 字符串如 greetingTitle/analyzingTitle/textareaAria/btnSubmit/errorNoContent 保留,新代码不引用)
     - useHomeStore.fetchTrips()(POST 成功后刷新列表)
     - services/trips.createTrip + updateTrip + saveDraft
     - _ErrorBanner(3 必填校验失败提示,retryable=false)
-  
+
   不复用:不直接复用 NextButton / SpotDetailSheet(本页面双按钮,非单一 CTA)
-  
-  草稿(spec §5.4 + §6.4.3):
+
+  草稿(spec §5.4 + §6.4.3,v0.7.0 起 TripDraft 3 字段 = id + created_at + formData):
     - 取消且有内容 → _DraftConfirmDialog(3 按钮)
     - 「保存草稿」→ uni.setStorageSync('trip_drafts', [...]) + Toast + reLaunch Home
     - 「不保存」→ reLaunch Home
-    - 「继续编辑」→ 关闭弹窗,currentStep 回到 input
+    - 「继续编辑」→ 关闭弹窗,currentStep 保持 form
 -->
 <template>
   <view class="newtrip-page">
@@ -58,109 +58,14 @@
       :show-scrollbar="false"
     >
       <view class="body-inner">
-        <!-- ───────── input 态 ───────── -->
+        <!-- ───────── form 态(v0.7.0 起默认视图) ───────── -->
         <view
-          v-if="currentStep === 'input'"
-          class="panel-input"
-        >
-          <view class="greeting-block">
-            <text class="greeting-title">{{ strings.greetingTitle }}</text>
-            <text class="greeting-hint">{{ strings.greetingHint }}</text>
-          </view>
-
-          <view class="textarea-wrap">
-            <textarea
-              v-model="inputText"
-              class="textarea"
-              :placeholder="textareaPlaceholder"
-              :aria-label="strings.textareaAria"
-              placeholder-class="textarea-placeholder"
-              :auto-height="true"
-              :disable-default-padding="true"
-              :maxlength="1000"
-            />
-          </view>
-
-          <view class="file-row">
-            <view
-              class="btn-attach-file"
-              role="button"
-              :aria-label="strings.btnAttachFile"
-              hover-class="btn-attach-file-hover"
-              :hover-stay-time="50"
-              @click="onAttachFile"
-            >
-              <text class="btn-attach-file-emoji" aria-hidden="true">{{ strings.btnAttachFileEmoji }}</text>
-              <text class="btn-attach-file-text">{{ strings.btnAttachFile }}</text>
-            </view>
-            <view
-              v-for="(f, idx) in attachedFiles"
-              :key="idx"
-              class="file-chip"
-            >
-              <text class="file-chip-name">{{ f.name }}</text>
-              <view
-                class="file-chip-remove"
-                role="button"
-                aria-label="remove"
-                hover-class="file-chip-remove-hover"
-                :hover-stay-time="50"
-                @click="onRemoveFile(idx)"
-              >
-                <text class="file-chip-remove-text" aria-hidden="true">✕</text>
-              </view>
-            </view>
-          </view>
-
-          <view class="action-row">
-            <view
-              class="btn btn-cancel"
-              role="button"
-              :aria-label="strings.btnCancel"
-              hover-class="btn-cancel-hover"
-              :hover-stay-time="50"
-              @click="onCancel"
-            >
-              <text class="btn-cancel-text">{{ strings.btnCancel }}</text>
-            </view>
-            <view
-              class="btn btn-submit"
-              role="button"
-              :aria-label="strings.btnSubmit"
-              :class="{ 'btn-submit-disabled': !hasContent }"
-              hover-class="btn-submit-hover"
-              :hover-stay-time="50"
-              @click="onSubmit"
-            >
-              <text class="btn-submit-text">{{ strings.btnSubmit }}</text>
-            </view>
-          </view>
-        </view>
-
-        <!-- ───────── analyzing 态 ───────── -->
-        <view
-          v-else-if="currentStep === 'analyzing'"
-          class="panel-center"
-        >
-          <view class="loading-spinner" aria-hidden="true" />
-          <text class="panel-center-title">{{ strings.analyzingTitle }}</text>
-          <text class="panel-center-hint">{{ strings.analyzingHint }}</text>
-        </view>
-
-        <!-- ───────── form 态 ───────── -->
-        <view
-          v-else-if="currentStep === 'form'"
+          v-if="currentStep === 'form'"
           class="panel-form"
         >
           <view class="form-header">
             <text class="form-title">{{ strings.formTitle }}</text>
             <text class="form-hint">{{ formHintText }}</text>
-            <view
-              v-if="inputText.trim()"
-              class="form-input-preview"
-            >
-              <text class="form-input-preview-text">{{ inputTextPreview }}</text>
-            </view>
           </view>
 
           <ErrorBanner
@@ -356,7 +261,10 @@ const backAria = '返回'
  */
 
 /**
- * @typedef {'input' | 'analyzing' | 'form' | 'submitting' | 'completed' | 'error'} NewTripStep
+ * @typedef {'form' | 'submitting' | 'completed' | 'error'} NewTripStep
+ *
+ * v0.7.0 简化:6 枚举 → 4 枚举(spec §3.7 + §4.1);input / analyzing 视图态已删除,
+ * 页面进入即 default 'form'。spec-auditor 严格核对 enum 集为 4 个,不允许第 5 枚举值。
  */
 
 // ─────────────── 静态辅助函数 ───────────────
@@ -464,37 +372,6 @@ const MOCK_TRIP_FOR_COPY = Object.freeze({
 })
 
 /**
- * 从 inputText 极简正则提取 start_date / end_date(spec §5.5 视图决策算法,v0.4.0 移除 city)
- * @param {string} text
- * @returns {{ start_date: string, end_date: string }}
- */
-function extractFormDataFromText(text) {
-  const result = { start_date: '', end_date: '' }
-  if (!text) return result
-
-  // 日期:优先 YYYY-MM-DD
-  const isoDates = text.match(/\d{4}-\d{2}-\d{2}/g) || []
-  if (isoDates.length >= 2) {
-    result.start_date = isoDates[0]
-    result.end_date = isoDates[1]
-  } else {
-    // fallback:MM月DD日 / M月D日
-    const cnDates = text.match(/(\d{1,2})月(\d{1,2})日/g) || []
-    if (cnDates.length >= 2) {
-      const year = new Date().getFullYear()
-      const m1 = cnDates[0].match(/(\d{1,2})月(\d{1,2})日/)
-      const m2 = cnDates[1].match(/(\d{1,2})月(\d{1,2})日/)
-      if (m1 && m2) {
-        result.start_date = `${year}-${m1[1].padStart(2, '0')}-${m1[2].padStart(2, '0')}`
-        result.end_date = `${year}-${m2[1].padStart(2, '0')}-${m2[2].padStart(2, '0')}`
-      }
-    }
-  }
-
-  return result
-}
-
-/**
  * 将 ApiError 归一为友好提示(spec §6.1 Error 表 + §5.3 D-G)
  * @param {import('../../services/preferences.js').ApiError | Error | unknown} err
  * @returns {string}
@@ -518,16 +395,12 @@ function mapErrorToMessage(err) {
   return NewTripStrings.errorNetwork
 }
 
-// ─────────────── Local State(spec §4.1) ───────────────
+// ─────────────── Local State(spec §4.1,v0.7.0 简化) ───────────────
 
-/** @type {import('vue').Ref<string>} */
-const inputText = ref('')
-/** @type {import('vue').Ref<Array<{name: string, size: number, path: string}>>} */
-const attachedFiles = ref([])
 /** @type {import('vue').Ref<NewTripFormData>} */
 const formData = ref(createEmptyFormData())
-/** @type {import('vue').Ref<NewTripStep>} 严格 6 枚举 */
-const currentStep = ref('input')
+/** @type {import('vue').Ref<NewTripStep>} 严格 4 枚举(v0.7.0 简化,6 → 4) */
+const currentStep = ref('form')
 /** @type {import('vue').Ref<string | null>} POST 失败的友好提示,驱动 _ErrorOverlay */
 const submitError = ref(null)
 /** @type {import('vue').Ref<string | null>} form 内部 3 必填校验失败提示 */
@@ -545,12 +418,12 @@ const isCopyMode = computed(() => copyFromTripId.value !== null)
 
 // ─────────────── Computed ───────────────
 
-/** 是否有内容(inputText 非空 / 文件非空 / formData 非空)用于判定弹草稿
- * v0.4.0(TripCreateEditFix-001):移除 city / companions / budget / transport / needs 5 字段校验 */
+/** 是否有内容(formData 非空)用于判定弹草稿
+ * v0.4.0(TripCreateEditFix-001):移除 city / companions / budget / transport / needs 5 字段校验
+ * v0.7.0 简化:移除 inputText / attachedFiles 2 字段(input 态已删除);
+ * hasContent = formData 任一字段非 createEmpty 默认值 */
 const hasContent = computed(() => {
   return (
-    inputText.value.trim() !== '' ||
-    attachedFiles.value.length > 0 ||
     formData.value.title.trim() !== '' ||
     formData.value.start_date !== '' ||
     formData.value.end_date !== '' ||
@@ -569,16 +442,6 @@ const hasRequiredFields = computed(() => {
 
 /** title 输入框 placeholder(v0.4.0 新增,显式 title 字段) */
 const titlePlaceholder = computed(() => '例如:大连三日游')
-
-/** textarea placeholder(选填,用静态提示) */
-const textareaPlaceholder = computed(() => '例如:7 月去大连玩 3 天,带老婆孩子,预算 5000,坐飞机')
-
-/** inputText 折叠预览(> 30 字截断) */
-const inputTextPreview = computed(() => {
-  const t = inputText.value.trim()
-  if (t.length <= 30) return t
-  return `${t.slice(0, 30)}…`
-})
 
 /** date-picker 起始日期(今天) */
 const datePickerStart = computed(() => {
@@ -608,18 +471,6 @@ const btnConfirmText = computed(() =>
 
 // ─────────────── Store ───────────────
 const homeStore = useHomeStore()
-
-// ─────────────── 内部 helper ───────────────
-
-/** 上一次 setTimeout 的 id(分析态去重,spec §5.3.L) */
-let analyzingTimerId = null
-
-function clearAnalyzingTimer() {
-  if (analyzingTimerId !== null) {
-    clearTimeout(analyzingTimerId)
-    analyzingTimerId = null
-  }
-}
 
 // ─────────────── UI-024 复制模式入口 ───────────────
 
@@ -690,7 +541,7 @@ function getCurrentPageOptions() {
 /**
  * 页面初始化入口(UI-024)
  * 解析 ?copyFrom=xxx,有效 → loadAndPrefillFromTrip + 切 form 态
- * 缺省 / 无效 → 走默认 input 态(沿 spec §3.7)
+ * 缺省 / 无效 → 走默认 form 态(v0.7.0 起 currentStep 默认 'form',无需切换)
  * @param {Record<string, string | undefined> | undefined} options
  */
 function onLoadPage(options) {
@@ -698,7 +549,7 @@ function onLoadPage(options) {
 
   const raw = options?.copyFrom
   if (raw === undefined || raw === null || raw === '') {
-    return // 缺省 = 普通新建模式,currentStep 保持 'input'
+    return // 缺省 = 普通新建模式,currentStep 已 default 'form'(v0.7.0 简化)
   }
   const n = Number(raw)
   if (!Number.isFinite(n) || n <= 0) {
@@ -711,56 +562,10 @@ function onLoadPage(options) {
   currentStep.value = 'form'
   submitError.value = null
   formSubmitError.value = null
-  logger.info('[NewTripPage] enter copy mode, skip input/analyzing', { tripId: n })
+  logger.info('[NewTripPage] enter copy mode', { tripId: n })
 }
 
 // ─────────────── Handlers ───────────────
-
-/**
- * input 态:点「确定」 → analyzing(spec §5.2 Step 1)
- * 校验:text + files 二选一非空(AC-02)
- */
-function onSubmit() {
-  if (!hasContent.value) {
-    uni.showToast({
-      title: NewTripStrings.errorNoContent,
-      icon: 'none',
-      duration: 1500,
-    })
-    logger.warn('[NewTripPage] submit blocked, no content')
-    return
-  }
-
-  logger.info('[NewTripPage] analyze start', {
-    inputTextLen: inputText.value.length,
-    files: attachedFiles.value.length,
-  })
-
-  currentStep.value = 'analyzing'
-  submitError.value = null
-  formSubmitError.value = null
-
-  // 1.5-2.5s 随机延迟模拟 AI(spec §6.4.1 + §5.5)
-  clearAnalyzingTimer()
-  const delay = 1500 + Math.random() * 1000
-  analyzingTimerId = setTimeout(() => {
-    analyzingTimerId = null
-    // guard:防止 spec §5.3.L 描述的"快速来回切"导致旧 timer 触发新 step
-    if (currentStep.value !== 'analyzing') return
-
-    const extracted = extractFormDataFromText(inputText.value)
-    formData.value = {
-      ...createEmptyFormData(),
-      start_date: extracted.start_date,
-      end_date: extracted.end_date,
-    }
-    currentStep.value = 'form'
-    logger.info('[NewTripPage] analyze done', {
-      start_date: formData.value.start_date,
-      end_date: formData.value.end_date,
-    })
-  }, delay)
-}
 
 /**
  * form 态:点「确认」 → submitting(spec §5.2 Step 3-4)
@@ -907,7 +712,7 @@ function onBack() {
  *
  * v0.5.0(2026-06-26 per user-round3「首页不显示草稿」修复)草稿推上后端触发:
  *   - 策略:有 start_date / end_date → 走 `createTrip` 真后端(草稿推上 HomePage);
- *          没日期(只填了 title / inputText / files)→ fallback 旧 `saveDraft` 本地 storage
+ *          没日期(只填了 title)→ fallback 旧 `saveDraft` 本地 storage
  *          (后端 CreateTripRequest start_date / end_date 必填,不能空)
  *   - 后端 `createTrip` 失败(网络断开 / 5xx)→ 降级到 `saveDraft` 本地 storage 兜底
  *   - 草稿**至少**有 title(否则没意义)
@@ -918,6 +723,11 @@ function onBack() {
  *   - 入口加守卫:`!fd.start_date || !fd.end_date` → 拒绝保存 + Toast「未选择日期,无法保存为草稿」
  *   - 不调 createTrip / saveDraft,关闭 _DraftConfirmDialog,currentStep 保持不变
  *   - 仅针对"没日期"场景;createTrip 失败的 fallback 路径**不**受影响(仍走 saveDraft)
+ *
+ * v0.7.0 简化:
+ *   - TripDraft 形状从 5 字段 → 3 字段(spec §4.3):删除 `inputText` + `attachedFiles`
+ *     (input 态已删除,这两个字段无内容可存)
+ *   - `currentStep` 失败回退路径从 'input' 改 'form'(input 态已删除)
  *
  * @returns {Promise<void>}
  */
@@ -986,13 +796,12 @@ async function onDialogSave() {
   }
 
   // 策略 2:fallback — 旧 saveDraft 本地 storage 路径
-  //   触发条件:无 start_date/end_date(只填了 title/inputText/files)
+  //   触发条件:无 start_date/end_date(只填了 title)
   //            或策略 1 createTrip 抛错
+  // v0.7.0 简化:TripDraft 3 字段 = id + created_at + formData(删除 inputText + attachedFiles)
   const draft = {
     id: Date.now(),
     created_at: new Date().toISOString(),
-    inputText: inputText.value,
-    attachedFiles: attachedFiles.value,
     formData: fd,
   }
   const ok = saveDraft(draft)
@@ -1010,13 +819,13 @@ async function onDialogSave() {
     }, 1200)
   } else {
     // storage 写异常(spec §5.3.K)
-    logger.warn('[NewTripPage] saveDraft failed (local fallback), stay in input')
+    logger.warn('[NewTripPage] saveDraft failed (local fallback), stay in form')
     uni.showToast({
       title: NewTripStrings.draftSaveFailedToast,
       icon: 'none',
       duration: 1500,
     })
-    currentStep.value = 'input'
+    currentStep.value = 'form'
   }
 }
 
@@ -1035,44 +844,7 @@ function onDialogDontSave() {
 function onDialogContinue() {
   logger.info('[NewTripPage] cancel draft, continue edit')
   dialogVisible.value = false
-  currentStep.value = 'input'
-}
-
-/**
- * 添加文件(uni.chooseFile,跨端 API)
- *
- * MVP 简化(spec §3.3):仅展示文件名 + 大小,不解析内容,POST 不上传。
- * 失败 → 仅 logger.warn,不阻塞 UI。
- */
-function onAttachFile() {
-  uni.chooseFile({
-    count: 5,
-    success: (res) => {
-      const files = res.tempFiles || []
-      for (const f of files) {
-        attachedFiles.value.push({
-          name: f.name,
-          size: f.size,
-          path: f.path,
-        })
-      }
-      logger.info('[NewTripPage] attach files', { count: files.length })
-    },
-    fail: (err) => {
-      logger.warn('[NewTripPage] chooseFile fail', err)
-    },
-  })
-}
-
-/**
- * 移除已选文件
- * @param {number} idx
- */
-function onRemoveFile(idx) {
-  const f = attachedFiles.value[idx]
-  if (!f) return
-  attachedFiles.value.splice(idx, 1)
-  logger.info('[NewTripPage] remove file', { name: f.name })
+  currentStep.value = 'form'
 }
 
 /**
@@ -1217,7 +989,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  clearAnalyzingTimer()
+  // v0.7.0 简化:clearAnalyzingTimer 已删除(input/analyzing 态不存在,无 setTimeout 句柄需清)
   logger.debug('[NewTripPage] onUnmounted, currentStep=' + currentStep.value)
 })
 </script>
