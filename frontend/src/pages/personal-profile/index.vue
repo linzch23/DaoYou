@@ -333,6 +333,21 @@ const strings = PersonalProfileStrings
 // ─────────────── 常量 ───────────────
 const MVP_USER_ID = '1'                                  // MVP 单用户(per docs/API接口文档.md §1.3)
 const STORAGE_KEY = 'user_profile_drafts'                 // 草稿 storage key(spec §4.3 备注,沿用 EditTripPage key 风格)
+/** 🆕 v0.2.1 fix:saved 瞬时态后 navigateBack 的延迟(per spec §3.7 L164-167 + §1 L55+57);≤200ms 避免黑屏闪跳 */
+const SAVED_NAVIGATE_BACK_DELAY_MS = 200
+
+// ─────────────── saved 瞬时态 timer(🆕 v0.2.1 fix;stale guard) ───────────────
+
+/** saved → navigateBack 的 timer handle;null = 未启动 timer(spec §3.7 L73 字面 restored) */
+let savedTimerId = /** @type {ReturnType<typeof setTimeout> | null} */ (null)
+
+/** 清掉 savedTimer(防止 onSave 重复触发造成 navigateBack 多次调用;沿 NewTripPage §5.6 stale setTimeout guard 模式) */
+function clearSavedTimer() {
+  if (savedTimerId !== null) {
+    clearTimeout(savedTimerId)
+    savedTimerId = null
+  }
+}
 
 // ─────────────── 静态辅助函数 ───────────────
 
@@ -699,6 +714,8 @@ function handleFetchResult(result) {
  * Header「←」点击:onBack 走 §5.4 简化决策(自动存草稿 + navigateBack,**不**弹 _DraftConfirmDialog)
  */
 function onBack() {
+  // 🆕 v0.2.1 fix:防止 saved 瞬时态的 200ms timer 已飞,触发「点 Back → 自动存草稿 → navigateBack + saved-timer 仍飞 → 二次 navigateBack」竞态
+  clearSavedTimer()
   logger.info('[PersonalProfilePage] back, hasChanged=' + hasChanged.value, { userId: MVP_USER_ID })
   if (hasChanged.value) {
     const draft = {
@@ -853,7 +870,8 @@ async function doSave() {
     return
   }
 
-  // 成功后留在当前页，让用户直接看到已保存的原文和解析摘要。
+  // 成功后保存原文 + 切 saved 瞬时态 + 200ms 后 navigateBack 回 MyPage(per spec §3.7 L73 + §3 备注 2)
+  // 🆕 v0.2.1 fix:之前 buggy 写「currentStep='editing' + 留在当前页」违反 spec 字面,实测卡在 PersonalProfilePage
   originalData.value = {
     ...formData.value,
     interests: [...formData.value.interests],
@@ -861,7 +879,7 @@ async function doSave() {
     customPreferences: JSON.parse(JSON.stringify(formData.value.customPreferences || {})),
   }
   clearUserProfileDraft()
-  currentStep.value = 'editing'
+  currentStep.value = 'saved'
   submitError.value = null
   lastErrorSource.value = null
   logger.info('[PersonalProfilePage] save ok', { userId: MVP_USER_ID })
@@ -871,6 +889,16 @@ async function doSave() {
     icon: 'success',
     duration: 1500,
   })
+
+  // 200ms 后 navigateBack 回 MyPage(保留 stack,因为 MyPage 是 push 入口 spec §1 L26)
+  // 旧实现漏掉这一段导致实测「卡 PersonalProfilePage」;沿 §3 备注 2 + StyleSettingPage §10.1 同模式
+  clearSavedTimer()
+  savedTimerId = setTimeout(() => {
+    savedTimerId = null
+    // stale guard:期间用户点 Back 或 切到其他态 → 不调 navigateBack(避免触发 404)
+    if (currentStep.value !== 'saved') return
+    navigateBack()
+  }, SAVED_NAVIGATE_BACK_DELAY_MS)
 
 }
 
@@ -946,6 +974,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   logger.debug('[PersonalProfilePage] onUnmounted, currentStep=' + currentStep.value)
+  // 🆕 v0.2.1 fix:清理 saved → navigateBack 的 timer,避免页面卸载后 timer 仍在飞 navigateBack(内存泄漏防护)
+  clearSavedTimer()
 })
 </script>
 

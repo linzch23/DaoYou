@@ -875,6 +875,9 @@ export const MyPageStrings = {
   preferenceTitle: '我的偏好',     // 标题(Noto Serif SC 16px 600)
   interestEmpty: '暂未选择感兴趣领域',   // interests 为空 / null 时占位
   explanationEmpty: '暂未设置默认讲解风格', // explanation_style 为空 / null 时占位
+  // 🆕 v0.2.0 偏好摘要扩字段(per `specs/MyPage.md` §3.3 + §10.4 R-16;数据已存在 services/preferences.js:167,169 store 拉取时已落地)
+  travelPaceEmpty: '暂未设置旅行节奏',         // travel_pace 为 null 时占位(3 枚举 PersonalProfileTravelPaceOptions labels)
+  specialNeedsEmpty: '暂未设置特殊需求',       // special_needs 为 [] 时占位(3 枚举数组 PersonalProfileSpecialNeedOptions labels)
 
   // 菜单列表(spec §4.6 菜单列表)
   menuPersonalProfile: '个人信息编辑',   // 菜单项 1 标签
