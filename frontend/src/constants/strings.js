@@ -144,7 +144,10 @@ export const HomeStrings = {
   // 行程卡片删除入口(2026-06-24 UserRound2-001 §3 Bug C 新增)
   // 沿 AGENTS.md §8.6 13 页面惯例:每个 user-facing 文案键必带 aria 标签
   // 状态门控:仅 draft / finished trip 显示删除按钮(active 引导走回收站,见 deleteActiveTripToast)
-  btnDeleteTrip: '删除',
+  // v0.X 修订:删除按钮从字面「删除」改为 🗑 emoji 图标,
+  //   与 .btn-delete-trip CSS(64×64rpx 圆形 + 32rpx emoji 字号)对齐,
+  //   视觉与相邻 btn-chat-trip(💬)保持一致;aria 仍保留「删除「{title}」」描述性文本
+  btnDeleteTrip: '🗑',
   btnDeleteTripAria: '删除「{title}」',
   deleteConfirmTitle: '删除行程?',
   deleteConfirmMessage: '删除后可在「我的-回收站」中恢复',
