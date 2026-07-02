@@ -9,7 +9,11 @@ from app.core.config import settings
 from app.core.errors import AppError, ErrorCode
 from app.models.photo import PhotoRecord
 from app.schemas.common import Location
-from app.services.preference_service import get_preferences
+from app.services.preference_service import (
+    get_memory_settings,
+    get_preferences,
+    get_relevant_memories,
+)
 from app.services.resource_service import require_user
 from app.services.trip_service import get_trip_detail
 
@@ -66,6 +70,7 @@ def explain_photo(
     # 成员 C 接入点：图片路径、文件名和定位信息会进入 Agent 的拍照讲解链路。
     try:
         current_trip = get_trip_detail(user_id=user_id, trip_id=trip_id, db=db)
+        memory_enabled = get_memory_settings(user_id=user_id, db=db)["enabled"]
         agent_result = run_agent(
             {
                 "user_id": user_id,
@@ -74,6 +79,11 @@ def explain_photo(
                 "current_location": current_location.model_dump() if current_location else {},
                 "current_trip": current_trip,
                 "user_preferences": get_preferences(user_id=user_id, db=db)["preferences"],
+                "long_term_memories": (
+                    get_relevant_memories(user_id=user_id, db=db)
+                    if memory_enabled
+                    else []
+                ),
                 "image_info": {
                     "image_path": image_path,
                     "saved_path": str(saved_path),

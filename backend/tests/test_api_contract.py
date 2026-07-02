@@ -96,6 +96,8 @@ def test_chat_replan_returns_action_options(db: Session, monkeypatch) -> None:
     assert response["action_options"]
     assert response["action_options"][0]["operation"] == "update_trip_item"
     assert response["action_options"][0]["item_id"] == item.id
+    assert response["action_options"][0]["action_id"]
+    assert response["action_options"][0]["expires_at"]
 
 
 def test_photo_location_uses_shared_location_shape() -> None:

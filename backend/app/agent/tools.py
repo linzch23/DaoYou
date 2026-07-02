@@ -67,7 +67,10 @@ UPDATE_TRIP_ITEM_FIELDS = CREATE_TRIP_ITEM_FIELDS | {"status"}
 
 # 行程工具：当前读取传入上下文或演示默认行程，后续可接 trips 相关数据库查询。
 def trip_tool(state: AgentState) -> dict[str, object]:
-    return dict(state.get("current_trip") or DEFAULT_TRIP)
+    trip = state.get("current_trip")
+    if trip:
+        return dict(trip)
+    return dict(DEFAULT_TRIP) if settings.demo_fallbacks_enabled else {}
 
 
 # 记忆工具：当前读取传入偏好或默认画像，后续可接 user_memory/user_preferences。
@@ -457,7 +460,15 @@ def vision_tool(image_info: dict[str, object] | None = None) -> dict[str, object
         qwen_result = _qwen_vision_tool(image_info)
         if qwen_result is not None:
             return qwen_result
-    return _mock_vision_tool(image_info)
+    if settings.demo_fallbacks_enabled:
+        return _mock_vision_tool(image_info)
+    return {
+        "name": "",
+        "confidence": 0.0,
+        "recognition_result": "暂时无法可靠识别这张图片。",
+        "available": False,
+        "error": "vision_unavailable",
+    }
 
 
 def _mock_vision_tool(image_info: dict[str, object] | None = None) -> dict[str, object]:
@@ -596,7 +607,18 @@ def map_tool(
         amap_result = _amap_map_tool(origin=origin, destination=destination, keyword=keyword)
         if amap_result is not None:
             return amap_result
-    return _mock_map_tool(origin=origin, destination=destination, keyword=keyword)
+    if settings.demo_fallbacks_enabled:
+        return _mock_map_tool(origin=origin, destination=destination, keyword=keyword)
+    return {
+        "available": False,
+        "error": "map_unavailable",
+        "distance_minutes": None,
+        "distance_text": "暂时无法获取路线信息",
+        "keyword": keyword or "",
+        "recommended_place": None,
+        "origin": origin or {},
+        "destination": destination or {},
+    }
 
 
 def _mock_map_tool(
@@ -656,7 +678,16 @@ def weather_tool(city: str | None = None, date: str | None = None) -> dict[str, 
         amap_result = _amap_weather_tool(city=city, date=date)
         if amap_result is not None:
             return amap_result
-    return _mock_weather_tool(city=city, date=date)
+    if settings.demo_fallbacks_enabled:
+        return _mock_weather_tool(city=city, date=date)
+    return {
+        "available": False,
+        "error": "weather_unavailable",
+        "city": city or "",
+        "date": date,
+        "weather": None,
+        "summary": "暂时无法获取天气信息。",
+    }
 
 
 def _mock_weather_tool(city: str | None = None, date: str | None = None) -> dict[str, object]:
@@ -714,6 +745,14 @@ def reminder_tool(state: AgentState) -> dict[str, object]:
     next_item = _find_next_item(trip)
     map_result = map_tool(origin=state.get("current_location"), destination=next_item)
 
+    if not next_item or map_result.get("available") is False:
+        return {
+            "has_risk": False,
+            "reminder": None,
+            "evaluation_status": "unavailable",
+            "reason": "缺少下一行程项或可靠路线信息",
+        }
+
     reminder_type = "departure"
     content = (
         f"{map_result['distance_text']}，建议现在出发，"
@@ -752,6 +791,8 @@ def _find_next_item(trip: dict[str, object]) -> dict[str, object]:
                 for item in items:
                     if isinstance(item, dict) and item.get("status", "planned") == "planned":
                         return item
+    if not settings.demo_fallbacks_enabled:
+        return {}
     return {
         "id": 1,
         "city": "大连",
@@ -773,6 +814,8 @@ def find_replan_target(trip: dict[str, object]) -> dict[str, object]:
         ]
         if planned_items:
             return planned_items[-1]
+    if not settings.demo_fallbacks_enabled:
+        return {}
     return {
         "id": 3,
         "city": "大连",

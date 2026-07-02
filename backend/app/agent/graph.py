@@ -1,5 +1,7 @@
 from langgraph.graph import END, START, StateGraph
+from pydantic import ValidationError
 
+from app.agent.contracts import AgentInput, AgentResponse
 from app.agent.nodes import (
     chat_response_node,
     intent_detect_node,
@@ -63,8 +65,10 @@ AGENT_GRAPH = build_agent_graph()
 # service 层调用 Agent 的唯一入口；不要在 router/service 中散写 Agent 推理逻辑。
 def run_agent(state: AgentState) -> dict[str, object]:
     try:
-        final_state = AGENT_GRAPH.invoke(state)
+        validated_state = AgentInput.model_validate(state).model_dump()
+        final_state = AGENT_GRAPH.invoke(validated_state)
         response = dict(final_state.get("final_response") or FALLBACK_RESPONSE)
+        response["memory_candidates"] = final_state.get("memory_candidates") or []
     except Exception as exc:
         response = {**FALLBACK_RESPONSE, "error": str(exc)}
 
@@ -74,4 +78,10 @@ def run_agent(state: AgentState) -> dict[str, object]:
     response.setdefault("structured_data", {})
     response.setdefault("follow_up_questions", [])
     response.setdefault("clarification_options", [])
-    return response
+    try:
+        return AgentResponse.model_validate(response).model_dump(mode="json", exclude_none=True)
+    except ValidationError as exc:
+        return AgentResponse(
+            **FALLBACK_RESPONSE,
+            error=f"Agent 输出结构无效: {exc}",
+        ).model_dump(mode="json", exclude_none=True)

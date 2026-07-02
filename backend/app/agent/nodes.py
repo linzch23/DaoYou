@@ -1,7 +1,9 @@
 import json
 import re
 
+from app.agent.intent import classify_intent
 from app.agent.llm import call_llm
+from app.agent.memory import extract_explicit_memory_candidates
 from app.agent.prompts import (
     CHAT_PROMPT,
     PHOTO_EXPLAIN_PROMPT,
@@ -20,48 +22,18 @@ from app.agent.tools import (
     vision_tool,
     weather_tool,
 )
+from app.core.config import settings
 
 
 # 当前是 mock 意图识别：优先使用 service 传入的 intent_hint，
 # 后续可以替换为 LLM intent classifier 或更完整的规则分类器。
 def intent_detect_node(state: AgentState) -> AgentState:
-    if state.get("intent_hint"):
-        return {**state, "intent": str(state["intent_hint"])}
-
-    if state.get("image_info"):
-        return {**state, "intent": "photo_explain"}
-
-    message = str(state.get("user_message") or "")
-    if any(
-        keyword in message
-        for keyword in [
-            "不想去",
-            "累",
-            "换",
-            "取消",
-            "改",
-            "新增",
-            "添加",
-            "加一个",
-            "加个",
-            "安排一个",
-            "插入",
-            "删除",
-            "删掉",
-            "移除",
-            "不去了",
-            "不要了",
-        ]
-    ) or (
-        "安排" in message
-        and any(keyword in message for keyword in ["景点", "餐", "咖啡", "休息", "活动", "项目"])
-    ):
-        return {**state, "intent": "replan"}
-    if _is_trip_item_clarification_reply(state):
-        return {**state, "intent": "replan"}
-    if any(keyword in message for keyword in ["提醒", "来得及", "出发", "风险"]):
-        return {**state, "intent": "reminder"}
-    return {**state, "intent": "chat"}
+    classification = classify_intent(state)
+    return {
+        **state,
+        "intent": classification.intent.value,
+        "intent_classification": classification.model_dump(mode="json"),
+    }
 
 
 # AI 对话节点：负责结合用户偏好和当前消息生成自然语言回复。
@@ -69,7 +41,7 @@ def chat_response_node(state: AgentState) -> AgentState:
     preferences = memory_tool(state)
     message = str(state.get("user_message") or "")
     llm_result = _generate_chat_with_llm(state, preferences, message)
-    reply = llm_result["reply"] or _mock_chat_reply(message, preferences)
+    reply = llm_result["reply"] or _fallback_chat_reply(message, preferences)
     clarification_options = llm_result["clarification_options"]
     follow_up_questions = [] if clarification_options else (
         llm_result["follow_up_questions"]
@@ -96,13 +68,20 @@ def photo_explain_node(state: AgentState) -> AgentState:
     vision_result = vision_tool(image_info)
     ocr_result = ocr_tool(image_info)
     preferences = memory_tool(state)
-    llm_result = _generate_photo_explanation_with_llm(
-        state=state,
-        vision_result=vision_result,
-        ocr_result=ocr_result,
-        preferences=preferences,
-    )
-    payload = llm_result or _mock_photo_payload(vision_result, ocr_result, preferences)
+    llm_result = None
+    if vision_result.get("available") is not False or ocr_result.get("text"):
+        llm_result = _generate_photo_explanation_with_llm(
+            state=state,
+            vision_result=vision_result,
+            ocr_result=ocr_result,
+            preferences=preferences,
+        )
+    if llm_result is not None:
+        payload = llm_result
+    elif vision_result.get("available") is False:
+        payload = _unavailable_photo_payload(vision_result, ocr_result)
+    else:
+        payload = _mock_photo_payload(vision_result, ocr_result, preferences)
     explanation = str(payload["explanation"])
 
     structured_data = {
@@ -127,10 +106,15 @@ def photo_explain_node(state: AgentState) -> AgentState:
 # 智能提醒节点：根据当前行程、位置和时间生成主动提醒结果。
 def reminder_node(state: AgentState) -> AgentState:
     tool_result = reminder_tool(state)
-    llm_result = _generate_reminder_with_llm(state, tool_result)
+    llm_result = None
+    if tool_result.get("evaluation_status") != "unavailable":
+        llm_result = _generate_reminder_with_llm(state, tool_result)
     reminder_result = llm_result or tool_result
     reminder = reminder_result.get("reminder") or {}
-    reply = str(reminder.get("content") or "当前行程暂时没有明显风险，可以按计划继续。")
+    if reminder_result.get("evaluation_status") == "unavailable":
+        reply = "暂时无法取得可靠路线信息，因此不能判断是否需要现在出发。"
+    else:
+        reply = str(reminder.get("content") or "当前行程暂时没有明显风险，可以按计划继续。")
     final_response = {
         "intent": "reminder",
         "reply": reply,
@@ -168,8 +152,12 @@ def replan_node(state: AgentState) -> AgentState:
         structured_data = llm_result
     elif _is_trip_item_create_request(str(state.get("user_message") or "")):
         structured_data = _clarification_payload("请告诉我想添加到旅行中的哪一天，以及具体安排。")
-    else:
+    elif settings.demo_fallbacks_enabled:
         structured_data = _mock_replan_payload(trip, map_result, preferences)
+    else:
+        structured_data = _clarification_payload(
+            "规划服务暂时不可用，我没有生成可能不准确的行程修改，请稍后重试。"
+        )
 
     action_options, action_error = _build_replan_action_options(state, structured_data)
     if action_error and not action_options:
@@ -202,7 +190,11 @@ def replan_node(state: AgentState) -> AgentState:
 
 # 长期记忆更新节点：当前是占位，后续在这里做用户偏好总结与写入。
 def memory_update_node(state: AgentState) -> AgentState:
-    return state
+    candidates = extract_explicit_memory_candidates(str(state.get("user_message") or ""))
+    return {
+        **state,
+        "memory_candidates": [candidate.model_dump(mode="json") for candidate in candidates],
+    }
 
 
 def _generate_chat_with_llm(
@@ -220,6 +212,7 @@ def _generate_chat_with_llm(
                     {
                         "current_trip": state.get("current_trip") or {},
                         "user_preferences": preferences,
+                        "long_term_memories": state.get("long_term_memories") or [],
                         "chat_history": state.get("chat_history") or [],
                         "user_message": message,
                     },
@@ -278,6 +271,12 @@ def _sanitize_clarification_options(value: object) -> list[dict[str, str]]:
     return options[:5]
 
 
+def _fallback_chat_reply(message: str, preferences: dict[str, object]) -> str:
+    if not settings.demo_fallbacks_enabled:
+        return "智能服务暂时不可用，我没有生成未经验证的旅行建议，请稍后重试。"
+    return _mock_chat_reply(message, preferences)
+
+
 def _mock_chat_reply(message: str, preferences: dict[str, object]) -> str:
     pace = str(preferences.get("travel_pace") or "normal")
     if "拍照" in message:
@@ -304,6 +303,7 @@ def _generate_photo_explanation_with_llm(
                         "current_location": state.get("current_location") or {},
                         "image_info": state.get("image_info") or {},
                         "user_preferences": preferences,
+                        "long_term_memories": state.get("long_term_memories") or [],
                         "vision_result": vision_result,
                         "ocr_result": ocr_result,
                     },
@@ -365,6 +365,20 @@ def _mock_photo_payload(
             "附近适合休息的地方有哪些？",
             "可以讲一个儿童版介绍吗？",
         ],
+    }
+
+
+def _unavailable_photo_payload(
+    vision_result: dict[str, object],
+    ocr_result: dict[str, object],
+) -> dict[str, object]:
+    return {
+        "recognition_result": str(
+            vision_result.get("recognition_result") or "暂时无法可靠识别这张图片。"
+        ),
+        "explanation": "图片识别服务暂时不可用，我不想凭猜测给出景点讲解，请稍后重试。",
+        "ocr_text": str(ocr_result.get("text") or ""),
+        "follow_up_questions": [],
     }
 
 
@@ -439,6 +453,7 @@ def _generate_replan_with_llm(
                         "current_trip": trip,
                         "current_location": state.get("current_location") or {},
                         "user_preferences": preferences,
+                        "long_term_memories": state.get("long_term_memories") or [],
                         "map_result": map_result,
                         "weather_result": weather_result,
                     },

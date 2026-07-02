@@ -49,9 +49,9 @@ uv run uvicorn app.main:app --reload
 
 访问：
 
-- 健康检查：<http://localhost:8000/health>
-- Swagger：<http://localhost:8000/docs>
-- ReDoc：<http://localhost:8000/redoc>
+- 健康检查：[http://localhost:8000/health](http://localhost:8000/health)
+- Swagger：[http://localhost:8000/docs](http://localhost:8000/docs)
+- ReDoc：[http://localhost:8000/redoc](http://localhost:8000/redoc)
 
 ### 5. 可选：启动提醒 Worker
 

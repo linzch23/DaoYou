@@ -54,8 +54,8 @@ curl http://localhost:8000/health
 
 接口文档：
 
-- Swagger：<http://localhost:8000/docs>
-- ReDoc：<http://localhost:8000/redoc>
+- Swagger：[http://localhost:8000/docs](http://localhost:8000/docs)
+- ReDoc：[http://localhost:8000/redoc](http://localhost:8000/redoc)
 
 查看日志：
 
@@ -149,3 +149,4 @@ npm run build:app
 - [技术设计文档](docs/技术设计文档.md)
 - [团队协作与项目管理](docs/团队开发协作与项目管理文档.md)
 - [vivo 消息推送实施与分工](docs/vivo消息推送实施与分工.md)
+

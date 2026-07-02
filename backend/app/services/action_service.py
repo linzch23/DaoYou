@@ -1,0 +1,293 @@
+import hashlib
+import json
+import uuid
+from datetime import date, datetime, timedelta, timezone
+
+from pydantic import ValidationError
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.core.config import settings
+from app.core.errors import AppError, ErrorCode
+from app.models.pending_action import PendingAction
+from app.schemas.trips import CreateTripDayRequest, CreateTripItemRequest, UpdateTripItemRequest
+from app.services.resource_service import require_owned_trip
+from app.services.trip_service import (
+    create_trip_day,
+    create_trip_item,
+    delete_trip_item,
+    get_trip_detail,
+    update_trip_item,
+)
+
+SUPPORTED_OPERATIONS = {"create_trip_item", "update_trip_item", "delete_trip_item"}
+CREATE_FIELDS = {
+    "city",
+    "title",
+    "item_type",
+    "start_time",
+    "end_time",
+    "address",
+    "latitude",
+    "longitude",
+    "notes",
+}
+UPDATE_FIELDS = CREATE_FIELDS | {"status"}
+
+
+def create_pending_actions(
+    *,
+    user_id: int,
+    trip_id: int,
+    current_trip: dict[str, object],
+    action_options: list[dict[str, object]],
+    db: Session,
+) -> list[dict[str, object]]:
+    if not action_options:
+        return []
+    if current_trip.get("id") != trip_id:
+        raise AppError(ErrorCode.INVALID_REQUEST, "当前旅行上下文不一致")
+
+    now = datetime.now(timezone.utc)
+    expires_at = now + timedelta(minutes=settings.pending_action_ttl_minutes)
+    fingerprint = trip_fingerprint(current_trip)
+    persisted_options: list[dict[str, object]] = []
+
+    for option in action_options:
+        operation = str(option.get("operation") or "")
+        if operation not in SUPPORTED_OPERATIONS:
+            raise AppError(ErrorCode.AGENT_OUTPUT_INVALID, "Agent 返回了不支持的行程操作")
+        if option.get("trip_id") != trip_id:
+            raise AppError(ErrorCode.AGENT_OUTPUT_INVALID, "Agent 行程操作归属不一致")
+        payload = option.get("payload")
+        if not isinstance(payload, dict):
+            raise AppError(ErrorCode.AGENT_OUTPUT_INVALID, "Agent 行程操作缺少 payload")
+        _validate_option_target(operation, option, payload, current_trip)
+
+        action_id = str(uuid.uuid4())
+        target_date = _parse_date(option.get("target_date"))
+        record = PendingAction(
+            action_id=action_id,
+            user_id=user_id,
+            trip_id=trip_id,
+            operation=operation,
+            target_item_id=_optional_positive_int(option.get("item_id")),
+            target_trip_day_id=_optional_positive_int(option.get("trip_day_id")),
+            target_date=target_date,
+            target_day_index=_optional_positive_int(option.get("target_day_index")),
+            payload=dict(payload),
+            option_snapshot=dict(option),
+            trip_fingerprint=fingerprint,
+            status="pending",
+            result=None,
+            expires_at=expires_at,
+            created_at=now,
+            updated_at=now,
+        )
+        db.add(record)
+        persisted_options.append(
+            {
+                **option,
+                "action_id": action_id,
+                "status": "pending",
+                "expires_at": expires_at.isoformat(),
+            }
+        )
+    db.flush()
+    return persisted_options
+
+
+def confirm_action(action_id: str, user_id: int, *, db: Session) -> dict[str, object]:
+    action = _require_owned_action(action_id, user_id, db=db, for_update=True)
+    if action.status == "confirmed":
+        return _action_result(action, idempotent=True)
+    if action.status != "pending":
+        raise AppError(ErrorCode.INVALID_REQUEST, f"该操作当前状态为 {action.status}")
+
+    now = datetime.now(timezone.utc)
+    if _as_utc(action.expires_at) <= now:
+        action.status = "expired"
+        action.updated_at = now
+        db.commit()
+        raise AppError(ErrorCode.INVALID_REQUEST, "该行程操作已过期，请重新生成方案")
+
+    require_owned_trip(db, user_id, action.trip_id)
+    current_trip = get_trip_detail(user_id=user_id, trip_id=action.trip_id, db=db)
+    if trip_fingerprint(current_trip) != action.trip_fingerprint:
+        action.status = "stale"
+        action.updated_at = now
+        db.commit()
+        raise AppError(ErrorCode.INVALID_REQUEST, "行程已发生变化，请重新生成方案")
+
+    try:
+        result = _execute_action(action, db=db)
+    except ValidationError as exc:
+        db.rollback()
+        raise AppError(ErrorCode.AGENT_OUTPUT_INVALID, "行程操作参数无效") from exc
+    action.status = "confirmed"
+    action.result = result
+    action.executed_at = now
+    action.updated_at = now
+    db.commit()
+    return _action_result(action, idempotent=False)
+
+
+def reject_action(action_id: str, user_id: int, *, db: Session) -> dict[str, object]:
+    action = _require_owned_action(action_id, user_id, db=db, for_update=True)
+    if action.status == "rejected":
+        return {"action_id": action.action_id, "status": "rejected", "idempotent": True}
+    if action.status != "pending":
+        raise AppError(ErrorCode.INVALID_REQUEST, f"该操作当前状态为 {action.status}")
+    action.status = "rejected"
+    action.updated_at = datetime.now(timezone.utc)
+    db.commit()
+    return {"action_id": action.action_id, "status": "rejected", "idempotent": False}
+
+
+def _execute_action(action: PendingAction, *, db: Session) -> dict[str, object]:
+    if action.operation == "create_trip_item":
+        trip_day_id = action.target_trip_day_id
+        if trip_day_id is None:
+            if action.target_date is None or action.target_day_index is None:
+                raise AppError(ErrorCode.INVALID_REQUEST, "新增操作缺少目标旅行日")
+            day_result = create_trip_day(
+                action.trip_id,
+                CreateTripDayRequest(
+                    user_id=action.user_id,
+                    day_index=action.target_day_index,
+                    trip_date=action.target_date,
+                ),
+                db=db,
+                commit=False,
+            )
+            trip_day_id = day_result["trip_day_id"]
+        return create_trip_item(
+            CreateTripItemRequest(
+                user_id=action.user_id,
+                trip_day_id=trip_day_id,
+                **action.payload,
+            ),
+            db=db,
+            commit=False,
+        )
+    if action.operation == "update_trip_item":
+        if action.target_item_id is None:
+            raise AppError(ErrorCode.INVALID_REQUEST, "修改操作缺少目标行程项")
+        return update_trip_item(
+            action.target_item_id,
+            UpdateTripItemRequest(user_id=action.user_id, **action.payload),
+            db=db,
+            commit=False,
+        )
+    if action.operation == "delete_trip_item":
+        if action.target_item_id is None:
+            raise AppError(ErrorCode.INVALID_REQUEST, "删除操作缺少目标行程项")
+        return delete_trip_item(
+            user_id=action.user_id,
+            item_id=action.target_item_id,
+            db=db,
+            commit=False,
+        )
+    raise AppError(ErrorCode.INVALID_REQUEST, "不支持的行程操作")
+
+
+def _validate_option_target(
+    operation: str,
+    option: dict[str, object],
+    payload: dict[str, object],
+    current_trip: dict[str, object],
+) -> None:
+    days = [day for day in current_trip.get("days", []) if isinstance(day, dict)]
+    day_ids = {
+        day_id
+        for day in days
+        if (day_id := _optional_positive_int(day.get("id"))) is not None
+    }
+    item_ids = {
+        item_id
+        for day in days
+        for item in day.get("items", [])
+        if isinstance(item, dict)
+        if (item_id := _optional_positive_int(item.get("id"))) is not None
+    }
+    unexpected_fields = set(payload) - (
+        UPDATE_FIELDS if operation == "update_trip_item" else CREATE_FIELDS
+    )
+    if operation == "delete_trip_item" and payload:
+        raise AppError(ErrorCode.AGENT_OUTPUT_INVALID, "删除操作 payload 必须为空")
+    if unexpected_fields:
+        raise AppError(ErrorCode.AGENT_OUTPUT_INVALID, "Agent 行程操作包含非法字段")
+
+    if operation in {"update_trip_item", "delete_trip_item"}:
+        item_id = _optional_positive_int(option.get("item_id"))
+        if item_id is None or item_id not in item_ids:
+            raise AppError(ErrorCode.AGENT_OUTPUT_INVALID, "目标行程项不属于当前旅行")
+        return
+
+    trip_day_id = _optional_positive_int(option.get("trip_day_id"))
+    if trip_day_id is not None and trip_day_id not in day_ids:
+        raise AppError(ErrorCode.AGENT_OUTPUT_INVALID, "目标旅行日不属于当前旅行")
+    if trip_day_id is None and (
+        _parse_date(option.get("target_date")) is None
+        or _optional_positive_int(option.get("target_day_index")) is None
+    ):
+        raise AppError(ErrorCode.AGENT_OUTPUT_INVALID, "新增操作缺少目标旅行日")
+
+
+def _require_owned_action(
+    action_id: str,
+    user_id: int,
+    *,
+    db: Session,
+    for_update: bool = False,
+) -> PendingAction:
+    statement = select(PendingAction).where(
+        PendingAction.action_id == action_id,
+        PendingAction.user_id == user_id,
+    )
+    if for_update:
+        statement = statement.with_for_update()
+    action = db.scalar(statement)
+    if action is None:
+        raise AppError(ErrorCode.NOT_FOUND, "行程操作不存在")
+    return action
+
+
+def trip_fingerprint(trip: dict[str, object]) -> str:
+    canonical = json.dumps(trip, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def _action_result(action: PendingAction, *, idempotent: bool) -> dict[str, object]:
+    return {
+        "action_id": action.action_id,
+        "status": action.status,
+        "operation": action.operation,
+        "result": dict(action.result or {}),
+        "idempotent": idempotent,
+    }
+
+
+def _parse_date(value: object) -> date | None:
+    if value in (None, ""):
+        return None
+    try:
+        return date.fromisoformat(str(value))
+    except ValueError as exc:
+        raise AppError(ErrorCode.AGENT_OUTPUT_INVALID, "Agent 返回了非法目标日期") from exc
+
+
+def _optional_positive_int(value: object) -> int | None:
+    if value in (None, "") or isinstance(value, bool):
+        return None
+    try:
+        parsed = int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _as_utc(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value.replace(tzinfo=timezone.utc)
+    return value.astimezone(timezone.utc)

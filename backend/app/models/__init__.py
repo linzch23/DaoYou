@@ -1,5 +1,6 @@
 from app.models.chat import ChatMessage
 from app.models.departure_alert import DepartureAlert
+from app.models.pending_action import PendingAction
 from app.models.photo import PhotoRecord
 from app.models.preference import UserMemory, UserPreference
 from app.models.push_device import DevicePushToken
@@ -11,6 +12,7 @@ __all__ = [
     "DepartureAlert",
     "DevicePushToken",
     "PhotoRecord",
+    "PendingAction",
     "Trip",
     "TripDay",
     "TripItem",
