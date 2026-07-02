@@ -6,13 +6,17 @@ from app.core.response import success
 from app.db.session import DbSession
 from app.schemas.trips import (
     CreateTripDayRequest,
+    CreateTripFromDraftRequest,
     CreateTripItemRequest,
     CreateTripRequest,
     UpdateTripItemRequest,
     UpdateTripRequest,
+    ParseTripRequest,
 )
+from app.agent.trip_parser import parse_trip_text
 from app.services.trip_service import (
     create_trip,
+    create_trip_from_draft,
     create_trip_day,
     create_trip_item,
     delete_trip,
@@ -24,6 +28,22 @@ from app.services.trip_service import (
 )
 
 router = APIRouter()
+
+
+@router.post("/trips/parse")
+def parse_trip_endpoint(payload: ParseTripRequest, db: DbSession) -> dict[str, object]:
+    from app.services.resource_service import require_user
+
+    require_user(db, payload.user_id)
+    return success(parse_trip_text(payload.text, payload.current_date, payload.timezone))
+
+
+@router.post("/trips/from-draft")
+def create_trip_from_draft_endpoint(
+    payload: CreateTripFromDraftRequest,
+    db: DbSession,
+) -> dict[str, object]:
+    return success(create_trip_from_draft(payload, db=db))
 
 
 @router.post("/trips")

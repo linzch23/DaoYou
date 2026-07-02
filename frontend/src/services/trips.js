@@ -990,3 +990,38 @@ export function clearEditDraft(tripId) {
     return false
   }
 }
+
+/** 从自然语言中提取明确的行程字段；未提及字段由后端保持为空。 */
+export function parseTripText(text) {
+  const now = new Date()
+  const currentDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  return new Promise((resolve, reject) => {
+    uni.request({
+      url: `${BASE_URL}/api/trips/parse`,
+      method: 'POST',
+      header: { 'content-type': 'application/json' },
+      data: {
+        user_id: MVP_USER_ID,
+        text,
+        current_date: currentDate,
+        timezone: 'Asia/Shanghai',
+      },
+      success: (res) => mapSuccess(res, resolve, reject),
+      fail: (err) => mapFail(err, reject),
+    })
+  })
+}
+
+/** 在单个后端事务中创建 Trip、TripDay 和 TripItem。 */
+export function createTripFromDraft(req) {
+  return new Promise((resolve, reject) => {
+    uni.request({
+      url: `${BASE_URL}/api/trips/from-draft`,
+      method: 'POST',
+      header: { 'content-type': 'application/json' },
+      data: { ...req, user_id: MVP_USER_ID },
+      success: (res) => mapSuccess(res, resolve, reject),
+      fail: (err) => mapFail(err, reject),
+    })
+  })
+}

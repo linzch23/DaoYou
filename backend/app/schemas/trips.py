@@ -72,3 +72,57 @@ class UpdateTripItemRequest(BaseModel):
     longitude: float | None = None
     status: Literal["planned", "done", "skipped", "changed"] | None = None
     notes: str | None = None
+
+
+class ParseTripRequest(BaseModel):
+    user_id: int
+    text: str = Field(min_length=1, max_length=2000)
+    current_date: date
+    timezone: str = Field(default="Asia/Shanghai", max_length=100)
+
+
+class ParsedTripItem(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+    city: str | None = Field(default=None, max_length=100)
+    item_type: str | None = Field(default=None, max_length=50)
+    trip_date: date | None = None
+    time_period: Literal[
+        "early_morning", "morning", "noon", "afternoon", "evening", "night"
+    ] | None = None
+    start_time: time | None = None
+    end_time: time | None = None
+    address: str | None = Field(default=None, max_length=300)
+    notes: str | None = None
+    source_quote: str | None = Field(default=None, max_length=300)
+
+
+class ParsedTripDraft(BaseModel):
+    title: str | None = Field(default=None, max_length=200)
+    start_date: date | None = None
+    end_date: date | None = None
+    items: list[ParsedTripItem] = Field(default_factory=list, max_length=100)
+    warnings: list[str] = Field(default_factory=list, max_length=20)
+
+
+class CreateTripDraftItemRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=200)
+    city: str = Field(min_length=1, max_length=100)
+    item_type: str = Field(default="attraction", max_length=50)
+    start_time: time | None = None
+    end_time: time | None = None
+    address: str | None = Field(default=None, max_length=300)
+    latitude: float | None = None
+    longitude: float | None = None
+    notes: str | None = None
+
+
+class CreateTripDraftDayRequest(BaseModel):
+    day_index: int = Field(ge=1)
+    trip_date: date
+    summary: str | None = Field(default=None, max_length=300)
+    items: list[CreateTripDraftItemRequest] = Field(default_factory=list, max_length=100)
+
+
+class CreateTripFromDraftRequest(CreateTripRequest):
+    idempotency_key: str = Field(min_length=8, max_length=100)
+    days: list[CreateTripDraftDayRequest] = Field(default_factory=list, max_length=100)

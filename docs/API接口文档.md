@@ -99,6 +99,8 @@ MVP 暂不实现完整登录注册，默认使用：
 | 回收站 | DELETE | `/api/trash/trips/{trip_id}` | 永久删除旅行 | 是 | 否 |
 | 回收站 | DELETE | `/api/trash/trips` | 清空旅行回收站 | 是 | 否 |
 | 行程日 | POST | `/api/trips/{trip_id}/days` | 创建行程日 | 是 | 否 |
+| 行程解析 | POST | `/api/trips/parse` | 从文字中提取明确的行程字段 | 是 | 否 |
+| 行程创建 | POST | `/api/trips/from-draft` | 事务化创建完整行程 | 是 | 是 |
 | 行程节点 | POST | `/api/trip-items` | 创建行程节点 | 是 | 否 |
 | 行程节点 | PUT | `/api/trip-items/{item_id}` | 更新行程节点 | 是 | 否 |
 | 行程节点 | DELETE | `/api/trip-items/{item_id}` | 删除行程节点 | 是 | 否 |
@@ -533,6 +535,64 @@ Content-Type: application/json
   }
 }
 ```
+
+#### 7.1.1 POST `/api/trips/parse`
+
+从用户的自然语言描述中提取明确出现的行程字段，不创建数据库记录。没有提到或无法确定的字段返回 `null`；“上午”等模糊时间写入 `time_period`，不会伪造精确时间。
+
+```json
+{
+  "user_id": 1,
+  "text": "8月12日上午去杭州西湖",
+  "current_date": "2026-07-02",
+  "timezone": "Asia/Shanghai"
+}
+```
+
+```json
+{
+  "code": 0,
+  "message": "success",
+  "data": {
+    "title": null,
+    "start_date": "2026-08-12",
+    "end_date": null,
+    "items": [{
+      "title": "西湖",
+      "city": "杭州",
+      "trip_date": "2026-08-12",
+      "time_period": "morning",
+      "start_time": null,
+      "end_time": null
+    }],
+    "warnings": [],
+    "missing_required_fields": ["title", "end_date"]
+  }
+}
+```
+
+#### 7.1.2 POST `/api/trips/from-draft`
+
+用户确认表单后，在单个数据库事务中创建旅行、行程日和行程节点。`idempotency_key` 用于防止网络重试造成重复创建；同一用户重复提交相同键时返回原 `trip_id`。
+
+```json
+{
+  "user_id": 1,
+  "title": "杭州旅行",
+  "start_date": "2026-08-12",
+  "end_date": "2026-08-13",
+  "status": "active",
+  "idempotency_key": "trip-1785680000000-abcd1234",
+  "days": [{
+    "day_index": 1,
+    "trip_date": "2026-08-12",
+    "summary": null,
+    "items": [{"title": "西湖", "city": "杭州", "item_type": "attraction"}]
+  }]
+}
+```
+
+任一行程日或节点校验失败时整体回滚，不会留下半成品旅行。
 
 ### 7.2 GET `/api/trips`
 获取旅行列表。

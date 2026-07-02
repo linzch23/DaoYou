@@ -268,7 +268,12 @@ export const NewTripStrings = {
 
   // 输入区
   greetingTitle: '说说你的旅行计划',
-  greetingHint: 'AI 帮你自动填写目的地 / 日期等',
+  greetingHint: 'AI 只提取你明确写出的内容，剩余字段可以手动补充',
+  inputPlaceholder: '例如：8月12日去广州，第一天上午去沙面，下午逛北京路。',
+  btnAnalyze: 'AI 提取行程',
+  parseFailed: '行程提取失败，原文已保留，可以重试或手动填写',
+  parsePartial: '已提取部分字段，请检查并补充空白内容',
+  parseWarningTitle: '请注意',
 
   // 文件
   btnAttachFile: '添加文件',
