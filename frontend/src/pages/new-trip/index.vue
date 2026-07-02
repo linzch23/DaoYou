@@ -63,6 +63,27 @@
           v-if="currentStep === 'form'"
           class="panel-form"
         >
+          <view v-if="!isCopyMode" class="ai-import-card">
+            <text class="ai-import-title">{{ strings.greetingTitle }}</text>
+            <text class="form-hint">{{ strings.greetingHint }}</text>
+            <textarea
+              v-model="inputText"
+              class="trip-text-input"
+              :maxlength="2000"
+              :placeholder="strings.inputPlaceholder"
+              :aria-label="strings.textareaAria"
+            />
+            <text v-if="parseError" class="parse-error">{{ parseError }}</text>
+            <view
+              class="btn-parse-trip"
+              :class="{ 'btn-parse-trip-disabled': !canAnalyze || isParsing }"
+              role="button"
+              @click="onAnalyze"
+            >
+              <text>{{ isParsing ? strings.analyzingTitle : strings.btnAnalyze }}</text>
+            </view>
+          </view>
+
           <view class="form-header">
             <text class="form-title">{{ strings.formTitle }}</text>
             <text class="form-hint">{{ formHintText }}</text>
@@ -73,6 +94,13 @@
             :message="formSubmitError"
             :retryable="false"
           />
+
+          <view v-if="parseWarnings.length" class="parse-warning-card">
+            <text class="parse-warning-title">{{ strings.parseWarningTitle }}</text>
+            <text v-for="warning in parseWarnings" :key="warning" class="parse-warning-text">
+              • {{ warning }}
+            </text>
+          </view>
 
           <!-- 4 字段表单(TripCreateEditFix-001 v0.4.0:移除 city / companions / budget_range / transport_preference / special_needs) -->
           <view class="form-fields">
@@ -235,9 +263,10 @@ import { onLoad } from '@dcloudio/uni-app'
 import { NewTripStrings } from '../../constants/strings.js'
 import { AppRoutes } from '../../constants/routes.js'
 import { logger } from '../../utils/logger.js'
+import { buildTripDraftPayload, mergeParsedTripIntoForm } from '../../utils/tripParsing.js'
 import { getTripItemErrorMessage } from '../../services/tripItemForm.js'
 import { useHomeStore } from '../../stores/homeStore.js'
-import { createTrip, createTripDay, createTripItem, saveDraft, updateTrip } from '../../services/trips.js'
+import { createTrip, createTripFromDraft, parseTripText, saveDraft } from '../../services/trips.js'
 import { loadTrips } from '../../db/trips.js'
 import ErrorBanner from '../../components/ErrorBanner.vue'
 import DraftConfirmDialog from './components/DraftConfirmDialog.vue'
@@ -373,8 +402,13 @@ function mapErrorToMessage(err) {
 
 /** @type {import('vue').Ref<NewTripFormData>} */
 const formData = ref(createEmptyFormData())
-/** @type {import('vue').Ref<NewTripStep>} 严格 4 枚举(v0.7.0 简化,6 → 4) */
+/** @type {import('vue').Ref<NewTripStep>} AI 是表单内的可选能力，不单独占用页面状态。 */
 const currentStep = ref('form')
+const inputText = ref('')
+const isParsing = ref(false)
+const parseError = ref('')
+const parseWarnings = ref([])
+const creationKey = ref('')
 /** @type {import('vue').Ref<string | null>} POST 失败的友好提示,驱动 _ErrorOverlay */
 const submitError = ref(null)
 /** @type {import('vue').Ref<string | null>} form 内部 3 必填校验失败提示 */
@@ -401,7 +435,8 @@ const hasContent = computed(() => {
     formData.value.title.trim() !== '' ||
     formData.value.start_date !== '' ||
     formData.value.end_date !== '' ||
-    formData.value.itineraryArrange.length > 0 // UI-025
+    formData.value.itineraryArrange.length > 0 ||
+    inputText.value.trim() !== ''
   )
 })
 
@@ -410,9 +445,12 @@ const hasRequiredFields = computed(() => {
   return (
     formData.value.title.trim() !== '' &&
     formData.value.start_date !== '' &&
-    formData.value.end_date !== ''
+    formData.value.end_date !== '' &&
+    formData.value.itineraryArrange.every((item) => item.title && item.date)
   )
 })
+
+const canAnalyze = computed(() => inputText.value.trim().length > 0 && inputText.value.length <= 2000)
 
 /** title 输入框 placeholder(v0.4.0 新增,显式 title 字段) */
 const titlePlaceholder = computed(() => '例如:大连三日游')
@@ -445,6 +483,30 @@ const btnConfirmText = computed(() =>
 
 // ─────────────── Store ───────────────
 const homeStore = useHomeStore()
+
+async function onAnalyze() {
+  if (!canAnalyze.value || isParsing.value || currentStep.value !== 'form') return
+  isParsing.value = true
+  parseError.value = ''
+  try {
+    const response = await parseTripText(inputText.value.trim())
+    const parsed = response.data || {}
+    formData.value = mergeParsedTripIntoForm(formData.value, parsed)
+    parseWarnings.value = Array.isArray(parsed.warnings) ? parsed.warnings : []
+    if (Array.isArray(parsed.missing_required_fields) && parsed.missing_required_fields.length) {
+      parseWarnings.value = [...parseWarnings.value, strings.parsePartial]
+    }
+    logger.info('[NewTripPage] parse ok', {
+      itemCount: formData.value.itineraryArrange.length,
+      missingCount: parsed.missing_required_fields?.length || 0,
+    })
+  } catch (err) {
+    logger.error('[NewTripPage] parse failed', err)
+    parseError.value = strings.parseFailed
+  } finally {
+    isParsing.value = false
+  }
+}
 
 // ─────────────── UI-024 复制模式入口 ───────────────
 
@@ -582,20 +644,15 @@ function onConfirm() {
  */
 async function submitTripRequest(title) {
   try {
-    const res = await createTrip({
-      title,
-      start_date: formData.value.start_date,
-      end_date: formData.value.end_date,
-      // UI-025:行程安排字段(空数组也合法,service 内部会过滤;后端 Pydantic extra=ignore 静默丢)
-      itineraryArrange: formData.value.itineraryArrange,
-    })
+    if (!creationKey.value) {
+      creationKey.value = `trip-${Date.now()}-${Math.random().toString(36).slice(2)}`
+    }
+    const cityFallback = deriveCity(title)
+    const payload = buildTripDraftPayload(formData.value, title, creationKey.value, cityFallback)
+    const res = await createTripFromDraft(payload)
     const tripId = res.data?.trip_id
     if (!tripId) {
-      throw new Error('createTrip response missing trip_id')
-    }
-    // 行程安排字段处理(per TripCreateEditFix-001 B 方向):按 date 分组 → 串行 createTripDay → 串行 createTripItem
-    if (formData.value.itineraryArrange.length > 0) {
-      await createItineraryForTrip(tripId, formData.value.itineraryArrange)
+      throw new Error('createTripFromDraft response missing trip_id')
     }
     currentStep.value = 'completed'
     submitError.value = null
@@ -603,17 +660,6 @@ async function submitTripRequest(title) {
 
     // 200ms 后 reLaunch(AC-08:≤ 200ms,避免黑屏)
     setTimeout(async () => {
-      // fix-trip-bugs-v1:MVP 兜底 — 后端 Trip.status default='draft' + create_trip 不设 status,
-      // 创建后调 PUT /api/trips/{id} 改 status='active'。失败仅 logger.warn,不阻塞 reLaunch
-      try {
-        await updateTrip(tripId, { status: 'active' })
-        logger.info('[NewTripPage] set status active ok', { tripId })
-      } catch (err) {
-        logger.warn('[NewTripPage] set status active failed, trip may stay draft', {
-          tripId,
-          err: err?.message,
-        })
-      }
       // 刷新 HomePage 列表(失败仅 warn,不阻塞 reLaunch)
       homeStore.fetchTrips()
         .catch((err) => logger.warn('[NewTripPage] fetchTrips after submit failed', err))
@@ -696,6 +742,22 @@ function onBack() {
 async function onDialogSave() {
   const fd = formData.value
   dialogVisible.value = false
+
+  if ((!fd.start_date || !fd.end_date) && inputText.value.trim()) {
+    const ok = saveDraft({
+      id: Date.now(),
+      created_at: new Date().toISOString(),
+      inputText: inputText.value,
+      formData: fd,
+    })
+    uni.showToast({
+      title: ok ? NewTripStrings.draftSavedToast : NewTripStrings.draftSaveFailedToast,
+      icon: ok ? 'success' : 'none',
+      duration: 1500,
+    })
+    if (ok) setTimeout(() => uni.reLaunch({ url: AppRoutes.Home }), 1200)
+    return
+  }
 
   // v0.5.1(per user 19:37 bug)无日期守卫:没日期 → 拒绝保存 + Toast 提示
   // 草稿若没 start_date / end_date,后端 CreateTripRequest 必填 → 不可能推上去;
@@ -965,6 +1027,82 @@ onUnmounted(() => {
   box-sizing: border-box;
   animation: pageEnter 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
   /* fadeSlideUp 0.45s ease-out,见 UI §七 */
+}
+
+.ai-import-card {
+  display: flex;
+  flex-direction: column;
+  gap: 16rpx;
+  padding: 24rpx;
+  margin-bottom: 28rpx;
+  border: 2rpx solid rgba(45, 106, 94, 0.22);
+  border-radius: 20rpx;
+  background: rgba(45, 106, 94, 0.05);
+}
+
+.ai-import-title {
+  color: #2D6A5E;
+  font-size: 30rpx;
+  font-weight: 600;
+}
+
+.trip-text-input {
+  width: 100%;
+  min-height: 240rpx;
+  padding: 24rpx;
+  box-sizing: border-box;
+  border: 2rpx solid #E3DBCF;
+  border-radius: 20rpx;
+  background: #FDFBF7;
+  color: #2C2C2C;
+  font-size: 28rpx;
+  line-height: 1.7;
+}
+
+.btn-parse-trip {
+  align-self: flex-end;
+  min-height: 72rpx;
+  padding: 0 28rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999rpx;
+  background: #2D6A5E;
+  color: #FFFFFF;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.btn-parse-trip-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.parse-error {
+  color: #C44A3A;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.parse-warning-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  padding: 20rpx;
+  border-radius: 16rpx;
+  background: rgba(196, 126, 32, 0.08);
+}
+
+.parse-warning-title {
+  color: #8A5A16;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.parse-warning-text {
+  color: #6E5838;
+  font-size: 24rpx;
+  line-height: 1.5;
 }
 
 /* ───────── Header ───────── */

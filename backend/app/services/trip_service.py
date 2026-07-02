@@ -9,6 +9,7 @@ from app.core.errors import AppError, ErrorCode
 from app.models.trip import Trip, TripDay, TripItem
 from app.schemas.trips import (
     CreateTripDayRequest,
+    CreateTripFromDraftRequest,
     CreateTripItemRequest,
     CreateTripRequest,
     UpdateTripItemRequest,
@@ -43,6 +44,65 @@ def create_trip(payload: CreateTripRequest, db: Session) -> dict[str, int]:
     db.commit()
     db.refresh(trip)
     return {"trip_id": trip.id}
+
+
+def create_trip_from_draft(payload: CreateTripFromDraftRequest, db: Session) -> dict[str, object]:
+    require_user(db, payload.user_id)
+    existing = db.scalar(select(Trip).where(Trip.creation_key == payload.idempotency_key))
+    if existing is not None:
+        if existing.user_id != payload.user_id:
+            raise AppError(ErrorCode.INVALID_REQUEST, "幂等键已被占用")
+        return {"trip_id": existing.id, "created": False}
+
+    seen_indexes: set[int] = set()
+    seen_dates = set()
+    for day in payload.days:
+        if day.day_index in seen_indexes or day.trip_date in seen_dates:
+            raise AppError(ErrorCode.INVALID_REQUEST, "行程日序号或日期重复")
+        if not payload.start_date <= day.trip_date <= payload.end_date:
+            raise AppError(ErrorCode.INVALID_REQUEST, "行程日期不在旅行日期范围内")
+        seen_indexes.add(day.day_index)
+        seen_dates.add(day.trip_date)
+        timed_items = []
+        for item in day.items:
+            _validate_time_range(item.start_time, item.end_time)
+            if item.start_time is not None and item.end_time is not None:
+                timed_items.append(item)
+        timed_items.sort(key=lambda item: item.start_time)
+        for previous, current in zip(timed_items, timed_items[1:]):
+            if previous.end_time > current.start_time:
+                raise AppError(ErrorCode.INVALID_REQUEST, "同一行程日存在重叠时段")
+    if seen_indexes and sorted(seen_indexes) != list(range(1, len(seen_indexes) + 1)):
+        raise AppError(ErrorCode.INVALID_REQUEST, "行程日序号必须从 1 开始连续排列")
+
+    try:
+        trip = Trip(
+            user_id=payload.user_id,
+            title=payload.title,
+            start_date=payload.start_date,
+            end_date=payload.end_date,
+            status=payload.status or "active",
+            creation_key=payload.idempotency_key,
+        )
+        db.add(trip)
+        db.flush()
+        for day_data in payload.days:
+            day = TripDay(
+                trip_id=trip.id,
+                day_index=day_data.day_index,
+                trip_date=day_data.trip_date,
+                summary=day_data.summary,
+            )
+            db.add(day)
+            db.flush()
+            for item_data in day_data.items:
+                db.add(TripItem(trip_day_id=day.id, **item_data.model_dump()))
+        db.commit()
+        db.refresh(trip)
+        return {"trip_id": trip.id, "created": True}
+    except Exception:
+        db.rollback()
+        raise
 
 
 def list_trips(

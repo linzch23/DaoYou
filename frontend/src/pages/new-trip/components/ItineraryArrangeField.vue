@@ -69,6 +69,7 @@
           @touchmove.stop.prevent="onItemTouchMove"
           @touchend="onItemTouchEnd"
           @touchcancel="onItemTouchEnd"
+          @click="onEditItem(item)"
         >
           <!-- 卡片内容 -->
           <view class="item-card-emoji" aria-hidden="true">
@@ -496,6 +497,7 @@ function onRemoveItem(id) {
 
 // ──── inline 添加 ────
 const addPanelVisible = ref(false)
+const editingId = ref(null)
 const addForm = ref({
   city: '',
   title: '',
@@ -522,8 +524,6 @@ const canConfirmAdd = computed(() => {
   return addForm.value.city.trim() !== ''
     && addForm.value.title.trim() !== ''
     && addForm.value.date !== ''
-    && addForm.value.start_time !== ''
-    && addForm.value.end_time !== ''
 })
 
 function toggleAddPanel() {
@@ -533,6 +533,7 @@ function toggleAddPanel() {
     return
   }
   addPanelVisible.value = true
+  editingId.value = null
   addForm.value = {
     city: getInheritedCity(props.modelValue),
     title: '',
@@ -546,6 +547,7 @@ function toggleAddPanel() {
 
 function cancelAdd() {
   addPanelVisible.value = false
+  editingId.value = null
   addForm.value = {
     city: '',
     title: '',
@@ -562,8 +564,18 @@ function confirmAdd() {
     logger.warn('[ItineraryArrangeField] add blocked, missing required fields')
     return
   }
+  const existing = editingId.value === null
+    ? null
+    : props.modelValue.find((item) => item.id === editingId.value)
   const newItem = {
+    ...(existing || {}),
     // 客户端生成稳定 key(Date.now() + 随机后缀避免同毫秒冲突)
+    id: existing?.id || Date.now() * 1000 + Math.floor(Math.random() * 1000),
+    title: addForm.value.title.trim(),
+    date: addForm.value.date,
+    start_time: addForm.value.start_time,
+    end_time: addForm.value.end_time,
+    item_type: addForm.value.item_type,
     id: Date.now() * 1000 + Math.floor(Math.random() * 1000),
     ...normalizeNewTripItem(addForm.value),
   }
@@ -588,6 +600,11 @@ function confirmAdd() {
   // 2026-06-25 新增(per UserRound2-002 Bug D):自动按 date+start_time 升序插入
   //   - 替代旧版「手动拖动排序」(spec §3.5 Field 6 升级)
   //   - 沿用 emit('update:modelValue', sorted) v-model 协议
+  if (existing) {
+    onUpdateExistingItem(newItem)
+    cancelAdd()
+    return
+  }
   const sorted = sortItems([...props.modelValue, newItem])
   emit('update:modelValue', sorted)
   // v0.5.0(per UserRound2-001 Bug A):显式 emit add,EditTripPage onAddItem 接住调 POST
@@ -597,6 +614,20 @@ function confirmAdd() {
   emit('add', newItem)
   logger.info('[ItineraryArrangeField] add item', { id: newItem.id, title: newItem.title, totalCount: sorted.length })
   cancelAdd()
+}
+
+function onEditItem(item) {
+  if (props.readonly || isDragging.value) return
+  editingId.value = item.id
+  addForm.value = {
+    title: item.title || '',
+    date: item.date || '',
+    start_time: item.start_time || '',
+    end_time: item.end_time || '',
+    item_type: item.item_type || 'other',
+  }
+  addPanelVisible.value = true
+  logger.debug('[ItineraryArrangeField] edit panel open', { id: item.id })
 }
 
 /**
