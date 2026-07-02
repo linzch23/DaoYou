@@ -130,9 +130,9 @@ export const HomeStrings = {
 
   // 行程列表 chat 入口(2026-06-24 新增,per task「每个行程有独立 chatSession」)
   // 沿 AGENTS.md §8.6 13 页面惯例:每个 user-facing 文案键必带 aria 标签
-  // button label 用 emoji 💬(icon 简写,沿 follow-up chip 模式)
+  // v0.X 修订:icon 从 emoji(💬)改为 <image src="/static/tabbar/AI对话.png"> PNG 渲染,
+  //   详见 TripCard.vue .btn-chat-trip-icon;btnChatTrip 字面常量同步删除
   // aria 模板带 {title} 占位(运行时插值,无障碍读屏更准)
-  btnChatTrip: '💬',
   btnChatTripAria: '打开「{title}」的智能对话',
 
   // Section 1 今日无行程占位(2026-06-24 Fix A 新增,per user 报「再次进入时 Section 1 消失」)
@@ -144,7 +144,9 @@ export const HomeStrings = {
   // 行程卡片删除入口(2026-06-24 UserRound2-001 §3 Bug C 新增)
   // 沿 AGENTS.md §8.6 13 页面惯例:每个 user-facing 文案键必带 aria 标签
   // 状态门控:仅 draft / finished trip 显示删除按钮(active 引导走回收站,见 deleteActiveTripToast)
-  btnDeleteTrip: '删除',
+  // v0.X 修订:icon 从 emoji(🗑)改为 <image src="/static/tabbar/删除_delete.png"> PNG 渲染,
+  //   详见 TripCard.vue .btn-delete-trip-icon;btnDeleteTrip 字面常量同步删除
+  // aria 仍保留「删除「{title}」」描述性文本(无障碍读屏场景)
   btnDeleteTripAria: '删除「{title}」',
   deleteConfirmTitle: '删除行程?',
   deleteConfirmMessage: '删除后可在「我的-回收站」中恢复',
@@ -716,17 +718,16 @@ export const PersonalProfileStrings = {
 
   // 表单头(spec §3.5 + §4.5)
   formTitle: '设置你的偏好',               // _FormHeader 标题
-  // v0.2.0 修订:'3 段必填,缺一不可;保存后立即生效' → '5 段可填,前 3 段必填;保存后立即生效'
-  formHint: '5 段可填,前 3 段必填;保存后立即生效', // 副提示
+  formHint: '所有项目均可选，填写任一偏好后即可保存', // 副提示
 
   // 段 1 性别(spec §3.3 段 1 + §4.5)
   sectionTitleGender: '性别',              // 段 1 标题
-  sectionHintGender: '3 选 1',             // 段 1 提示
+  sectionHintGender: '3 选 1(可选)',        // 段 1 提示
   genderRequiredMark: '请选择性别',        // 段 1 必填标红(性别 === null 时)
 
   // 段 2 年龄段(spec §3.3 段 2 + §4.5)
   sectionTitleAge: '年龄段',               // 段 2 标题
-  sectionHintAge: '5 选 1',                // 段 2 提示
+  sectionHintAge: '5 选 1(可选)',           // 段 2 提示
   ageRequiredMark: '请选择年龄段',         // 段 2 必填标红(ageRange === null 时)
 
   // 段 3 必填标红(spec §3.3 段 3 + §4.5)
@@ -874,6 +875,9 @@ export const MyPageStrings = {
   preferenceTitle: '我的偏好',     // 标题(Noto Serif SC 16px 600)
   interestEmpty: '暂未选择感兴趣领域',   // interests 为空 / null 时占位
   explanationEmpty: '暂未设置默认讲解风格', // explanation_style 为空 / null 时占位
+  // 🆕 v0.2.0 偏好摘要扩字段(per `specs/MyPage.md` §3.3 + §10.4 R-16;数据已存在 services/preferences.js:167,169 store 拉取时已落地)
+  travelPaceEmpty: '暂未设置旅行节奏',         // travel_pace 为 null 时占位(3 枚举 PersonalProfileTravelPaceOptions labels)
+  specialNeedsEmpty: '暂未设置特殊需求',       // special_needs 为 [] 时占位(3 枚举数组 PersonalProfileSpecialNeedOptions labels)
 
   // 菜单列表(spec §4.6 菜单列表)
   menuPersonalProfile: '个人信息编辑',   // 菜单项 1 标签

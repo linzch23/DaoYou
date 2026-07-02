@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     app_name: str = "DaoYou API"
     app_env: str = "local"
     app_debug: bool = True
+    allow_demo_fallbacks: bool = True
     api_prefix: str = "/api"
     database_url: str = "postgresql+psycopg://daoyou:daoyou@localhost:5432/daoyou"
     default_user_id: int = 1
@@ -37,6 +38,15 @@ class Settings(BaseSettings):
     vivo_push_api_base: str = "https://api-push.vivo.com.cn"
     vivo_push_mode: int = 1
     vivo_push_timeout_seconds: float = 10.0
+    pending_action_ttl_minutes: int = 15
+
+    @property
+    def demo_fallbacks_enabled(self) -> bool:
+        return self.allow_demo_fallbacks and self.app_env.lower() in {
+            "local",
+            "test",
+            "development",
+        }
 
     model_config = SettingsConfigDict(env_file="../.env", env_file_encoding="utf-8", extra="ignore")
 

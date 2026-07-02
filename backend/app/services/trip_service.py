@@ -120,6 +120,7 @@ def create_trip_day(
     payload: CreateTripDayRequest,
     *,
     db: Session,
+    commit: bool = True,
 ) -> dict[str, int]:
     trip = require_owned_trip(db, payload.user_id, trip_id)
     if not trip.start_date <= payload.trip_date <= trip.end_date:
@@ -145,8 +146,11 @@ def create_trip_day(
         summary=payload.summary,
     )
     db.add(trip_day)
-    db.commit()
-    db.refresh(trip_day)
+    if commit:
+        db.commit()
+        db.refresh(trip_day)
+    else:
+        db.flush()
     return {"trip_day_id": trip_day.id}
 
 
@@ -159,6 +163,7 @@ def create_trip_item(
     *,
     db: Session,
     geocoder: DestinationGeocoder | None = None,
+    commit: bool = True,
 ) -> dict[str, int]:
     trip_day = require_owned_trip_day(db, payload.user_id, payload.trip_day_id)
     _validate_time_range(payload.start_time, payload.end_time)
@@ -178,8 +183,11 @@ def create_trip_item(
     values["longitude"] = location.longitude
     item = TripItem(**values)
     db.add(item)
-    db.commit()
-    db.refresh(item)
+    if commit:
+        db.commit()
+        db.refresh(item)
+    else:
+        db.flush()
     return {"item_id": item.id}
 
 
@@ -189,6 +197,7 @@ def update_trip_item(
     *,
     db: Session,
     geocoder: DestinationGeocoder | None = None,
+    commit: bool = True,
 ) -> dict[str, bool]:
     item = require_owned_trip_item(db, payload.user_id, item_id)
     changes = payload.model_dump(exclude={"user_id"}, exclude_none=True)
@@ -217,14 +226,26 @@ def update_trip_item(
         changes["arrival_distance_meters"] = None
     for field, value in changes.items():
         setattr(item, field, value)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     return {"updated": True}
 
 
-def delete_trip_item(user_id: int, item_id: int, *, db: Session) -> dict[str, bool]:
+def delete_trip_item(
+    user_id: int,
+    item_id: int,
+    *,
+    db: Session,
+    commit: bool = True,
+) -> dict[str, bool]:
     item = require_owned_trip_item(db, user_id, item_id)
     db.delete(item)
-    db.commit()
+    if commit:
+        db.commit()
+    else:
+        db.flush()
     return {"deleted": True}
 
 

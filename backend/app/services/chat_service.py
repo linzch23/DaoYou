@@ -4,7 +4,13 @@ from sqlalchemy.orm import Session
 from app.agent.graph import run_agent
 from app.models.chat import ChatMessage
 from app.schemas.chat import ChatRequest
-from app.services.preference_service import get_preferences
+from app.services.action_service import create_pending_actions
+from app.services.preference_service import (
+    get_memory_settings,
+    get_preferences,
+    get_relevant_memories,
+    persist_memory_candidates,
+)
 from app.services.resource_service import require_user
 from app.services.trip_service import get_trip_detail
 
@@ -50,6 +56,7 @@ def send_chat_message(payload: ChatRequest, *, db: Session) -> dict[str, object]
     )
     db.add(user_message)
     db.flush()
+    memory_enabled = get_memory_settings(user_id=payload.user_id, db=db)["enabled"]
 
     # 成员 C 接入点：把聊天请求组装成 AgentState，具体推理统一交给 run_agent。
     agent_result = run_agent(
@@ -62,6 +69,11 @@ def send_chat_message(payload: ChatRequest, *, db: Session) -> dict[str, object]
             ),
             "current_trip": current_trip,
             "user_preferences": get_preferences(user_id=payload.user_id, db=db)["preferences"],
+            "long_term_memories": (
+                get_relevant_memories(user_id=payload.user_id, db=db)
+                if memory_enabled
+                else []
+            ),
             "chat_history": [
                 _serialize_message(message)
                 for message in _load_recent_messages(
@@ -73,6 +85,21 @@ def send_chat_message(payload: ChatRequest, *, db: Session) -> dict[str, object]
             ],
         }
     )
+    action_options = create_pending_actions(
+        user_id=payload.user_id,
+        trip_id=payload.trip_id,
+        current_trip=current_trip,
+        action_options=agent_result["action_options"],
+        db=db,
+    )
+    if memory_enabled:
+        persist_memory_candidates(
+            user_id=payload.user_id,
+            trip_id=payload.trip_id,
+            candidates=agent_result.get("memory_candidates", []),
+            evidence_message_id=user_message.id,
+            db=db,
+        )
     db.add(
         ChatMessage(
             user_id=payload.user_id,
@@ -85,7 +112,7 @@ def send_chat_message(payload: ChatRequest, *, db: Session) -> dict[str, object]
     return {
         "reply": agent_result["reply"],
         "intent": agent_result["intent"],
-        "action_options": agent_result["action_options"],
+        "action_options": action_options,
         "follow_up_questions": agent_result["follow_up_questions"],
         "clarification_options": agent_result.get("clarification_options", []),
     }

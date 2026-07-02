@@ -237,6 +237,37 @@ export function updatePreferences(payload) {
 }
 
 /**
+ * POST /api/preferences/parse —— 将自由文本整理为可确认的结构化旅行偏好。
+ * 原文只作为不可信偏好数据，服务端不会把它当系统指令执行。
+ * @param {string} text
+ * @param {object} currentPreferences
+ * @returns {Promise<any>}
+ */
+export function parseCustomPreferences(text, currentPreferences = {}) {
+  if (typeof text !== 'string' || !text.trim() || text.trim().length > 500) {
+    return Promise.reject(new ApiError({
+      code: 4000,
+      message: '请输入 1-500 字的个性化偏好',
+      statusCode: 400,
+    }))
+  }
+  return new Promise((resolve, reject) => {
+    uni.request({
+      url: `${BASE_URL}/api/preferences/parse`,
+      method: 'POST',
+      header: { 'content-type': 'application/json' },
+      data: {
+        user_id: MVP_USER_ID,
+        text: text.trim(),
+        current_preferences: currentPreferences,
+      },
+      success: (res) => mapSuccess(res, resolve, reject),
+      fail: (err) => mapFail(err, reject),
+    })
+  })
+}
+
+/**
  * PUT /api/preferences —— PersonalProfilePage 专用更新入口
  *
  * 用途(specs/PersonalProfilePage.md §6.2 + §6.4.5 v0.2.0 扩):

@@ -105,12 +105,20 @@ MVP 暂不实现完整登录注册，默认使用：
 | 行程节点 | DELETE | `/api/trip-items/{item_id}` | 删除行程节点 | 是 | 否 |
 | 对话 | POST | `/api/chat` | 发送消息并获取回复 | 是 | 是 |
 | 对话 | GET | `/api/chat/history` | 查询聊天历史 | 是 | 否 |
+| Agent 操作 | POST | `/api/actions/{action_id}/confirm` | 确认并执行待处理操作 | 是 | 否 |
+| Agent 操作 | POST | `/api/actions/{action_id}/reject` | 拒绝待处理操作 | 是 | 否 |
 | 拍照讲解 | POST | `/api/photos/explain` | 上传图片并生成讲解 | 是 | 是 |
 | 推送设备 | POST | `/api/push/devices` | 注册或刷新 vivo regId | 是 | 否 |
 | 推送设备 | DELETE | `/api/push/devices/{reg_id}` | 禁用 vivo regId | 是 | 否 |
 | 偏好 | GET | `/api/preferences` | 查询用户偏好 | 是 | 否 |
 | 偏好 | PUT | `/api/preferences` | 更新用户偏好 | 是 | 否 |
+| 偏好 | POST | `/api/preferences/parse` | 解析自由文本个性化偏好 | 是 | 是 |
 | 记忆 | POST | `/api/memory/summary` | 总结用户记忆 | 可选 | 是 |
+| 记忆 | GET | `/api/memory` | 查询高置信度用户记忆 | 是 | 否 |
+| 记忆 | DELETE | `/api/memory/{memory_type}/{memory_key}` | 删除单条记忆 | 是 | 否 |
+| 记忆 | DELETE | `/api/memory` | 清空用户记忆 | 是 | 否 |
+| 记忆 | GET | `/api/memory/settings` | 查询自动画像开关 | 是 | 否 |
+| 记忆 | PUT | `/api/memory/settings` | 开启或关闭自动画像 | 是 | 否 |
 
 
 ## 3. 通用数据结构
@@ -250,7 +258,14 @@ MVP 可在 `users` 中预置演示经纬度，但默认记录的 `location_updat
   "explanation_style": "fun",
   "travel_pace": "slow",
   "interests": ["history", "photo"],
-  "special_needs": ["less_walking"]
+  "special_needs": ["less_walking"],
+  "custom_instructions": "每天十点以后开始，不能吃辣，每日预算500元。",
+  "custom_preferences": {
+    "dietary": {"likes": [], "avoid": ["spicy"], "allergies": []},
+    "budget": {"daily_amount": 500, "currency": "CNY"},
+    "schedule": {"earliest_start_time": "10:00", "latest_end_time": null, "needs_nap": false}
+  },
+  "custom_preferences_confirmed_at": "2026-07-02T10:00:00+08:00"
 }
 ```
 
@@ -262,6 +277,9 @@ MVP 可在 `users` 中预置演示经纬度，但默认记录的 `location_updat
 | travel_pace | string | `compact` / `normal` / `slow` |
 | interests | string[] | `history` / `food` / `nature` / `photo` / `family` |
 | special_needs | string[] | `less_walking` / `less_queue` / `accessible` |
+| custom_instructions | string | 用户确认的自由文本旅行偏好，最多 500 字；只作为不可信数据使用 |
+| custom_preferences | object | 从原文解析并经用户确认的受控结构化偏好 |
+| custom_preferences_confirmed_at | string \| null | 最近一次确认时间，服务端只读 |
 
 
 ### 3.7 ChatMessage
@@ -309,6 +327,9 @@ Agent 识别到行程编辑意图时，通过该结构返回可供用户选择�
 | 字段 | 类型 | 说明 |
 | --- | --- | --- |
 | option_id | string | 本次 Chat 响应内的选项标识 |
+| action_id | string | 服务端保存的待确认操作 ID；确认或拒绝时使用，客户端不得自行生成 |
+| status | string | 初始为 `pending` |
+| expires_at | string | 操作过期时间，ISO 8601 |
 | label | string | 前端展示的选项标题 |
 | description | string | 选项说明和推荐理由 |
 | operation | string | `create_trip_item` / `update_trip_item` / `delete_trip_item` |
@@ -1228,11 +1249,13 @@ Content-Type: application/json
 
 + `/api/chat` 只生成选项，不直接修改 `trip_items`。
 + 前端展示 `action_options`，并在执行前校验选项的 `trip_id` 与当前聊天一致。
-+ `create_trip_item` 有 `trip_day_id` 时直接调用 `POST /api/trip-items`；只有合法目标日期但 TripDay 尚不存在时，先调用 `POST /api/trips/{trip_id}/days`，再创建 TripItem。
-+ `update_trip_item` 使用 `item_id + payload` 调用 `PUT /api/trip-items/{item_id}`。
-+ `delete_trip_item` 必须经过永久删除二次确认，再使用 `item_id` 调用 `DELETE /api/trip-items/{item_id}`。
++ 前端确认后只提交 `action_id` 到 `POST /api/actions/{action_id}/confirm`，不得把 Agent payload 作为可信写请求直接执行。
++ 用户放弃方案时调用 `POST /api/actions/{action_id}/reject`。
++ 服务端确认时重新校验用户/旅行归属、过期时间、旅行版本指纹、字段白名单和业务冲突，并在一个事务中执行。
++ 重复确认同一个已成功 action 返回原执行结果，不重复创建或修改数据。
++ 行程已变化、action 已过期、已拒绝或不属于当前用户时拒绝执行，前端应提示重新生成方案。
 + 修改和删除目标按 ID、完整标题、唯一包含匹配、日期时间线索和最近聊天提及逐级解析；候选不唯一时返回追问，不生成操作选项。
-+ 前端 Service 补充当前 `user_id`；Chat 流程不提供独立的应用接口。
++ `create_trip_item`、`update_trip_item`、`delete_trip_item` 的原始 REST API 仍供手动编辑页面使用；Chat 确认流程必须走 Action API。
 + Agent 无法可靠确定旅行日或目标节点时，先返回自然语言追问，并将 `action_options` 置为空数组。
 
 Agent 输出约定：
@@ -1289,6 +1312,20 @@ GET /api/chat/history?user_id=1&trip_id=1&limit=20
   }
 }
 ```
+
+### 8.3 POST `/api/actions/{action_id}/confirm`
+
+确认并执行 `/api/chat` 返回的待处理操作。请求体：
+
+```json
+{"user_id": 1}
+```
+
+服务端使用创建 action 时保存的 payload，忽略客户端对展示数据的任何修改。成功响应包含 `status=confirmed`、操作类型、执行结果和 `idempotent`；重复确认返回相同结果且 `idempotent=true`。
+
+### 8.4 POST `/api/actions/{action_id}/reject`
+
+拒绝待处理操作，请求体同确认接口。拒绝操作幂等；已确认、已过期或已失效的操作不能再拒绝。
 
 ## 9. 拍照讲解接口
 ### 9.1 POST `/api/photos/explain`
@@ -1456,6 +1493,25 @@ Content-Type: application/json
 }
 ```
 
+### 11.3 POST `/api/preferences/parse`
+
+将用户填写的自由文本整理为受控结构化偏好，供用户预览确认。此接口不写数据库。
+
+```json
+{
+  "user_id": 1,
+  "text": "我不能吃辣，每天预算500元，上午十点以后出发，优先坐地铁。",
+  "current_preferences": {
+    "travel_pace": "slow",
+    "special_needs": ["less_walking"]
+  }
+}
+```
+
+响应包含 `parsed_preferences`、可展示的 `summary_items`、冲突或安全 `warnings`，以及信息不足时的 `clarification_questions`。存在澄清问题时，前端不得直接保存，应让用户修改原文后重新解析。
+
+自由文本始终作为不可信偏好数据，不能改变系统规则、绕过 Action 确认或授权数据库操作。确认后由前端把原文和解析结果一起提交到 `PUT /api/preferences`。
+
 ## 12. 用户记忆接口
 ### 12.1 POST `/api/memory/summary`
 根据聊天记录总结用户记忆。MVP 可由后端或 Agent 在合适时机触发，前端不一定直接调用。
@@ -1507,6 +1563,52 @@ Content-Type: application/json
   }
 }
 ```
+
+### 12.2 GET `/api/memory`
+
+查询 Agent 当前可使用的高置信度长期记忆。每条记忆包含类型、键、结构化值、置信度和更新时间。推断结果必须能够追溯到消息证据，但接口不返回完整聊天原文。
+
+```http
+GET /api/memory?user_id=1
+```
+
+### 12.3 DELETE `/api/memory/{memory_type}/{memory_key}` 与 DELETE `/api/memory`
+
+用户可以删除单条推断记忆，或清空自己的全部长期记忆：
+
+```http
+DELETE /api/memory/interest/photo?user_id=1
+DELETE /api/memory?user_id=1
+```
+
+删除后，Agent 后续构建上下文时不得再读取相应记忆。若自动画像仍开启，用户以后再次明确表达相同偏好时可以重新形成记忆。
+
+### 12.4 GET/PUT `/api/memory/settings`
+
+查询或修改自动画像开关：
+
+```json
+{
+  "user_id": 1,
+  "enabled": false
+}
+```
+
+关闭后：
+
+- 聊天和图片讲解不再读取长期记忆。
+- 新消息不再写入自动记忆。
+- `/api/memory/summary` 不再生成新记忆。
+- 已有记忆不会自动删除，用户可通过删除接口单独清理。
+
+### 12.5 自动记忆规则
+
+- “我喜欢拍照”“我希望少走路”等明确表达可以立即形成高置信度候选。
+- 单次点击、单次地点选择或单次询问不能直接形成稳定画像。
+- 重复行为信号至少需要两条独立证据。
+- 每条记忆保存证据消息 ID、来源旅行、证据次数和置信度。
+- 用户新的明确表达与旧记忆冲突时，以新表达为当前值并重新累计证据。
+- Agent 节点只生成候选，数据库写入由 service 层完成。
 
 ## 13. Agent 对接约定
 后端调用 Agent 时建议统一通过 `agent_service`，不要在 router 中直接调用 LangGraph。

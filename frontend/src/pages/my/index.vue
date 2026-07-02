@@ -124,6 +124,38 @@
               v-else
               class="empty-text"
             >{{ strings.explanationEmpty }}</text>
+
+            <!-- divider 16/24 节奏(沿 UI §四,既有 interests 分割线同等节奏) -->
+            <view class="divider divider-pref" aria-hidden="true" />
+
+            <!-- 🆕 v0.2.0 travel_pace chip(从 userStore.preferences.travel_pace 派生,3 枚举;复用 PersonalProfileTravelPaceOptions 3 短标签「紧凑型/舒适型/悠闲型」+ 🧭 emoji 前缀,per specs/MyPage.md §3.3 段 3 + §10.4 R-16);只读展示不响应 @click(per R-16) -->
+            <view v-if="travelPaceLabel" class="travel-pace-chip">
+              <text class="travel-pace-chip-text">🧭 {{ travelPaceLabel }}</text>
+            </view>
+            <text
+              v-else
+              class="empty-text"
+            >{{ strings.travelPaceEmpty }}</text>
+
+            <!-- 🆕 v0.2.0 special_needs chips(从 userStore.preferences.special_needs 派生,3 枚举数组;复用 PersonalProfileSpecialNeedOptions 3 短标签「少步行/少排队/无障碍」+ 💡 emoji 前缀,per specs/MyPage.md §3.3 段 4 + §10.4 R-16);只读展示不响应 @click -->
+            <view v-if="specialNeedsChips.length > 0" class="special-needs-chips">
+              <view
+                v-for="chip in specialNeedsChips"
+                :key="chip.value"
+                class="special-needs-chip"
+              >
+                <text class="special-needs-chip-text">💡 {{ chip.label }}</text>
+              </view>
+            </view>
+            <text
+              v-else
+              class="empty-text"
+            >{{ strings.specialNeedsEmpty }}</text>
+
+            <view v-if="customInstructions" class="custom-preference-summary">
+              <text class="custom-preference-title">个性化偏好</text>
+              <text class="custom-preference-text">{{ customInstructions }}</text>
+            </view>
           </view>
 
           <!-- _MenuList(6 项 v-for 渲染,per spec §3.4 + §3 备注 5) -->
@@ -196,6 +228,9 @@ import {
   MyPageStrings,
   MyPageMenuOptions,
   OnboardingInterestOptions,
+  // 🆕 v0.2.0 复用 PersonalProfile v0.2.0 已注册的 2 个 Object.freeze 段(per specs/MyPage.md §10.4 R-16 + AGENTS.md §8.10「禁止新增未定义功能」反向);字段已存在 store(services/preferences.js:167-169 拉取时已落 userStore.preferences.travel_pace + special_needs)
+  PersonalProfileTravelPaceOptions,
+  PersonalProfileSpecialNeedOptions,
 } from '../../constants/strings.js'
 import { AppRoutes } from '../../constants/routes.js'
 import ErrorBanner from '../../components/ErrorBanner.vue'
@@ -266,6 +301,42 @@ const explanationLabel = computed(() => {
   return labelMap[style] || null
 })
 
+/**
+ * 🆕 v0.2.0 旅行节奏短标签派生
+ * 从 userStore.preferences.travel_pace 派生(3 枚举 `compact` / `normal` / `slow`)
+ * 复用 PersonalProfileTravelPaceOptions 既有 Object.freeze 段(per spec §3.3 + §10.4 R-16)
+ * @returns {string | null}
+ */
+const travelPaceLabel = computed(() => {
+  const pace = userStore.preferences?.travel_pace
+  if (!pace) return null
+  // 复用 PersonalProfileTravelPaceOptions 3 短标签(从 strings.js 导入,**不** hard-code 'compact'/'normal'/'slow' key)
+  // per Code Style §10 「Don't redefine upstream constants」+ AGENTS.md §8.10 「禁止新增未定义功能」反向
+  const option = PersonalProfileTravelPaceOptions.find((o) => o.value === pace)
+  return option?.label ?? null
+})
+
+/**
+ * 🆕 v0.2.0 特殊需求 chips 派生
+ * 从 userStore.preferences.special_needs 派生(3 枚举数组 `less_walking` / `less_queue` / `accessible`)
+ * 复用 PersonalProfileSpecialNeedOptions 既有 Object.freeze 段(per spec §3.3 + §10.4 R-16)
+ * @returns {Array<{ value: string, label: string }>}
+ */
+const specialNeedsChips = computed(() => {
+  const needs = userStore.preferences?.special_needs
+  if (!Array.isArray(needs) || needs.length === 0) return []
+  // 复用 PersonalProfileSpecialNeedOptions 3 短标签(从 strings.js 导入,**不** hard-code 'less_walking' 等 key)
+  return needs
+    .map((n) => PersonalProfileSpecialNeedOptions.find((o) => o.value === n))
+    .filter(Boolean)
+})
+
+/** 用户保存的个性化偏好原文。 */
+const customInstructions = computed(() => {
+  const value = userStore.preferences?.custom_instructions
+  return typeof value === 'string' ? value.trim() : ''
+})
+
 /** error 态显示文案(spec §9 AC-08) */
 const errorMessage = computed(() => {
   if (!userStore.error) return strings.errorNetwork
@@ -277,6 +348,12 @@ const interestsCount = computed(() => interestsChips.value.length)
 
 /** hasStyle(用于 logger) */
 const hasStyle = computed(() => explanationLabel.value !== null)
+
+/** 🆕 v0.2.0 hasTravelPace(用于 logger) */
+const hasTravelPace = computed(() => travelPaceLabel.value !== null)
+
+/** 🆕 v0.2.0 specialNeedsCount(用于 logger) */
+const specialNeedsCount = computed(() => specialNeedsChips.value.length)
 
 // ───────── View Mode Decision(spec §3.6 + §5.1) ─────────
 
@@ -319,6 +396,8 @@ async function fetchAndDecide() {
     logger.info('[MyPage] onLoad ok', {
       interestsCount: interestsCount.value,
       hasStyle: hasStyle.value,
+      hasTravelPace: hasTravelPace.value,    // 🆕 v0.2.0
+      specialNeedsCount: specialNeedsCount.value,  // 🆕 v0.2.0
     })
   } catch (err) {
     hasFetchedOnce.value = true
@@ -348,6 +427,8 @@ onShow(() => {
   logger.info('[MyPage] onShow loaded', {
     interestsCount: interestsCount.value,
     hasStyle: hasStyle.value,
+    hasTravelPace: hasTravelPace.value,    // 🆕 v0.2.0
+    specialNeedsCount: specialNeedsCount.value,  // 🆕 v0.2.0
   })
 })
 
@@ -447,6 +528,8 @@ async function onRetry() {
     logger.info('[MyPage] retry ok', {
       interestsCount: interestsCount.value,
       hasStyle: hasStyle.value,
+      hasTravelPace: hasTravelPace.value,    // 🆕 v0.2.0
+      specialNeedsCount: specialNeedsCount.value,  // 🆕 v0.2.0
     })
   } catch (err) {
     hasFetchedOnce.value = true
@@ -692,6 +775,78 @@ async function onRetry() {
   font-size: 26rpx;
   color: #2C2C2C;
   line-height: 1.4;
+}
+
+/* 🆕 v0.2.0 旅行节奏 chip(per spec §3.3 段 3);沿用 .explanation-chip 形态(单选语义 + surfaceWarm 背景 + 圆角),只读展示 |
+   44pt 触达:沿 NFR hard rule(chip 是纯展示元素,N/A 触达;与 .explanation-chip 1:1 等价)*/
+.travel-pace-chip {
+  align-self: flex-start;
+  background: #F2EBE0;
+  /* surfaceWarm — 与 .explanation-chip 同款调色板,语义 1:1(单 chip = 单选偏好) */
+  border-radius: 8rpx;
+  padding: 8rpx 16rpx;
+  box-sizing: border-box;
+}
+
+.travel-pace-chip-text {
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 26rpx;
+  color: #2C2C2C;
+  line-height: 1.4;
+}
+
+/* 🆕 v0.2.0 特殊需求 chips(per spec §3.3 段 4);沿用 .interest-chips 形态(多 chips = 多选 + flex-wrap gap),只读展示 */
+.special-needs-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12rpx;
+}
+
+.special-needs-chip {
+  background: #F2EBE0;
+  /* surfaceWarm — 与 .interest-chip / .explanation-chip 同款调色板,语义一致 */
+  border-radius: 8rpx;
+  padding: 8rpx 16rpx;
+  box-sizing: border-box;
+}
+
+.special-needs-chip-text {
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 26rpx;
+  color: #2C2C2C;
+  line-height: 1.4;
+}
+
+/* v0.2.0 偏好摘要段间分割线(沿 UI §四 16/24 节奏;与既有 .divider 1:1 等价,新增 modifier 是为 spec §3.3 段 3/段 4 之间无分割线的语义区别) */
+.divider.divider-pref {
+  margin: 12rpx 0;
+}
+
+.custom-preference-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  margin-top: 4rpx;
+  padding: 20rpx;
+  background: rgba(45, 106, 94, 0.07);
+  border-radius: 16rpx;
+}
+
+.custom-preference-title {
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #2D6A5E;
+  line-height: 1.4;
+}
+
+.custom-preference-text {
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 26rpx;
+  color: #2C2C2C;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* _MenuList(spec §3.4) */

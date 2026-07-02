@@ -153,11 +153,14 @@ export type Interest = 'history' | 'food' | 'nature' | 'photo' | 'family'
 export type SpecialNeed = 'less_walking' | 'less_queue' | 'accessible'
 
 export interface Preferences {
-  explanation_style: ExplanationStyle
-  travel_pace: TravelPace
-  interests: Interest[]
-  special_needs: SpecialNeed[]
-}
+    explanation_style: ExplanationStyle
+    travel_pace: TravelPace
+    interests: Interest[]
+    special_needs: SpecialNeed[]
+    custom_instructions: string
+    custom_preferences: Record<string, unknown>
+    custom_preferences_confirmed_at: string | null
+  }
 
 // ───────────────── Chat ─────────────────
 

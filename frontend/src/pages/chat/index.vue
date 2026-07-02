@@ -343,6 +343,7 @@ import { storeToRefs } from 'pinia'  // 2026-06-28 retro fix 修 silent drop:把
 import { useHomeStore } from '../../stores/homeStore.js'
 import { ApiError } from '../../services/chat.js'
 import { createTripDay, createTripItem, deleteTripItem } from '../../services/trips.js'
+import { confirmAgentAction, rejectAgentAction } from '../../services/actions.js'
 import { validateActionOption } from '../../services/actionOptionValidation.js'
 import { getCurrentLocation, checkLocationPermission } from '../../utils/location.js'
 import ActionOptionsModal from './components/ActionOptionsModal.vue'
@@ -873,24 +874,28 @@ async function applyActionOption(selectedOption) {
   }
 
   const operation = selectedOption?.operation
+  const actionId = selectedOption?.action_id
+  const hasServerAction = typeof actionId === 'string' && actionId.length > 0
   const rawPayload = selectedOption?.payload
 
   if (
-    !selectedOption
+    !hasServerAction
+    && (!selectedOption
     || !rawPayload
     || typeof rawPayload !== 'object'
-    || Array.isArray(rawPayload)
+    || Array.isArray(rawPayload))
   ) {
     actionOptionsInvalidMessage.value = ChatPageStrings.replanInvalid
     logger.warn('[ChatPage] action option invalid', { selectedOption })
     return false
   }
 
-  const payload = sanitizeActionPayload(operation, rawPayload)
+  const payload = hasServerAction ? {} : sanitizeActionPayload(operation, rawPayload)
 
   // create 不要求 item_id；update/delete 必须有合法 item_id。
   if (
-    ['update_trip_item', 'delete_trip_item'].includes(operation)
+    !hasServerAction
+    && ['update_trip_item', 'delete_trip_item'].includes(operation)
     && (!Number.isInteger(Number(selectedOption.item_id))
       || Number(selectedOption.item_id) <= 0)
   ) {
@@ -906,7 +911,9 @@ async function applyActionOption(selectedOption) {
   isApplyingAction.value = true
 
   try {
-    if (operation === 'create_trip_item') {
+    if (hasServerAction) {
+      await confirmAgentAction(actionId)
+    } else if (operation === 'create_trip_item') {
       let tripDayId = Number(selectedOption?.trip_day_id)
 
       if (!Number.isInteger(tripDayId) || tripDayId <= 0) {
@@ -1035,9 +1042,14 @@ function sanitizeActionPayload(operation, source) {
 /**
  * ActionOptionsModal:取消
  */
-function onActionOptionCancel() {
+async function onActionOptionCancel() {
   if (isApplyingAction.value) return
   actionOptionsVisible.value = false
+  const actionIds = actionOptions.value
+    .map(option => option?.action_id)
+    .filter(actionId => typeof actionId === 'string' && actionId.length > 0)
+  await Promise.allSettled(actionIds.map(actionId => rejectAgentAction(actionId)))
+  actionOptions.value = []
   logger.info('[ChatPage] action option cancelled')
 }
 

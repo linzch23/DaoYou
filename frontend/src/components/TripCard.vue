@@ -45,11 +45,13 @@
       :hover-stay-time="50"
       @click.stop="onChatTap"
     >
-      <text class="btn-chat-trip-icon" aria-hidden="true">{{ chatButtonLabel }}</text>
+      <image class="btn-chat-trip-icon" src="/static/tabbar/AI对话.png" mode="aspectFit" aria-hidden="true" />
     </view>
     <!-- 2026-06-24 UserRound2-001 §3 Bug C 新增:草稿/已结束 trip 显示删除入口
          @click.stop 阻止冒泡到 card 自身的 onTap(避免同时跳详情);
-         canDelete 控制显隐:active trip 不显示,引导走回收站(per HomeStrings.deleteActiveTripToast) -->
+         canDelete 控制显隐:active trip 不显示,引导走回收站(per HomeStrings.deleteActiveTripToast)
+         v0.X 修订:icon 从 emoji 文字(HomeStrings.btnDeleteTrip)改为 PNG 图标
+           /static/tabbar/删除_delete.png,与 chat 按钮走同一素材路径 -->
     <view
       v-if="canDelete"
       class="btn-delete-trip"
@@ -59,7 +61,7 @@
       :hover-stay-time="50"
       @click.stop="onDeleteTap"
     >
-      <text class="btn-delete-trip-icon" aria-hidden="true">{{ deleteButtonLabel }}</text>
+      <image class="btn-delete-trip-icon" src="/static/tabbar/删除_delete.png" mode="aspectFit" aria-hidden="true" />
     </view>
     <text class="trip-card-arrow" aria-hidden="true">›</text>
   </view>
@@ -124,17 +126,17 @@ const ariaLabel = computed(
   () => `${props.trip.title},${statusLabel.value},${dateRangeText.value}`
 )
 
-// 2026-06-24 新增:chat 按钮文案 + aria 派生(per AGENTS.md §8.6 13 页面惯例)
+// 2026-06-24 新增:chat 按钮 aria 派生(per AGENTS.md §8.6 13 页面惯例)
 // aria 模板带 {title} 占位,运行时插值更准
-const chatButtonLabel = computed(() => HomeStrings.btnChatTrip)
-
+// v0.X 修订:不再派生 chatButtonLabel — icon 改为 <image src="/static/tabbar/AI对话.png"> PNG 渲染,
+//   详见 template .btn-chat-trip-icon;HomeStrings.btnChatTrip 同步删除
 const chatButtonAria = computed(() =>
   HomeStrings.btnChatTripAria.replace('{title}', props.trip.title)
 )
 
-// 2026-06-24 UserRound2-001 §3 Bug C 新增:delete 按钮文案 + aria 派生
-const deleteButtonLabel = computed(() => HomeStrings.btnDeleteTrip)
-
+// 2026-06-24 UserRound2-001 §3 Bug C 新增:delete 按钮 aria 派生
+// v0.X 修订:不再派生 deleteButtonLabel — icon 改为 <image src="/static/tabbar/删除_delete.png"> PNG 渲染,
+//   详见 template .btn-delete-trip-icon;HomeStrings.btnDeleteTrip 同步删除
 const deleteButtonAria = computed(() =>
   HomeStrings.btnDeleteTripAria.replace('{title}', props.trip.title)
 )
@@ -323,11 +325,9 @@ function onDeleteTap() {
 }
 
 .btn-chat-trip-icon {
-  font-size: 36rpx;
-  /* 18px emoji */
-  line-height: 1;
-  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
-  /* 跨平台 emoji 渲染 */
+  width: 36rpx;
+  /* 18px PNG 图标,与 emoji 字号对齐 */
+  height: 36rpx;
 }
 
 /* 2026-06-24 UserRound2-001 §3 Bug C 新增:草稿/已结束 trip 显示的删除入口
@@ -362,10 +362,8 @@ function onDeleteTap() {
 }
 
 .btn-delete-trip-icon {
-  font-size: 32rpx;
-  /* 16px emoji */
-  line-height: 1;
-  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
-  /* 跨平台 emoji 渲染 */
+  width: 32rpx;
+  /* 16px PNG 图标,与 emoji 字号对齐 */
+  height: 32rpx;
 }
 </style>
