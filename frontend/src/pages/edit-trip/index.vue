@@ -277,7 +277,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
 import {
   EditTripStrings,
   NewTripStrings,
@@ -1218,22 +1219,8 @@ function onStatusSelect(v) {
  * 沿用 TripDetailPage / SpotDetailSheet 既有模式)
  * @returns {Record<string, string | undefined> | undefined}
  */
-function getCurrentPageOptions() {
-  try {
-    const pages = /** @type {any[]} */ (typeof getCurrentPages === 'function' ? getCurrentPages() : [])
-    if (Array.isArray(pages) && pages.length > 0) {
-      const last = pages[pages.length - 1]
-      return last?.options
-    }
-  } catch (err) {
-    logger.warn('[EditTripPage] getCurrentPages fail', err)
-  }
-  return undefined
-}
-
-onMounted(() => {
-  const options = getCurrentPageOptions() || {}
-  onLoadPage(options)
+onLoad((options) => {
+  onLoadPage(options || {})
 })
 
 onUnmounted(() => {

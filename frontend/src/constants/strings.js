@@ -22,7 +22,7 @@ export const OnboardingStrings = {
   completeButton: '完成设置',
 
   // 成功 Toast
-  successToast: '设置成功,期待你的第一次旅行!',
+  successToast: '设置成功',
 
   // 错误提示(spec §6.1 Error 表)
   errorNetwork: '网络异常,请稍后重试',
@@ -150,7 +150,7 @@ export const HomeStrings = {
   deleteConfirmMessage: '删除后可在「我的-回收站」中恢复',
   deleteConfirmConfirm: '删除',
   deleteConfirmCancel: '取消',
-  deleteSuccessToast: '已删除',
+  deleteSuccessToast: '已移入回收站',
   deleteFailToast: '删除失败',
   deleteActiveTripToast: '进行中的行程请走「我的-回收站」',
 }
@@ -879,6 +879,7 @@ export const MyPageStrings = {
   menuPersonalProfile: '个人信息编辑',   // 菜单项 1 标签
   menuTrash: '回收站',                    // 菜单项 2 标签
   menuStyleSetting: '讲解风格',            // 菜单项 3 标签
+  menuNotificationSetting: '通知设置',
   menuHelp: '帮助',                        // 菜单项 5 标签
   menuAbout: '关于',                       // 菜单项 6 标签
   toastHelpComing: '功能即将上线,敬请期待', // 帮助菜单点击弹 Toast(per §3.4)
@@ -925,6 +926,7 @@ export const MyPageMenuOptions = Object.freeze([
   { id: 'personal-profile',    icon: '👤',  label: MyPageStrings.menuPersonalProfile,    route: AppRoutes.PersonalProfile,    behavior: 'navigate' },
   { id: 'trash',                icon: '🗑️', label: MyPageStrings.menuTrash,                route: AppRoutes.Trash,               behavior: 'navigate' },
   { id: 'style-setting',        icon: '🎙️', label: MyPageStrings.menuStyleSetting,        route: AppRoutes.StyleSetting,        behavior: 'navigate' },
+  { id: 'notification-setting', icon: '🔔', label: MyPageStrings.menuNotificationSetting, route: AppRoutes.NotificationSetting, behavior: 'navigate' },
   { id: 'help',                 icon: '❓', label: MyPageStrings.menuHelp,                 route: null,                          behavior: 'coming-soon' },
   { id: 'about',                icon: 'ℹ️', label: MyPageStrings.menuAbout,                route: AppRoutes.About,               behavior: 'navigate' },
 ])

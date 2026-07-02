@@ -166,6 +166,12 @@ public class BackgroundLocationService extends Service implements LocationListen
     }
 
     @Override
+    public void onTaskRemoved(Intent rootIntent) {
+        Log.i(TAG, "Task removed; foreground location service remains active");
+        super.onTaskRemoved(rootIntent);
+    }
+
+    @Override
     public void onDestroy() {
         if (locationManager != null) {
             locationManager.removeUpdates(this);

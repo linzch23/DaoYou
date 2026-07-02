@@ -230,7 +230,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
 import { NewTripStrings } from '../../constants/strings.js'
 import { AppRoutes } from '../../constants/routes.js'
 import { logger } from '../../utils/logger.js'
@@ -525,18 +526,6 @@ function loadAndPrefillFromTrip(tripId) {
  * (与 TripDetailPage 同样模式,本工程未在 package.json 显式列 @dcloudio/uni-app)
  * @returns {Record<string, string | undefined> | undefined}
  */
-function getCurrentPageOptions() {
-  try {
-    const pages = /** @type {any[]} */ (typeof getCurrentPages === 'function' ? getCurrentPages() : [])
-    if (Array.isArray(pages) && pages.length > 0) {
-      const last = pages[pages.length - 1]
-      return last?.options
-    }
-  } catch (err) {
-    logger.warn('[NewTripPage] getCurrentPages fail', err)
-  }
-  return undefined
-}
 
 /**
  * 页面初始化入口(UI-024)
@@ -983,8 +972,7 @@ async function createItineraryForTrip(tripId, items) {
  * 页面挂载:解析 ?copyFrom={tripId} 决定是否走复制模式(UI-024)
  * 沿用 TripDetailPage 模式(getCurrentPages() 末项 options)
  */
-onMounted(() => {
-  const options = getCurrentPageOptions()
+onLoad((options) => {
   onLoadPage(options)
 })
 

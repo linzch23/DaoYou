@@ -748,9 +748,8 @@ function resolveLocalDbRestore(tripId, resolve, reject) {
 export function permanentlyDeleteTrip(tripId) {
   return new Promise((resolve, reject) => {
     uni.request({
-      url: `${BASE_URL}/api/trash/trips/${tripId}`,
+      url: `${BASE_URL}/api/trash/trips/${tripId}?user_id=${MVP_USER_ID}`,
       method: 'DELETE',
-      data: { user_id: MVP_USER_ID },
       success: (res) => {
         // 404 静默:幂等视为成功(与 trashStore 404 静默路径对齐)
         if (res.statusCode === 404) {
