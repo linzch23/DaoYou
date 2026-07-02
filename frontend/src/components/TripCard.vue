@@ -45,13 +45,13 @@
       :hover-stay-time="50"
       @click.stop="onChatTap"
     >
-      <image class="btn-chat-trip-icon" src="/static/tabbar/AI对话.png" mode="aspectFit" aria-hidden="true" />
+      <image class="btn-chat-trip-icon" src="/static/tabbar/chat.png" mode="aspectFit" aria-hidden="true" />
     </view>
     <!-- 2026-06-24 UserRound2-001 §3 Bug C 新增:草稿/已结束 trip 显示删除入口
          @click.stop 阻止冒泡到 card 自身的 onTap(避免同时跳详情);
          canDelete 控制显隐:active trip 不显示,引导走回收站(per HomeStrings.deleteActiveTripToast)
          v0.X 修订:icon 从 emoji 文字(HomeStrings.btnDeleteTrip)改为 PNG 图标
-           /static/tabbar/删除_delete.png,与 chat 按钮走同一素材路径 -->
+           /static/tabbar/delete.png,与 chat 按钮走同一素材路径 -->
     <view
       v-if="canDelete"
       class="btn-delete-trip"
@@ -61,7 +61,7 @@
       :hover-stay-time="50"
       @click.stop="onDeleteTap"
     >
-      <image class="btn-delete-trip-icon" src="/static/tabbar/删除_delete.png" mode="aspectFit" aria-hidden="true" />
+      <image class="btn-delete-trip-icon" src="/static/tabbar/delete.png" mode="aspectFit" aria-hidden="true" />
     </view>
     <text class="trip-card-arrow" aria-hidden="true">›</text>
   </view>
@@ -128,14 +128,14 @@ const ariaLabel = computed(
 
 // 2026-06-24 新增:chat 按钮 aria 派生(per AGENTS.md §8.6 13 页面惯例)
 // aria 模板带 {title} 占位,运行时插值更准
-// v0.X 修订:不再派生 chatButtonLabel — icon 改为 <image src="/static/tabbar/AI对话.png"> PNG 渲染,
+// v0.X 修订:不再派生 chatButtonLabel — icon 改为 <image src="/static/tabbar/chat.png"> PNG 渲染,
 //   详见 template .btn-chat-trip-icon;HomeStrings.btnChatTrip 同步删除
 const chatButtonAria = computed(() =>
   HomeStrings.btnChatTripAria.replace('{title}', props.trip.title)
 )
 
 // 2026-06-24 UserRound2-001 §3 Bug C 新增:delete 按钮 aria 派生
-// v0.X 修订:不再派生 deleteButtonLabel — icon 改为 <image src="/static/tabbar/删除_delete.png"> PNG 渲染,
+// v0.X 修订:不再派生 deleteButtonLabel — icon 改为 <image src="/static/tabbar/delete.png"> PNG 渲染,
 //   详见 template .btn-delete-trip-icon;HomeStrings.btnDeleteTrip 同步删除
 const deleteButtonAria = computed(() =>
   HomeStrings.btnDeleteTripAria.replace('{title}', props.trip.title)

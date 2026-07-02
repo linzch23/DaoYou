@@ -31,6 +31,22 @@ test('every configured tabBar icon exists under the uni-app source static direct
   }
 })
 
+test('trip card action icons use ASCII static asset paths', async () => {
+  const source = await readFile(
+    path.join(frontendRoot, 'src/components/TripCard.vue'),
+    'utf8',
+  )
+
+  for (const iconName of ['chat.png', 'delete.png']) {
+    assert.match(source, new RegExp(`/static/tabbar/${iconName.replace('.', '\\.')}`))
+    const icon = await readFile(
+      path.join(frontendRoot, 'src/static/tabbar', iconName),
+    )
+    assert.ok(icon.length > 0, `${iconName} must be a non-empty source asset`)
+  }
+  assert.doesNotMatch(source, /\/static\/tabbar\/(?:AI对话|删除_delete)\.png/)
+})
+
 test('packaged app uses the product display name', async () => {
   const manifest = JSON.parse(
     await readFile(path.join(frontendRoot, 'src/manifest.json'), 'utf8'),
