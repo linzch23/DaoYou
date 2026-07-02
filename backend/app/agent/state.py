@@ -13,11 +13,14 @@ class AgentState(TypedDict, total=False):
     current_trip: dict[str, object]
     current_location: dict[str, float]
     user_preferences: dict[str, object]
+    long_term_memories: list[dict[str, object]]
     chat_history: list[dict[str, object]]
     image_info: dict[str, object]
     # Agent 节点内部写入的中间结果，用于串联工具调用、结构化输出和最终回复。
     tool_results: dict[str, object]
     intent: str
+    intent_classification: dict[str, object]
+    memory_candidates: list[dict[str, object]]
     structured_data: dict[str, object]
     action_options: list[dict[str, object]]
     follow_up_questions: list[str]

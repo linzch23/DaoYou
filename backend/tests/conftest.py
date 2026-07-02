@@ -7,6 +7,7 @@ from sqlalchemy.pool import StaticPool
 
 from app.models.chat import ChatMessage
 from app.models.departure_alert import DepartureAlert
+from app.models.pending_action import PendingAction
 from app.models.photo import PhotoRecord
 from app.models.preference import UserMemory, UserPreference
 from app.models.push_device import DevicePushToken
@@ -36,6 +37,7 @@ def db() -> Generator[Session, None, None]:
         TripItem.__table__,
         ChatMessage.__table__,
         PhotoRecord.__table__,
+        PendingAction.__table__,
         DevicePushToken.__table__,
         DepartureAlert.__table__,
         UserPreference.__table__,

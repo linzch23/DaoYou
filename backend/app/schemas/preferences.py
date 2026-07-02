@@ -10,3 +10,8 @@ class MemorySummaryRequest(BaseModel):
     user_id: int
     trip_id: int
 
+
+class UpdateMemorySettingsRequest(BaseModel):
+    user_id: int
+    enabled: bool
+

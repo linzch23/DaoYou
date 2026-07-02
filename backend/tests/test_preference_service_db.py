@@ -162,12 +162,16 @@ def test_summarize_memory_persists_detected_user_memories(db: Session) -> None:
     records = db.scalars(select(UserMemory).where(UserMemory.user_id == 1)).all()
     memory_keys = {memory["memory_key"] for memory in result["memories"]}
     assert result["updated"] is True
-    assert memory_keys == {"photo", "slow_pace"}
-    assert {record.memory_key for record in records} == {"photo", "slow_pace"}
-    assert records[0].memory_value["source"] == "chat_photo_history"
+    assert memory_keys == {"photo", "slow_pace", "less_walking"}
+    assert {record.memory_key for record in records} == {
+        "photo",
+        "slow_pace",
+        "less_walking",
+    }
+    assert all(record.memory_value["source"] == "chat_photo_history" for record in records)
 
 
-def test_summarize_memory_updates_existing_memory_without_duplicates(db: Session) -> None:
+def test_summarize_memory_does_not_promote_single_behavior_signal(db: Session) -> None:
     db.add(User(id=1, nickname="演示用户"))
     db.flush()
     db.add(
@@ -188,6 +192,4 @@ def test_summarize_memory_updates_existing_memory_without_duplicates(db: Session
     summarize_memory(MemorySummaryRequest(user_id=1, trip_id=1), db=db)
 
     records = db.scalars(select(UserMemory).where(UserMemory.user_id == 1)).all()
-    assert len(records) == 1
-    assert records[0].memory_type == "interest"
-    assert records[0].memory_key == "photo"
+    assert records == []
