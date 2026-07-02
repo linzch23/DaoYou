@@ -88,6 +88,23 @@ class UpdateTripItemRequest(BaseModel):
     status: Literal["planned", "done", "skipped", "changed"] | None = None
     notes: str | None = None
 
+    @field_validator("city", "title")
+    @classmethod
+    def strip_optional_required_text(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        value = value.strip()
+        if not value:
+            raise ValueError("must not be blank")
+        return value
+
+    @field_validator("address")
+    @classmethod
+    def strip_update_address(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        return value.strip() or None
+
 
 class ParseTripRequest(BaseModel):
     user_id: int
@@ -141,19 +158,3 @@ class CreateTripDraftDayRequest(BaseModel):
 class CreateTripFromDraftRequest(CreateTripRequest):
     idempotency_key: str = Field(min_length=8, max_length=100)
     days: list[CreateTripDraftDayRequest] = Field(default_factory=list, max_length=100)
-    @field_validator("city", "title")
-    @classmethod
-    def strip_optional_required_text(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        value = value.strip()
-        if not value:
-            raise ValueError("must not be blank")
-        return value
-
-    @field_validator("address")
-    @classmethod
-    def strip_update_address(cls, value: str | None) -> str | None:
-        if value is None:
-            return None
-        return value.strip() or None
