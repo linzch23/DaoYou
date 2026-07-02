@@ -5,6 +5,7 @@ from app.agent.tools import (
     memory_tool,
     ocr_tool,
     reminder_tool,
+    trip_item_tool,
     trip_tool,
     vision_tool,
     weather_tool,
@@ -17,6 +18,42 @@ def test_trip_and_memory_tools_prefer_injected_context() -> None:
 
     assert trip_tool({"current_trip": trip}) == trip
     assert memory_tool({"user_preferences": preferences}) == preferences
+
+
+def test_trip_item_tool_drops_client_destination_coordinates() -> None:
+    state = {
+        "trip_id": 1,
+        "current_trip": {
+            "id": 1,
+            "days": [
+                {
+                    "id": 11,
+                    "day_index": 1,
+                    "trip_date": "2026-07-02",
+                    "items": [],
+                }
+            ],
+        },
+    }
+
+    result = trip_item_tool(
+        state,
+        {
+            "operation": "create_trip_item",
+            "target_day_index": 1,
+            "payload": {
+                "city": "北京",
+                "title": "故宫博物院",
+                "latitude": 39.9,
+                "longitude": 116.4,
+            },
+        },
+    )
+
+    payload = result["action_option"]["payload"]
+    assert payload["city"] == "北京"
+    assert "latitude" not in payload
+    assert "longitude" not in payload
 
 
 def test_vision_and_ocr_tools_keep_demo_fallback_shape(monkeypatch) -> None:

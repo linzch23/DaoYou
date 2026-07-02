@@ -57,6 +57,7 @@ export type ItemStatus = 'planned' | 'done' | 'skipped' | 'changed'
 export interface TripItem {
   id: number
   trip_day_id: number // §3.3
+  city: string
   title: string
   item_type: ItemType
   start_time: string // §3.3  HH:mm，例 '10:00'
@@ -74,7 +75,7 @@ export interface TripItem {
 // (横向 scroll-view + 拖动排序)。
 //
 // 与 TripItem 的区别(per spec UI-025 §2 / issues/UI/UI-025):
-//   - 无 trip_day_id / address / lat-lng / status / notes(纯文本 + 时间段 + 类型)
+//   - 无 trip_day_id / address / lat-lng / status / notes(城市、地点、时间段和类型)
 //   - id 是**客户端生成**稳定 key(Date.now() + 随机后缀),用于 v-for 拖动
 //   - item_type 用 'other' 兜底(新加,ItemType 5 枚举)
 //   - 服务端若需要回显,POST /api/trips body 携带 itineraryArrange: ItineraryItem[]
@@ -82,6 +83,7 @@ export interface TripItem {
 // 时间格式与 TripItem 一致(沿 §3.3 'HH:mm')
 export interface ItineraryItem {
   id: number                // 客户端生成稳定 key(拖动排序需要)
+  city: string              // 节点所在城市
   title: string             // 地点名称
   start_time: string        // 'HH:mm'
   end_time: string          // 'HH:mm'
@@ -227,17 +229,15 @@ export interface CreateTripItemRequest {
   // 2026-06-25(per Cross-Page issue location-real-fix-v2-2026-06-25 §2.4):补回 city 必填
   //   - 后端 Pydantic `backend/app/schemas/trips.py:33-44 CreateTripItemRequest` city: str 必填
   //   - 前端 NewTripPage / EditTripPage 调 createTripItem 时**必须**传 city
-  //     (page 层从 trip.title 派生,默认 trip.title 字面值)
+  //     (由节点城市输入提供，新增下一节点时默认沿用上一节点城市)
   //   - 此前 audit (trip-id-audit-fix-2026-06-24) 仅清掉 Trip 表的 city,误连带删除 TripItem 的 city
   city: string
   title: string
-  // 以下 6 字段对齐后端 Pydantic 全 optional,前端 MVP 不强求
+  // 以下字段对齐后端 Pydantic optional 字段；目的地坐标由后端生成
   item_type?: ItemType
   start_time?: string // HH:mm
   end_time?: string   // HH:mm
   address?: string
-  latitude?: number
-  longitude?: number
   notes?: string
 }
 
@@ -250,9 +250,11 @@ export interface UpdateTripItemRequest {
   //     onUpdateItem 调用时 title / item_type 实际发向后端但类型无声明,api/ 是 READ-ONLY,
   //     code-writer 自主决策 + deliverable §3 透明登记(spec-writer 后续决策是否同步修订)
   title?: string
+  city?: string
   item_type?: ItemType
   start_time?: string // HH:mm
   end_time?: string   // HH:mm
+  address?: string
   status?: ItemStatus
   notes?: string
 }

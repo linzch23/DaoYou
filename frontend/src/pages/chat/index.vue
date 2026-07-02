@@ -1022,7 +1022,7 @@ function sanitizeActionPayload(operation, source) {
   if (!source || typeof source !== 'object') return {}
   const createFields = new Set([
     'city', 'title', 'item_type', 'start_time', 'end_time', 'address',
-    'latitude', 'longitude', 'notes',
+    'notes',
   ])
   const allowedFields = operation === 'update_trip_item'
     ? new Set([...createFields, 'status'])

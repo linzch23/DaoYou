@@ -100,7 +100,8 @@ REPLAN_PROMPT = """
    target_day_index、target_start_time 等定位线索。不要编造任何 ID。
 4. 信息不足时 needs_clarification=true、operations=[]，并用 clarifying_question 追问。
 5. create/update 的 payload 只能包含 city、title、item_type、start_time、end_time、address、
-   latitude、longitude、status、notes；delete 的 payload 固定为空对象。不要在 payload 中包含
+   status、notes；目的地坐标由后端地理编码生成。delete 的 payload 固定为空对象。
+   不要在 payload 中包含
    user_id、trip_id、trip_day_id 或 item_id。
 6. 说明操作理由，label 使用陈述句，不要使用疑问句。
 7. 新增行程项至少需要 title；city 可从目标旅行日已有节点或地图结果中确定。

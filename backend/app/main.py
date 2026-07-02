@@ -28,6 +28,8 @@ def create_app() -> FastAPI:
     def handle_app_error(request: Request, exc: AppError) -> JSONResponse:
         del request
         status_code = 404 if exc.code == ErrorCode.NOT_FOUND else 400
+        if exc.code == ErrorCode.DESTINATION_NOT_FOUND:
+            status_code = 422
         if exc.code >= ErrorCode.SERVER_ERROR:
             status_code = 500
         return JSONResponse(

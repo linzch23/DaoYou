@@ -1328,6 +1328,7 @@ export const ItineraryArrangeStrings = {
   placeholderDate: '请选择日期',
   placeholderStartTime: '开始时间',
   placeholderEndTime: '结束时间',
+  placeholderCity: '城市',
   placeholderTitle: '请输入地点名称',
 
   // 添加行程按钮

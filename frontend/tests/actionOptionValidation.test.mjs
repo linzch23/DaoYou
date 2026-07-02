@@ -27,3 +27,21 @@ test('create_trip_item requires an existing or creatable target day', () => {
     payload: { city: '大连', title: '咖啡馆' },
   }), 'invalid_trip_day')
 })
+
+test('create_trip_item requires a non-empty city', () => {
+  assert.equal(validateActionOption({
+    operation: 'create_trip_item',
+    trip_id: 1,
+    trip_day_id: 2,
+    payload: { city: '  ', title: '咖啡馆' },
+  }), 'invalid_city')
+})
+
+test('create_trip_item requires a non-empty title', () => {
+  assert.equal(validateActionOption({
+    operation: 'create_trip_item',
+    trip_id: 1,
+    trip_day_id: 2,
+    payload: { city: '大连', title: '' },
+  }), 'invalid_title')
+})

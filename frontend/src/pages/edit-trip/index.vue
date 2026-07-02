@@ -287,6 +287,7 @@ import {
 } from '../../constants/strings.js'
 import { AppRoutes } from '../../constants/routes.js'
 import { logger } from '../../utils/logger.js'
+import { getTripItemErrorMessage } from '../../services/tripItemForm.js'
 import { useHomeStore } from '../../stores/homeStore.js'
 import {
   getTripDetail,
@@ -374,6 +375,7 @@ function formDataFromTrip(trip) {
         itineraryArrange.push({
           id: item.id,
           date: day.trip_date, // 关键:从 trip_day 拿 date
+          city: item.city || '',
           title: item.title,
           start_time: item.start_time || '',
           end_time: item.end_time || '',
@@ -388,27 +390,6 @@ function formDataFromTrip(trip) {
     end_date: trip.end_date || '',      // v0.5.0 加回
     itineraryArrange,
   }
-}
-
-/**
- * 派生 TripItem.city 字段(per Cross-Page issue location-real-fix-v2-2026-06-25 §2.4)
- *
- * 后端 Pydantic CreateTripItemRequest.city: str 必填(per backend/app/schemas/trips.py:36),
- * 前端 EditTripPage form **不**含 city 字段,从 trip.title 启发式提取。
- *
- * 提取策略(同 NewTripPage.deriveCity):
- *   1. trip.title 开头 1-3 个中文字符 → city
- *   2. 提取不到中文 → fallback trip.title 字面值
- *   3. trip.title 空 → 空字符串兜底
- *
- * @param {string} tripTitle  当前 trip 的 title(从 formData.value.title 派生)
- * @returns {string}
- */
-function deriveCity(tripTitle) {
-  if (!tripTitle || !tripTitle.trim()) return ''
-  const m = tripTitle.match(/^[\u4e00-\u9fa5]{1,3}/)
-  if (m) return m[0]
-  return tripTitle.trim().slice(0, 50)
 }
 
 /**
@@ -1009,9 +990,7 @@ async function onAddItem(newItem) {
     const tripDayId = await ensureTripDayForDate(newItem.date)
     const res = await createTripItem({
       trip_day_id: tripDayId,
-      // 2026-06-25(per Cross-Page issue location-real-fix-v2-2026-06-25 §2.4):
-      // city 必填,从 formData.title 启发式提取(非空字符串)
-      city: deriveCity(formData.value.title),
+      city: newItem.city,
       title: newItem.title,
       item_type: newItem.item_type || 'attraction',
       start_time: newItem.start_time || '',
@@ -1033,7 +1012,11 @@ async function onAddItem(newItem) {
     logger.info('[EditTripPage] addItem ok', { itemId: res.data.item_id, title: newItem.title })
   } catch (err) {
     logger.error('[EditTripPage] addItem failed', err)
-    uni.showToast({ title: EditTripStrings.itemAddFailToast, icon: 'none', duration: 1500 })
+    uni.showToast({
+      title: getTripItemErrorMessage(err, EditTripStrings.itemAddFailToast),
+      icon: 'none',
+      duration: 3000,
+    })
   }
 }
 
@@ -1057,6 +1040,7 @@ async function onUpdateItem(idx, updatedItem) {
   logger.info('[EditTripPage] updateItem start', { idx, id: item.id, title: updatedItem.title })
   try {
     await updateTripItem(item.id, {
+      city: updatedItem.city,
       title: updatedItem.title,
       item_type: updatedItem.item_type || item.item_type || 'attraction',
       start_time: updatedItem.start_time || '',
@@ -1067,7 +1051,11 @@ async function onUpdateItem(idx, updatedItem) {
     logger.info('[EditTripPage] updateItem ok', { id: item.id })
   } catch (err) {
     logger.error('[EditTripPage] updateItem failed', err)
-    uni.showToast({ title: EditTripStrings.itemUpdateFailToast, icon: 'none', duration: 1500 })
+    uni.showToast({
+      title: getTripItemErrorMessage(err, EditTripStrings.itemUpdateFailToast),
+      icon: 'none',
+      duration: 3000,
+    })
   }
 }
 

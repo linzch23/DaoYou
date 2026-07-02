@@ -235,6 +235,7 @@ import { onLoad } from '@dcloudio/uni-app'
 import { NewTripStrings } from '../../constants/strings.js'
 import { AppRoutes } from '../../constants/routes.js'
 import { logger } from '../../utils/logger.js'
+import { getTripItemErrorMessage } from '../../services/tripItemForm.js'
 import { useHomeStore } from '../../stores/homeStore.js'
 import { createTrip, createTripDay, createTripItem, saveDraft, updateTrip } from '../../services/trips.js'
 import { loadTrips } from '../../db/trips.js'
@@ -316,34 +317,6 @@ function deriveTitle(fd) {
 }
 
 /**
- * 派生 TripItem.city 字段(per Cross-Page issue location-real-fix-v2-2026-06-25 §2.4 +
- * Cross-Page issue TripCreateEditFix-001)
- *
- * 后端 Pydantic CreateTripItemRequest.city: str 必填(per backend/app/schemas/trips.py:36),
- * 前端 NewTripPage form 表单**不**含 city 字段(spec 7 字段设计:title / city / start_date /
- * end_date / companions / budget / transport / special_needs,后端只接 city 必填,
- * 其余 4 选填 client-only),所以从 trip.title 启发式提取城市名。
- *
- * 提取策略:
- *   1. trip.title.trim() 非空 → 取前 1-3 个连续中文字符作为 city(启发式)
- *   2. 提取不到中文(全部英文/数字/标点)→ fallback 用 trip.title 字面值
- *      (后端 Pydantic min_length=1, max_length=200 接受任意非空字符串)
- *   3. trip.title 为空 → 返回空字符串(沿用 v0.4.0 兜底;理论上 3 必填校验已过,
- *      title 一定有值,这里仅防御)
- *
- * @param {string} tripTitle  派生后的 trip.title(由 `deriveTitle(formData)` 派生)
- * @returns {string}  city 字段值(允许空字符串兜底,但后端会 422)
- */
-function deriveCity(tripTitle) {
-  if (!tripTitle || !tripTitle.trim()) return ''
-  // 启发式:取 trip.title 中开头的 1-3 个连续中文字符
-  const m = tripTitle.match(/^[\u4e00-\u9fa5]{1,3}/)
-  if (m) return m[0]
-  // fallback:无中文开头则用 trip.title 字面值
-  return tripTitle.trim().slice(0, 50)
-}
-
-/**
  * 复制模式 fallback mock(per UI-024 任务原文 + issue §3.1 + UI-025 §5)
  * 当 db_trips 暂无该 tripId 时(Plan 1 落地后 db_trips 仍空,因任务 2 仅 seed users),
  * 用此 mock 兜底(形状基于 api/mock/_seed.ts:205 seedTrip3 西安四日)
@@ -365,10 +338,10 @@ const MOCK_TRIP_FOR_COPY = Object.freeze({
   days: [],
   // UI-025 任务 4 复制预填(西安四日典型行程),v0.4.0 每条带 date 字段
   itineraryArrange: [
-    { id: 30001, date: '2026-05-01', title: '兵马俑',     start_time: '09:00', end_time: '12:00', item_type: 'attraction' },
-    { id: 30002, date: '2026-05-01', title: '午餐:肉夹馍', start_time: '12:30', end_time: '13:30', item_type: 'food' },
-    { id: 30003, date: '2026-05-01', title: '古城墙骑行',  start_time: '15:00', end_time: '17:00', item_type: 'attraction' },
-    { id: 30004, date: '2026-05-01', title: '回民街夜市',  start_time: '19:00', end_time: '21:00', item_type: 'food' },
+    { id: 30001, date: '2026-05-01', city: '西安', title: '兵马俑',     start_time: '09:00', end_time: '12:00', item_type: 'attraction' },
+    { id: 30002, date: '2026-05-01', city: '西安', title: '午餐:肉夹馍', start_time: '12:30', end_time: '13:30', item_type: 'food' },
+    { id: 30003, date: '2026-05-01', city: '西安', title: '古城墙骑行',  start_time: '15:00', end_time: '17:00', item_type: 'attraction' },
+    { id: 30004, date: '2026-05-01', city: '西安', title: '回民街夜市',  start_time: '19:00', end_time: '21:00', item_type: 'food' },
   ],
 })
 
@@ -908,10 +881,6 @@ async function createItineraryForTrip(tripId, items) {
 
     let totalDays = 0
     let totalItems = 0
-    // 2026-06-25(per Cross-Page issue location-real-fix-v2-2026-06-25 §2.4):
-    // 后端 CreateTripItemRequest.city: str 必填(backend/app/schemas/trips.py:36),
-    // 从 submit 派生的 title 提取 city(启发式:取开头 1-3 个中文字符)
-    const tripItemCity = deriveCity(title)
     for (let i = 0; i < sortedDates.length; i++) {
       const date = sortedDates[i]
       const dayIndex = i + 1 // day_index 从 1 开始(后端约定)
@@ -942,9 +911,7 @@ async function createItineraryForTrip(tripId, items) {
         try {
           await createTripItem({
             trip_day_id: tripDayId,
-            // 2026-06-25(per Cross-Page issue location-real-fix-v2-2026-06-25 §2.4):
-            // city 必填,从 trip.title 启发式提取(非空字符串)
-            city: tripItemCity,
+            city: item.city,
             title: item.title,
             item_type: item.item_type || 'other',
             start_time: item.start_time || undefined,
@@ -954,6 +921,11 @@ async function createItineraryForTrip(tripId, items) {
         } catch (err) {
           logger.warn('[NewTripPage] createTripItem failed, continue', {
             tripId, tripDayId, itemId: item.id, title: item.title, err: err?.message,
+          })
+          uni.showToast({
+            title: getTripItemErrorMessage(err, NewTripStrings.errorBadRequest),
+            icon: 'none',
+            duration: 3000,
           })
           // 不阻塞,继续下一条
         }

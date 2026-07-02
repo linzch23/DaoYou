@@ -58,8 +58,6 @@ CREATE_TRIP_ITEM_FIELDS = {
     "start_time",
     "end_time",
     "address",
-    "latitude",
-    "longitude",
     "notes",
 }
 UPDATE_TRIP_ITEM_FIELDS = CREATE_TRIP_ITEM_FIELDS | {"status"}

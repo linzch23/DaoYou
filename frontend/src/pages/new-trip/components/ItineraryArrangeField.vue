@@ -135,12 +135,20 @@
       v-if="addPanelVisible"
       class="add-panel"
     >
-      <input
-        v-model="addForm.title"
-        class="add-panel-input"
-        :placeholder="strings.placeholderTitle"
-        placeholder-class="add-panel-input-placeholder"
-      />
+      <view class="add-panel-location-row">
+        <input
+          v-model="addForm.city"
+          class="add-panel-input add-panel-input-city"
+          :placeholder="strings.placeholderCity"
+          placeholder-class="add-panel-input-placeholder"
+        />
+        <input
+          v-model="addForm.title"
+          class="add-panel-input add-panel-input-title"
+          :placeholder="strings.placeholderTitle"
+          placeholder-class="add-panel-input-placeholder"
+        />
+      </view>
       <view class="add-panel-time-row">
         <picker
           mode="date"
@@ -230,6 +238,10 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { ItineraryArrangeStrings, ItineraryArrangeItemTypeOptions } from '../../../constants/strings.js'
+import {
+  getInheritedCity,
+  normalizeNewTripItem,
+} from '../../../services/tripItemForm.js'
 import { logger } from '../../../utils/logger.js'
 
 const strings = ItineraryArrangeStrings
@@ -485,6 +497,7 @@ function onRemoveItem(id) {
 // ──── inline 添加 ────
 const addPanelVisible = ref(false)
 const addForm = ref({
+  city: '',
   title: '',
   date: '',
   start_time: '',
@@ -506,7 +519,8 @@ const datePickerEnd = computed(() => {
 })
 
 const canConfirmAdd = computed(() => {
-  return addForm.value.title.trim() !== ''
+  return addForm.value.city.trim() !== ''
+    && addForm.value.title.trim() !== ''
     && addForm.value.date !== ''
     && addForm.value.start_time !== ''
     && addForm.value.end_time !== ''
@@ -520,6 +534,7 @@ function toggleAddPanel() {
   }
   addPanelVisible.value = true
   addForm.value = {
+    city: getInheritedCity(props.modelValue),
     title: '',
     date: '',
     start_time: '',
@@ -532,6 +547,7 @@ function toggleAddPanel() {
 function cancelAdd() {
   addPanelVisible.value = false
   addForm.value = {
+    city: '',
     title: '',
     date: '',
     start_time: '',
@@ -549,11 +565,7 @@ function confirmAdd() {
   const newItem = {
     // 客户端生成稳定 key(Date.now() + 随机后缀避免同毫秒冲突)
     id: Date.now() * 1000 + Math.floor(Math.random() * 1000),
-    title: addForm.value.title.trim(),
-    date: addForm.value.date,
-    start_time: addForm.value.start_time,
-    end_time: addForm.value.end_time,
-    item_type: addForm.value.item_type,
+    ...normalizeNewTripItem(addForm.value),
   }
   // 2026-06-25 新增(per UserRound2-002 Bug D):重叠检测
   //   - 同 date + 时段重叠 → 拒绝 + Toast 警告 + 不 emit
@@ -916,8 +928,14 @@ function getItemStyle(id) {
   margin-top: 12rpx;
 }
 
-.add-panel-input {
+.add-panel-location-row {
+  display: flex;
+  align-items: center;
+  gap: 12rpx;
   width: 100%;
+}
+
+.add-panel-input {
   height: 80rpx;
   padding: 0 20rpx;
   background: #FDFBF7;
@@ -931,6 +949,16 @@ function getItemStyle(id) {
   color: #2C2C2C;
   line-height: 1.4;
   box-sizing: border-box;
+}
+
+.add-panel-input-city {
+  flex: 7 1 0;
+  min-width: 0;
+}
+
+.add-panel-input-title {
+  flex: 13 1 0;
+  min-width: 0;
 }
 
 .add-panel-input-placeholder {
