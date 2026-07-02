@@ -716,17 +716,16 @@ export const PersonalProfileStrings = {
 
   // 表单头(spec §3.5 + §4.5)
   formTitle: '设置你的偏好',               // _FormHeader 标题
-  // v0.2.0 修订:'3 段必填,缺一不可;保存后立即生效' → '5 段可填,前 3 段必填;保存后立即生效'
-  formHint: '5 段可填,前 3 段必填;保存后立即生效', // 副提示
+  formHint: '所有项目均可选，填写任一偏好后即可保存', // 副提示
 
   // 段 1 性别(spec §3.3 段 1 + §4.5)
   sectionTitleGender: '性别',              // 段 1 标题
-  sectionHintGender: '3 选 1',             // 段 1 提示
+  sectionHintGender: '3 选 1(可选)',        // 段 1 提示
   genderRequiredMark: '请选择性别',        // 段 1 必填标红(性别 === null 时)
 
   // 段 2 年龄段(spec §3.3 段 2 + §4.5)
   sectionTitleAge: '年龄段',               // 段 2 标题
-  sectionHintAge: '5 选 1',                // 段 2 提示
+  sectionHintAge: '5 选 1(可选)',           // 段 2 提示
   ageRequiredMark: '请选择年龄段',         // 段 2 必填标红(ageRange === null 时)
 
   // 段 3 必填标红(spec §3.3 段 3 + §4.5)

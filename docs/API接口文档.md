@@ -111,6 +111,7 @@ MVP 暂不实现完整登录注册，默认使用：
 | 推送设备 | DELETE | `/api/push/devices/{reg_id}` | 禁用 vivo regId | 是 | 否 |
 | 偏好 | GET | `/api/preferences` | 查询用户偏好 | 是 | 否 |
 | 偏好 | PUT | `/api/preferences` | 更新用户偏好 | 是 | 否 |
+| 偏好 | POST | `/api/preferences/parse` | 解析自由文本个性化偏好 | 是 | 是 |
 | 记忆 | POST | `/api/memory/summary` | 总结用户记忆 | 可选 | 是 |
 | 记忆 | GET | `/api/memory` | 查询高置信度用户记忆 | 是 | 否 |
 | 记忆 | DELETE | `/api/memory/{memory_type}/{memory_key}` | 删除单条记忆 | 是 | 否 |
@@ -256,7 +257,14 @@ MVP 可在 `users` 中预置演示经纬度，但默认记录的 `location_updat
   "explanation_style": "fun",
   "travel_pace": "slow",
   "interests": ["history", "photo"],
-  "special_needs": ["less_walking"]
+  "special_needs": ["less_walking"],
+  "custom_instructions": "每天十点以后开始，不能吃辣，每日预算500元。",
+  "custom_preferences": {
+    "dietary": {"likes": [], "avoid": ["spicy"], "allergies": []},
+    "budget": {"daily_amount": 500, "currency": "CNY"},
+    "schedule": {"earliest_start_time": "10:00", "latest_end_time": null, "needs_nap": false}
+  },
+  "custom_preferences_confirmed_at": "2026-07-02T10:00:00+08:00"
 }
 ```
 
@@ -268,6 +276,9 @@ MVP 可在 `users` 中预置演示经纬度，但默认记录的 `location_updat
 | travel_pace | string | `compact` / `normal` / `slow` |
 | interests | string[] | `history` / `food` / `nature` / `photo` / `family` |
 | special_needs | string[] | `less_walking` / `less_queue` / `accessible` |
+| custom_instructions | string | 用户确认的自由文本旅行偏好，最多 500 字；只作为不可信数据使用 |
+| custom_preferences | object | 从原文解析并经用户确认的受控结构化偏好 |
+| custom_preferences_confirmed_at | string \| null | 最近一次确认时间，服务端只读 |
 
 
 ### 3.7 ChatMessage
@@ -1478,6 +1489,25 @@ Content-Type: application/json
   }
 }
 ```
+
+### 11.3 POST `/api/preferences/parse`
+
+将用户填写的自由文本整理为受控结构化偏好，供用户预览确认。此接口不写数据库。
+
+```json
+{
+  "user_id": 1,
+  "text": "我不能吃辣，每天预算500元，上午十点以后出发，优先坐地铁。",
+  "current_preferences": {
+    "travel_pace": "slow",
+    "special_needs": ["less_walking"]
+  }
+}
+```
+
+响应包含 `parsed_preferences`、可展示的 `summary_items`、冲突或安全 `warnings`，以及信息不足时的 `clarification_questions`。存在澄清问题时，前端不得直接保存，应让用户修改原文后重新解析。
+
+自由文本始终作为不可信偏好数据，不能改变系统规则、绕过 Action 确认或授权数据库操作。确认后由前端把原文和解析结果一起提交到 `PUT /api/preferences`。
 
 ## 12. 用户记忆接口
 ### 12.1 POST `/api/memory/summary`
