@@ -389,7 +389,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
 import {
   PhotoGuideStrings,
   PhotoGuideStyleOptions,
@@ -539,18 +540,6 @@ const homeStore = useHomeStore()
  * (本工程未在 package.json 显式列 @dcloudio/uni-app,沿用 PhotoGuidePage / TripDetailPage / EditTripPage 既有模式)
  * @returns {Record<string, string | undefined> | undefined}
  */
-function getCurrentPageOptions() {
-  try {
-    const pages = /** @type {any[]} */ (typeof getCurrentPages === 'function' ? getCurrentPages() : [])
-    if (Array.isArray(pages) && pages.length > 0) {
-      const last = pages[pages.length - 1]
-      return last?.options
-    }
-  } catch (err) {
-    logger.warn('[GuideResultPage] getCurrentPages fail', err)
-  }
-  return undefined
-}
 
 /**
  * 解析 URL ?photoId + ?fromSpot + ?tripId(spec §5.1 步骤)
@@ -851,9 +840,8 @@ function onBack() {
 
 // ─────────────── Lifecycle ───────────────
 
-onMounted(() => {
-  const options = getCurrentPageOptions() || {}
-  onLoadPage(options)
+onLoad((options) => {
+  onLoadPage(options || {})
 })
 
 onUnmounted(() => {

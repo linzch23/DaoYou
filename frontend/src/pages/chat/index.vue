@@ -330,7 +330,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onUnmounted, nextTick } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
 import {
   ChatPageStrings,
   OnboardingStrings,
@@ -618,24 +619,6 @@ const isNoActiveTripErrorState = computed(() => {
 // ─────────────── Handlers ───────────────
 
 /**
- * onLoad 兼容层(沿 GuideResultPage §5.1 模式):
- * 本页面 MVP 无 URL params,仅取 options 兜底日志
- * @returns {Record<string, string | undefined> | undefined}
- */
-function getCurrentPageOptions() {
-  try {
-    const pages = /** @type {any[]} */ (typeof getCurrentPages === 'function' ? getCurrentPages() : [])
-    if (Array.isArray(pages) && pages.length > 0) {
-      const last = pages[pages.length - 1]
-      return last?.options
-    }
-  } catch (err) {
-    logger.warn('[ChatPage] getCurrentPages fail', err)
-  }
-  return undefined
-}
-
-/**
  * fetchHistory + 视图决策(spec §5.1)
  * success → viewMode='idle'(空)/ 'chatting'(非空);failure → viewMode='error'
  *
@@ -672,13 +655,12 @@ async function fetchHistoryAndDecide() {
 /**
  * onLoadPage 入口
  */
-async function onLoadPage() {
+async function onLoadPage(pageOptions = {}) {
   // 2026-06-24 真接入修复:从 page options 读 tripId 派生 currentTripId
   // (trip-detail / edit-trip 跳 chat 时带 query `tripId=N`);无 query 时用 ref 默认 1
   // 2026-06-24 扩展(per task「每行程有独立 chatSession」):tripId 有效时显式 setCurrentTripId
   // 到 homeStore.forcedTripId,让 chatStore.fetchHistory 派生走对 trip session
   // (沿 Q1 决策 chatStore 自动从 homeStore 拿,本调用拓展派生链,不改 store 形态)
-  const pageOptions = getCurrentPageOptions() || {}
   const optionTripId = pageOptions.tripId ?? pageOptions.trip_id
   if (optionTripId !== undefined && optionTripId !== null && optionTripId !== '') {
     const parsed = Number(optionTripId)
@@ -1047,7 +1029,7 @@ function sanitizeActionPayload(operation, source) {
   if (!source || typeof source !== 'object') return {}
   const createFields = new Set([
     'city', 'title', 'item_type', 'start_time', 'end_time', 'address',
-    'latitude', 'longitude', 'notes',
+    'notes',
   ])
   const allowedFields = operation === 'update_trip_item'
     ? new Set([...createFields, 'status'])
@@ -1279,10 +1261,9 @@ function onBack() {
 
 // ─────────────── Lifecycle ───────────────
 
-onMounted(() => {
-  const options = getCurrentPageOptions() || {}
-  logger.info('[ChatPage] onMounted, options=', options)
-  onLoadPage()
+onLoad((options) => {
+  logger.info('[ChatPage] onLoad, options=', options)
+  onLoadPage(options || {})
 })
 
 onUnmounted(() => {

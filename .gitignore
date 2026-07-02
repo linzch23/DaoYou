@@ -17,6 +17,7 @@ __pycache__/
 *.aab
 *.jks
 *.keystore
+/daoyou-images.tar
 
 # Local reference documents
 /AGENTS.md

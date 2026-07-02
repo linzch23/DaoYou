@@ -5,6 +5,7 @@ import {
 } from './services/locationReporter.js'
 import { syncBackgroundLocation } from './services/backgroundLocation.js'
 import { ensurePushDeviceRegistered } from './services/pushRegistration.js'
+import { ensureNotificationPermission } from './services/notificationPermission.js'
 
 export default {
   onLaunch: function () {
@@ -14,6 +15,7 @@ export default {
     console.log('App Show')
     void startLocationReporter().finally(() => syncBackgroundLocation())
     void ensurePushDeviceRegistered()
+    void ensureNotificationPermission()
   },
   onHide: function () {
     console.log('App Hide')

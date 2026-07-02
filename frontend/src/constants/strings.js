@@ -22,7 +22,7 @@ export const OnboardingStrings = {
   completeButton: '完成设置',
 
   // 成功 Toast
-  successToast: '设置成功,期待你的第一次旅行!',
+  successToast: '设置成功',
 
   // 错误提示(spec §6.1 Error 表)
   errorNetwork: '网络异常,请稍后重试',
@@ -130,9 +130,9 @@ export const HomeStrings = {
 
   // 行程列表 chat 入口(2026-06-24 新增,per task「每个行程有独立 chatSession」)
   // 沿 AGENTS.md §8.6 13 页面惯例:每个 user-facing 文案键必带 aria 标签
-  // button label 用 emoji 💬(icon 简写,沿 follow-up chip 模式)
+  // v0.X 修订:icon 从 emoji(💬)改为 <image src="/static/tabbar/AI对话.png"> PNG 渲染,
+  //   详见 TripCard.vue .btn-chat-trip-icon;btnChatTrip 字面常量同步删除
   // aria 模板带 {title} 占位(运行时插值,无障碍读屏更准)
-  btnChatTrip: '💬',
   btnChatTripAria: '打开「{title}」的智能对话',
 
   // Section 1 今日无行程占位(2026-06-24 Fix A 新增,per user 报「再次进入时 Section 1 消失」)
@@ -144,13 +144,15 @@ export const HomeStrings = {
   // 行程卡片删除入口(2026-06-24 UserRound2-001 §3 Bug C 新增)
   // 沿 AGENTS.md §8.6 13 页面惯例:每个 user-facing 文案键必带 aria 标签
   // 状态门控:仅 draft / finished trip 显示删除按钮(active 引导走回收站,见 deleteActiveTripToast)
-  btnDeleteTrip: '删除',
+  // v0.X 修订:icon 从 emoji(🗑)改为 <image src="/static/tabbar/删除_delete.png"> PNG 渲染,
+  //   详见 TripCard.vue .btn-delete-trip-icon;btnDeleteTrip 字面常量同步删除
+  // aria 仍保留「删除「{title}」」描述性文本(无障碍读屏场景)
   btnDeleteTripAria: '删除「{title}」',
   deleteConfirmTitle: '删除行程?',
   deleteConfirmMessage: '删除后可在「我的-回收站」中恢复',
   deleteConfirmConfirm: '删除',
   deleteConfirmCancel: '取消',
-  deleteSuccessToast: '已删除',
+  deleteSuccessToast: '已移入回收站',
   deleteFailToast: '删除失败',
   deleteActiveTripToast: '进行中的行程请走「我的-回收站」',
 }
@@ -878,11 +880,15 @@ export const MyPageStrings = {
   preferenceTitle: '我的偏好',     // 标题(Noto Serif SC 16px 600)
   interestEmpty: '暂未选择感兴趣领域',   // interests 为空 / null 时占位
   explanationEmpty: '暂未设置默认讲解风格', // explanation_style 为空 / null 时占位
+  // 🆕 v0.2.0 偏好摘要扩字段(per `specs/MyPage.md` §3.3 + §10.4 R-16;数据已存在 services/preferences.js:167,169 store 拉取时已落地)
+  travelPaceEmpty: '暂未设置旅行节奏',         // travel_pace 为 null 时占位(3 枚举 PersonalProfileTravelPaceOptions labels)
+  specialNeedsEmpty: '暂未设置特殊需求',       // special_needs 为 [] 时占位(3 枚举数组 PersonalProfileSpecialNeedOptions labels)
 
   // 菜单列表(spec §4.6 菜单列表)
   menuPersonalProfile: '个人信息编辑',   // 菜单项 1 标签
   menuTrash: '回收站',                    // 菜单项 2 标签
   menuStyleSetting: '讲解风格',            // 菜单项 3 标签
+  menuNotificationSetting: '通知设置',
   menuHelp: '帮助',                        // 菜单项 5 标签
   menuAbout: '关于',                       // 菜单项 6 标签
   toastHelpComing: '功能即将上线,敬请期待', // 帮助菜单点击弹 Toast(per §3.4)
@@ -929,6 +935,7 @@ export const MyPageMenuOptions = Object.freeze([
   { id: 'personal-profile',    icon: '👤',  label: MyPageStrings.menuPersonalProfile,    route: AppRoutes.PersonalProfile,    behavior: 'navigate' },
   { id: 'trash',                icon: '🗑️', label: MyPageStrings.menuTrash,                route: AppRoutes.Trash,               behavior: 'navigate' },
   { id: 'style-setting',        icon: '🎙️', label: MyPageStrings.menuStyleSetting,        route: AppRoutes.StyleSetting,        behavior: 'navigate' },
+  { id: 'notification-setting', icon: '🔔', label: MyPageStrings.menuNotificationSetting, route: AppRoutes.NotificationSetting, behavior: 'navigate' },
   { id: 'help',                 icon: '❓', label: MyPageStrings.menuHelp,                 route: null,                          behavior: 'coming-soon' },
   { id: 'about',                icon: 'ℹ️', label: MyPageStrings.menuAbout,                route: AppRoutes.About,               behavior: 'navigate' },
 ])
@@ -1330,6 +1337,7 @@ export const ItineraryArrangeStrings = {
   placeholderDate: '请选择日期',
   placeholderStartTime: '开始时间',
   placeholderEndTime: '结束时间',
+  placeholderCity: '城市',
   placeholderTitle: '请输入地点名称',
 
   // 添加行程按钮

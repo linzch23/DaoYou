@@ -16,6 +16,7 @@ export const AppRoutes = {
   PersonalProfile: '/pages/personal-profile/index',
   StyleSetting: '/pages/style-setting/index',
   Trash: '/pages/trash/index',
+  NotificationSetting: '/pages/notification-setting/index',
   About: '/pages/about/index',
 
   // 行程相关

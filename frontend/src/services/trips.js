@@ -65,6 +65,7 @@
 import { ApiError } from './preferences.js'
 import { logger } from '../utils/logger.js'
 import { BASE_URL, MVP_USER_ID, USE_MOCK_FALLBACK } from './config.js'
+import { buildTripItemPayload } from './tripItemForm.js'
 import {
   createTripMock,
   tripDetailMock,
@@ -254,17 +255,15 @@ export function createTripDay(tripId, req) {
  *
  * v0.5.0(2026-06-25 per Cross-Page issue location-real-fix-v2-2026-06-25 §2.2):
  *   - 1) HTTP `POST /api/trip-items` body `{user_id, trip_day_id, city, title, item_type,
- *      [start_time], [end_time], [address], [latitude], [longitude], [notes]}` 优先
+ *      [start_time], [end_time], [address], [notes]}` 优先
  *   - 2) **失败不 mock fallback** → 直接抛 ApiError(per user 2026-06-25 16:12 硬要求)
- *   - city 必填(per backend/app/models/trip.py:34-51 + api/types.ts:228 CreateTripItemRequest),
- *     page 层 NewTripPage.submitTripRequest + EditTripPage.onAddItem 调本函数时
- *     city 从 trip.title 派生(默认 trip.title 字面值,后端 Pydantic min_length=1 接受任意非空)
+ *   - city 必填，由每个行程节点的城市输入提供；目的地经纬度由后端地理编码生成
  *
  * 沿 createTrip 现有模式(`new Promise((resolve, reject) => { uni.request({...}) })`)。
  *
  * @param {object} req
  * @param {number} req.trip_day_id
- * @param {string} req.city       必填,page 层从 trip.title 派生(不允许空字符串)
+ * @param {string} req.city       必填，节点所在城市
  * @param {string} req.title
  * @param {import('../api/types').ItemType} [req.item_type]
  * @param {string} [req.start_time]  'HH:mm'
@@ -280,18 +279,7 @@ export function createTripItem(req) {
       header: { 'content-type': 'application/json' },
       data: {
         user_id: MVP_USER_ID,
-        trip_day_id: req.trip_day_id,
-        // city 必填(per v0.5.0 修复):原 `req.city || ''` 兜底已删除
-        // 后端 Pydantic CreateTripItemRequest.city: str 必填,前端发空串触发 422
-        city: req.city,
-        title: req.title,
-        ...(req.item_type ? { item_type: req.item_type } : {}),
-        ...(req.start_time ? { start_time: req.start_time } : {}),
-        ...(req.end_time ? { end_time: req.end_time } : {}),
-        ...(req.address ? { address: req.address } : {}),
-        ...(typeof req.latitude === 'number' ? { latitude: req.latitude } : {}),
-        ...(typeof req.longitude === 'number' ? { longitude: req.longitude } : {}),
-        ...(req.notes ? { notes: req.notes } : {}),
+        ...buildTripItemPayload(req),
       },
       success: (res) => mapSuccess(res, resolve, reject),
       fail: (err) => mapFail(err, reject),
@@ -307,7 +295,7 @@ export function createTripItem(req) {
  *
  * v0.5.0(per Cross-Page issue location-real-fix-v2-2026-06-25 §2.2):
  *   - 1) HTTP `PUT /api/trip-items/{tripItemId}` body `{user_id, [title], [item_type],
- *      [start_time], [end_time], [city], [address], [latitude], [longitude], [notes]}` 优先
+ *      [start_time], [end_time], [city], [address], [notes]}` 优先
  *   - 2) **失败不 mock fallback** → 直接抛 ApiError
  *
  * 与 createTripItem 不同:本函数不要求 title 必填(per UpdateTripItemRequest: 全字段 optional);
@@ -331,7 +319,7 @@ export function updateTripItem(tripItemId, req) {
       header: { 'content-type': 'application/json' },
       data: {
         user_id: MVP_USER_ID,
-        ...req,
+        ...buildTripItemPayload(req),
       },
       success: (res) => mapSuccess(res, resolve, reject),
       fail: (err) => mapFail(err, reject),
@@ -748,9 +736,8 @@ function resolveLocalDbRestore(tripId, resolve, reject) {
 export function permanentlyDeleteTrip(tripId) {
   return new Promise((resolve, reject) => {
     uni.request({
-      url: `${BASE_URL}/api/trash/trips/${tripId}`,
+      url: `${BASE_URL}/api/trash/trips/${tripId}?user_id=${MVP_USER_ID}`,
       method: 'DELETE',
-      data: { user_id: MVP_USER_ID },
       success: (res) => {
         // 404 静默:幂等视为成功(与 trashStore 404 静默路径对齐)
         if (res.statusCode === 404) {

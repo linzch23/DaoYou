@@ -62,7 +62,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onUnmounted, onMounted, watch } from 'vue'
+import { ref, computed, onUnmounted, watch } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
 import { useHomeStore } from '../../stores/homeStore.js'
 import { SpotDetailSheetStrings } from '../../constants/strings.js'
 import { AppRoutes } from '../../constants/routes.js'
@@ -198,19 +199,6 @@ function parseQuery(options) {
  *
  * @returns {Record<string, string | undefined> | undefined}
  */
-function getCurrentPageOptions() {
-  try {
-    // uni-app 运行时全局函数,无需 import
-    const pages = /** @type {any[]} */ (typeof getCurrentPages === 'function' ? getCurrentPages() : [])
-    if (Array.isArray(pages) && pages.length > 0) {
-      const last = pages[pages.length - 1]
-      return last?.options
-    }
-  } catch (err) {
-    logger.warn('[SpotDetailSheetPage] getCurrentPages fail', err)
-  }
-  return undefined
-}
 
 // ─────────────── Lifecycle ───────────────
 
@@ -243,10 +231,7 @@ function initialize(options) {
   }
 }
 
-onMounted(() => {
-  // uni-app Vue 3 模式下,onLoad(options) 是页面级钩子(@dcloudio/uni-app)
-  // 本工程未显式列该依赖,fallback 到 onMounted + getCurrentPages() 读 options
-  const options = getCurrentPageOptions()
+onLoad((options) => {
   initialize(options)
 })
 

@@ -8,6 +8,12 @@ export function validateActionOption(option) {
       : 'invalid_item_id'
   }
   if (option.operation === 'create_trip_item') {
+    if (typeof option.payload.city !== 'string' || !option.payload.city.trim()) {
+      return 'invalid_city'
+    }
+    if (typeof option.payload.title !== 'string' || !option.payload.title.trim()) {
+      return 'invalid_title'
+    }
     const hasExistingDay = Number.isInteger(option.trip_day_id)
       && option.trip_day_id > 0
     const hasCreatableDay = Number.isInteger(option.target_day_index)

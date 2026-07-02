@@ -258,11 +258,13 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
+import { onLoad } from '@dcloudio/uni-app'
 import { NewTripStrings } from '../../constants/strings.js'
 import { AppRoutes } from '../../constants/routes.js'
 import { logger } from '../../utils/logger.js'
 import { buildTripDraftPayload, mergeParsedTripIntoForm } from '../../utils/tripParsing.js'
+import { getTripItemErrorMessage } from '../../services/tripItemForm.js'
 import { useHomeStore } from '../../stores/homeStore.js'
 import { createTrip, createTripFromDraft, parseTripText, saveDraft } from '../../services/trips.js'
 import { loadTrips } from '../../db/trips.js'
@@ -344,34 +346,6 @@ function deriveTitle(fd) {
 }
 
 /**
- * 派生 TripItem.city 字段(per Cross-Page issue location-real-fix-v2-2026-06-25 §2.4 +
- * Cross-Page issue TripCreateEditFix-001)
- *
- * 后端 Pydantic CreateTripItemRequest.city: str 必填(per backend/app/schemas/trips.py:36),
- * 前端 NewTripPage form 表单**不**含 city 字段(spec 7 字段设计:title / city / start_date /
- * end_date / companions / budget / transport / special_needs,后端只接 city 必填,
- * 其余 4 选填 client-only),所以从 trip.title 启发式提取城市名。
- *
- * 提取策略:
- *   1. trip.title.trim() 非空 → 取前 1-3 个连续中文字符作为 city(启发式)
- *   2. 提取不到中文(全部英文/数字/标点)→ fallback 用 trip.title 字面值
- *      (后端 Pydantic min_length=1, max_length=200 接受任意非空字符串)
- *   3. trip.title 为空 → 返回空字符串(沿用 v0.4.0 兜底;理论上 3 必填校验已过,
- *      title 一定有值,这里仅防御)
- *
- * @param {string} tripTitle  派生后的 trip.title(由 `deriveTitle(formData)` 派生)
- * @returns {string}  city 字段值(允许空字符串兜底,但后端会 422)
- */
-function deriveCity(tripTitle) {
-  if (!tripTitle || !tripTitle.trim()) return ''
-  // 启发式:取 trip.title 中开头的 1-3 个连续中文字符
-  const m = tripTitle.match(/^[\u4e00-\u9fa5]{1,3}/)
-  if (m) return m[0]
-  // fallback:无中文开头则用 trip.title 字面值
-  return tripTitle.trim().slice(0, 50)
-}
-
-/**
  * 复制模式 fallback mock(per UI-024 任务原文 + issue §3.1 + UI-025 §5)
  * 当 db_trips 暂无该 tripId 时(Plan 1 落地后 db_trips 仍空,因任务 2 仅 seed users),
  * 用此 mock 兜底(形状基于 api/mock/_seed.ts:205 seedTrip3 西安四日)
@@ -393,10 +367,10 @@ const MOCK_TRIP_FOR_COPY = Object.freeze({
   days: [],
   // UI-025 任务 4 复制预填(西安四日典型行程),v0.4.0 每条带 date 字段
   itineraryArrange: [
-    { id: 30001, date: '2026-05-01', title: '兵马俑',     start_time: '09:00', end_time: '12:00', item_type: 'attraction' },
-    { id: 30002, date: '2026-05-01', title: '午餐:肉夹馍', start_time: '12:30', end_time: '13:30', item_type: 'food' },
-    { id: 30003, date: '2026-05-01', title: '古城墙骑行',  start_time: '15:00', end_time: '17:00', item_type: 'attraction' },
-    { id: 30004, date: '2026-05-01', title: '回民街夜市',  start_time: '19:00', end_time: '21:00', item_type: 'food' },
+    { id: 30001, date: '2026-05-01', city: '西安', title: '兵马俑',     start_time: '09:00', end_time: '12:00', item_type: 'attraction' },
+    { id: 30002, date: '2026-05-01', city: '西安', title: '午餐:肉夹馍', start_time: '12:30', end_time: '13:30', item_type: 'food' },
+    { id: 30003, date: '2026-05-01', city: '西安', title: '古城墙骑行',  start_time: '15:00', end_time: '17:00', item_type: 'attraction' },
+    { id: 30004, date: '2026-05-01', city: '西安', title: '回民街夜市',  start_time: '19:00', end_time: '21:00', item_type: 'food' },
   ],
 })
 
@@ -587,18 +561,6 @@ function loadAndPrefillFromTrip(tripId) {
  * (与 TripDetailPage 同样模式,本工程未在 package.json 显式列 @dcloudio/uni-app)
  * @returns {Record<string, string | undefined> | undefined}
  */
-function getCurrentPageOptions() {
-  try {
-    const pages = /** @type {any[]} */ (typeof getCurrentPages === 'function' ? getCurrentPages() : [])
-    if (Array.isArray(pages) && pages.length > 0) {
-      const last = pages[pages.length - 1]
-      return last?.options
-    }
-  } catch (err) {
-    logger.warn('[NewTripPage] getCurrentPages fail', err)
-  }
-  return undefined
-}
 
 /**
  * 页面初始化入口(UI-024)
@@ -943,14 +905,108 @@ function onNeedsToggle(v) {
   // no-op(v0.4.0 UI 移除,保留函数签名避免模板残留引用崩溃)
 }
 
+/**
+ * 为已创建的 trip 串行创建 itinerary days + items(per TripCreateEditFix-001 B 方向)
+ *
+ * 流程:
+ *   1. 按 item.date 分组(`Map<date, ItineraryItem[]>`)
+ *   2. 按 date 排序 → 为每个 date 调 createTripDay → 拿到 trip_day_id
+ *   3. **串行**(避免并发抢)为每条 item 调 createTripItem
+ *   4. 任一 item 失败 → logger.warn 不阻塞(per MVP YAGNI,TripDetailPage 容错显示)
+ *
+ * @param {number} tripId
+ * @param {import('../../api/types').ItineraryItem[]} items
+ */
+async function createItineraryForTrip(tripId, items) {
+  try {
+    // 1. 按 date 分组
+    /** @type {Map<string, import('../../api/types').ItineraryItem[]>} */
+    const grouped = new Map()
+    for (const it of items) {
+      const d = it.date || ''
+      if (!d) {
+        logger.warn('[NewTripPage] itinerary item missing date, skip', { id: it.id, title: it.title })
+        continue
+      }
+      const arr = grouped.get(d) || []
+      arr.push(it)
+      grouped.set(d, arr)
+    }
+
+    // 2. 按 date 升序分配 day_index
+    const sortedDates = Array.from(grouped.keys()).sort()
+    logger.info('[NewTripPage] createItinerary start', {
+      tripId,
+      dates: sortedDates.length,
+      items: items.length,
+    })
+
+    let totalDays = 0
+    let totalItems = 0
+    for (let i = 0; i < sortedDates.length; i++) {
+      const date = sortedDates[i]
+      const dayIndex = i + 1 // day_index 从 1 开始(后端约定)
+      const dayItems = grouped.get(date) || []
+
+      // 3. createTripDay 拿 trip_day_id
+      let tripDayId
+      try {
+        const dayRes = await createTripDay(tripId, {
+          day_index: dayIndex,
+          trip_date: date,
+          summary: '',
+        })
+        tripDayId = dayRes.data?.trip_day_id
+        if (!tripDayId) {
+          throw new Error('createTripDay response missing trip_day_id')
+        }
+        totalDays++
+      } catch (err) {
+        logger.warn('[NewTripPage] createTripDay failed, skip this day', {
+          tripId, date, dayIndex, err: err?.message,
+        })
+        continue // 这一天的所有 item 也跳过
+      }
+
+      // 4. 串行为每条 item 调 createTripItem
+      for (const item of dayItems) {
+        try {
+          await createTripItem({
+            trip_day_id: tripDayId,
+            city: item.city,
+            title: item.title,
+            item_type: item.item_type || 'other',
+            start_time: item.start_time || undefined,
+            end_time: item.end_time || undefined,
+          })
+          totalItems++
+        } catch (err) {
+          logger.warn('[NewTripPage] createTripItem failed, continue', {
+            tripId, tripDayId, itemId: item.id, title: item.title, err: err?.message,
+          })
+          uni.showToast({
+            title: getTripItemErrorMessage(err, NewTripStrings.errorBadRequest),
+            icon: 'none',
+            duration: 3000,
+          })
+          // 不阻塞,继续下一条
+        }
+      }
+    }
+    logger.info('[NewTripPage] createItinerary done', { tripId, totalDays, totalItems })
+  } catch (err) {
+    logger.error('[NewTripPage] createItinerary unexpected fail', err)
+    // 不抛出(per MVP YAGNI),trip 已创建,行程详情可容错显示部分
+  }
+}
+
 // ─────────────── Lifecycle ───────────────
 
 /**
  * 页面挂载:解析 ?copyFrom={tripId} 决定是否走复制模式(UI-024)
  * 沿用 TripDetailPage 模式(getCurrentPages() 末项 options)
  */
-onMounted(() => {
-  const options = getCurrentPageOptions()
+onLoad((options) => {
   onLoadPage(options)
 })
 

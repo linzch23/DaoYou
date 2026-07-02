@@ -91,6 +91,26 @@
       }
     },
     {
+      "path": "pages/photo-guide/index",
+      "style": {
+        "navigationBarTitleText": "拍照讲解",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FDFBF7",
+        "backgroundColor": "#F7F3EC"
+      }
+    },
+    {
+      "path": "pages/notification-setting/index",
+      "style": {
+        "navigationBarTitleText": "通知设置",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FDFBF7",
+        "backgroundColor": "#F7F3EC"
+      }
+    },
+    {
       "path": "pages/style-setting/index",
       "style": {
         "navigationBarTitleText": "讲解风格",

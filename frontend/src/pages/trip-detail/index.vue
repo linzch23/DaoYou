@@ -257,8 +257,8 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { onShow } from '@dcloudio/uni-app'
+import { ref, computed, onUnmounted } from 'vue'
+import { onLoad, onShow } from '@dcloudio/uni-app'
 import { useHomeStore } from '../../stores/homeStore.js'
 import {
   TripDetailStrings,
@@ -664,25 +664,6 @@ function parseQuery(options) {
   tripId.value = n
 }
 
-/**
- * 从 uni-app 运行时拿当前页的 options(query 参数)
- * 优先用 onLoad(options) 钩子入参,fallback 用 getCurrentPages() 末项 options
- * (本工程未在 package.json 显式列 @dcloudio/uni-app,故 fallback 走 getCurrentPages)
- * @returns {Record<string, string | undefined> | undefined}
- */
-function getCurrentPageOptions() {
-  try {
-    const pages = /** @type {any[]} */ (typeof getCurrentPages === 'function' ? getCurrentPages() : [])
-    if (Array.isArray(pages) && pages.length > 0) {
-      const last = pages[pages.length - 1]
-      return last?.options
-    }
-  } catch (err) {
-    logger.warn('[TripDetailPage] getCurrentPages fail', err)
-  }
-  return undefined
-}
-
 // ─────────────── Lifecycle ───────────────
 
 /**
@@ -706,10 +687,7 @@ function initialize(options) {
   }
 }
 
-onMounted(() => {
-  // uni-app Vue 3 模式下,onLoad(options) 是页面级钩子(@dcloudio/uni-app)
-  // 本工程未显式列该依赖,fallback 到 onMounted + getCurrentPages() 读 options
-  const options = getCurrentPageOptions()
+onLoad((options) => {
   initialize(options)
 })
 

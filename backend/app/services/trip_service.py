@@ -1,8 +1,10 @@
 from datetime import datetime, timezone
+from typing import Protocol
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.core.config import settings
 from app.core.errors import AppError, ErrorCode
 from app.models.trip import Trip, TripDay, TripItem
 from app.schemas.trips import (
@@ -12,6 +14,11 @@ from app.schemas.trips import (
     CreateTripRequest,
     UpdateTripItemRequest,
     UpdateTripRequest,
+)
+from app.services.amap_geocoding_provider import (
+    AmapGeocodingError,
+    AmapGeocodingProvider,
+    GeocodedLocation,
 )
 from app.services.resource_service import (
     require_owned_trip,
@@ -185,6 +192,11 @@ def create_trip_day(
         )
     )
     if duplicate is not None:
+        if (
+            duplicate.day_index == payload.day_index
+            and duplicate.trip_date == payload.trip_date
+        ):
+            return {"trip_day_id": duplicate.id}
         raise AppError(ErrorCode.INVALID_REQUEST, "行程日序号或日期已存在")
 
     trip_day = TripDay(
@@ -202,10 +214,15 @@ def create_trip_day(
     return {"trip_day_id": trip_day.id}
 
 
+class DestinationGeocoder(Protocol):
+    def geocode(self, *, city: str, address: str) -> GeocodedLocation: ...
+
+
 def create_trip_item(
     payload: CreateTripItemRequest,
     *,
     db: Session,
+    geocoder: DestinationGeocoder | None = None,
     commit: bool = True,
 ) -> dict[str, int]:
     trip_day = require_owned_trip_day(db, payload.user_id, payload.trip_day_id)
@@ -217,6 +234,13 @@ def create_trip_item(
         end_time=payload.end_time,
     )
     values = payload.model_dump(exclude={"user_id"})
+    location = _geocode_destination(
+        city=payload.city,
+        address=payload.address or payload.title,
+        geocoder=geocoder,
+    )
+    values["latitude"] = location.latitude
+    values["longitude"] = location.longitude
     item = TripItem(**values)
     db.add(item)
     if commit:
@@ -232,6 +256,7 @@ def update_trip_item(
     payload: UpdateTripItemRequest,
     *,
     db: Session,
+    geocoder: DestinationGeocoder | None = None,
     commit: bool = True,
 ) -> dict[str, bool]:
     item = require_owned_trip_item(db, payload.user_id, item_id)
@@ -246,6 +271,19 @@ def update_trip_item(
         end_time=end_time,
         exclude_item_id=item.id,
     )
+    if {"city", "title", "address"} & changes.keys():
+        city = changes.get("city", item.city)
+        title = changes.get("title", item.title)
+        address = changes.get("address", item.address) or title
+        location = _geocode_destination(
+            city=city,
+            address=address,
+            geocoder=geocoder,
+        )
+        changes["latitude"] = location.latitude
+        changes["longitude"] = location.longitude
+        changes["arrived_at"] = None
+        changes["arrival_distance_meters"] = None
     for field, value in changes.items():
         setattr(item, field, value)
     if commit:
@@ -274,6 +312,22 @@ def delete_trip_item(
 def _validate_time_range(start_time, end_time) -> None:
     if start_time is not None and end_time is not None and end_time <= start_time:
         raise AppError(ErrorCode.INVALID_REQUEST, "end_time 必须晚于 start_time")
+
+
+def _geocode_destination(
+    *,
+    city: str,
+    address: str,
+    geocoder: DestinationGeocoder | None,
+) -> GeocodedLocation:
+    provider = geocoder or AmapGeocodingProvider(api_key=settings.amap_api_key)
+    try:
+        return provider.geocode(city=city, address=address)
+    except AmapGeocodingError as exc:
+        raise AppError(
+            ErrorCode.DESTINATION_NOT_FOUND,
+            "未找到该地点，请补充更准确的城市、地点或地址",
+        ) from exc
 
 
 def _ensure_no_time_overlap(

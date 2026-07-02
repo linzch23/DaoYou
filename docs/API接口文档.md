@@ -60,6 +60,7 @@ MVP 暂不实现完整登录注册，默认使用：
 | 4000 | 请求参数错误 | 缺少必填字段、字段类型错误、日期格式错误 |
 | 4001 | 资源不存在 | user、trip、trip_day、trip_item、photo 或 push device 不存在 |
 | 4002 | 文件上传失败 | 文件为空、类型不支持、大小超限、保存失败 |
+| 4003 | 目的地无法解析 | 高德地理编码没有返回可用坐标，HTTP 状态为 422 |
 | 5000 | 后端服务错误 | 未分类服务端异常 |
 | 5001 | 大模型调用失败 | LLM API 超时、限流、鉴权失败 |
 | 5002 | 地图 API 调用失败 | 地图路线、POI、距离估算失败 |
@@ -814,6 +815,10 @@ DELETE /api/trips/1?user_id=1
 | trip_date | string | 是 | 日期，格式为 `YYYY-MM-DD` |
 | summary | string | 否 | 当日摘要 |
 
+该接口支持精确幂等重试：同一旅行中已经存在完全相同的
+`day_index + trip_date` 时，返回现有 `trip_day_id`，不新增记录，也不覆盖原
+`summary`。如果只有序号相同或只有日期相同，仍返回 `4000`，避免隐藏行程日冲突。
+
 
 请求体：
 
@@ -862,12 +867,12 @@ Content-Type: application/json
 | start_time | string | 否 | 开始时间，格式为 `HH:mm` |
 | end_time | string | 否 | 结束时间，格式为 `HH:mm` |
 | address | string | 否 | 地址 |
-| latitude | number | 否 | 纬度 |
-| longitude | number | 否 | 经度 |
 | notes | string | 否 | 备注 |
 
 
 创建成功后节点 `status` 默认为 `planned`。创建行程节点时要检查这个时间段是否已有行程，返回创建失败提示。
+
+目的地坐标不接受客户端写入。后端使用 `city + address`（没有 `address` 时使用 `city + title`）调用高德 Web 服务地理编码，并将返回的“经度,纬度”保存到 `trip_items.longitude`、`trip_items.latitude`。无法解析地点时返回 HTTP 422，且不创建行程节点。
 
 请求体：
 
@@ -881,8 +886,6 @@ Content-Type: application/json
   "start_time": "10:00",
   "end_time": "11:30",
   "address": "大连市中山区滨海路",
-  "latitude": 38.92,
-  "longitude": 121.64,
   "notes": "适合拍照和慢走"
 }
 ```
@@ -893,7 +896,7 @@ Content-Type: application/json
 POST /api/trip-items
 Content-Type: application/json
 
-{"user_id":1,"trip_day_id":1,"city":"大连","title":"渔人码头","item_type":"attraction","start_time":"10:00","end_time":"11:30","address":"大连市中山区滨海路","latitude":38.92,"longitude":121.64,"notes":"适合拍照和慢走"}
+{"user_id":1,"trip_day_id":1,"city":"大连","title":"渔人码头","item_type":"attraction","start_time":"10:00","end_time":"11:30","address":"大连市中山区滨海路","notes":"适合拍照和慢走"}
 ```
 
 响应示例：
@@ -929,10 +932,10 @@ Content-Type: application/json
 | start_time | string | 否 | 开始时间 |
 | end_time | string | 否 | 结束时间 |
 | address | string | 否 | 地址 |
-| latitude | number | 否 | 纬度 |
-| longitude | number | 否 | 经度 |
 | status | string | 否 | `planned` / `done` / `skipped` / `changed` |
 | notes | string | 否 | 备注 |
+
+修改 `city`、`title` 或 `address` 时，后端重新执行地理编码并清除该节点已有的到达状态；只修改时间、类型、状态或备注时不调用高德。客户端提交 `latitude` 或 `longitude` 会返回 HTTP 422。
 
 
 请求体：
