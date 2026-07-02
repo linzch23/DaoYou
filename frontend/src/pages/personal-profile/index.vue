@@ -105,10 +105,6 @@
             <view class="form-section-header">
               <text class="form-section-title">
                 {{ strings.sectionTitleGender }}
-                <text
-                  v-if="formData.gender === null"
-                  class="required-mark"
-                >*</text>
               </text>
               <text class="form-section-hint">{{ strings.sectionHintGender }}</text>
             </view>
@@ -116,10 +112,6 @@
               v-model="formData.gender"
               @change="onGenderChange"
             />
-            <text
-              v-if="formData.gender === null"
-              class="form-section-error"
-            >{{ strings.genderRequiredMark }}</text>
           </view>
 
           <!-- 段 2 年龄段(5 选 1) -->
@@ -127,10 +119,6 @@
             <view class="form-section-header">
               <text class="form-section-title">
                 {{ strings.sectionTitleAge }}
-                <text
-                  v-if="formData.ageRange === null"
-                  class="required-mark"
-                >*</text>
               </text>
               <text class="form-section-hint">{{ strings.sectionHintAge }}</text>
             </view>
@@ -138,10 +126,6 @@
               v-model="formData.ageRange"
               @change="onAgeChange"
             />
-            <text
-              v-if="formData.ageRange === null"
-              class="form-section-error"
-            >{{ strings.ageRequiredMark }}</text>
           </view>
 
           <!-- 段 3 感兴趣领域(5 选 N,InterestGrid ⭐ 复用) -->
@@ -149,21 +133,13 @@
             <view class="form-section-header">
               <text class="form-section-title">
                 {{ OnboardingStrings.stepTitle }}
-                <text
-                  v-if="formData.interests.length === 0"
-                  class="required-mark"
-                >*</text>
               </text>
-              <text class="form-section-hint">{{ OnboardingStrings.stepHint }}</text>
+              <text class="form-section-hint">可多选，也可以只填写下方个性化偏好</text>
             </view>
             <InterestGrid
               v-model="formData.interests"
               @change="onInterestChange"
             />
-            <text
-              v-if="formData.interests.length === 0"
-              class="form-section-error"
-            >{{ strings.interestsRequiredMark }}</text>
           </view>
 
           <!-- 段 4 旅行节奏 🆕 v0.2.0(3 选 1,可空,TravelPaceChipGroup 私有子组件) -->
@@ -188,6 +164,63 @@
               v-model="formData.specialNeeds"
               @change="onSpecialNeedChange"
             />
+          </view>
+
+          <view class="form-section">
+            <view class="form-section-header">
+              <text class="form-section-title">其他个性化偏好</text>
+              <text class="form-section-hint">
+                可以填写饮食、预算、作息、交通、同行人和必去地点，最多 500 字
+              </text>
+            </view>
+            <textarea
+              class="custom-preference-input"
+              :value="formData.customInstructions"
+              :maxlength="500"
+              placeholder="例如：我不喜欢早起，上午十点以后再安排景点；不能吃辣；每天预算 500 元。"
+              @input="onCustomInstructionsInput"
+            />
+            <view class="custom-preference-meta">
+              <text>{{ formData.customInstructions.length }}/500</text>
+              <view
+                class="btn-parse-preference"
+                :class="{ 'btn-parse-preference-disabled': !canParseCustomPreference }"
+                role="button"
+                :aria-disabled="!canParseCustomPreference || undefined"
+                @click="onParseCustomPreference"
+              >
+                <text>{{ isParsingCustomPreference ? '正在整理…' : 'AI 帮我整理' }}</text>
+              </view>
+            </view>
+            <text v-if="customPreferenceError" class="form-section-error">
+              {{ customPreferenceError }}
+            </text>
+            <view v-if="customParseResult" class="custom-preference-preview">
+              <text class="custom-preview-title">我理解为：</text>
+              <text
+                v-for="(item, index) in customParseResult.summary_items"
+                :key="`summary-${index}`"
+                class="custom-preview-item"
+              >• {{ item }}</text>
+              <text
+                v-if="customParseResult.summary_items.length === 0"
+                class="custom-preview-empty"
+              >暂未提取到明确偏好，可以修改描述后重新整理。</text>
+              <text
+                v-for="(warning, index) in customParseResult.warnings"
+                :key="`warning-${index}`"
+                class="custom-preview-warning"
+              >⚠ {{ warning }}</text>
+              <text
+                v-for="(question, index) in customParseResult.clarification_questions"
+                :key="`question-${index}`"
+                class="custom-preview-question"
+              >需要补充：{{ question }}</text>
+            </view>
+            <text
+              v-if="formData.customInstructions && !isCustomPreferenceConfirmed"
+              class="custom-preference-unconfirmed"
+            >请先点击“AI 帮我整理”，确认理解无误后再保存。</text>
           </view>
 
           <!-- (sticky bottom in flow) _ActionBar 单按钮(spec §3.4) -->
@@ -259,6 +292,7 @@ import {
   OnboardingStrings,
 } from '../../constants/strings.js'
 import { useUserStore } from '../../stores/userStore.js'
+import { parseCustomPreferences } from '../../services/preferences.js'
 import { logger } from '../../utils/logger.js'
 import InterestGrid from '../../components/InterestGrid.vue'
 import GenderChipGroup from './components/GenderChipGroup.vue'
@@ -283,6 +317,9 @@ const strings = PersonalProfileStrings
  * @property {Interest[]} interests
  * @property {TravelPace | null} travelPace      // 🆕 v0.2.0 段 4 旅行节奏(可空)
  * @property {SpecialNeed[]} specialNeeds        // 🆕 v0.2.0 段 5 特殊需求(可空数组)
+ * @property {string} customInstructions
+ * @property {Record<string, unknown>} customPreferences
+ * @property {boolean} customPreferencesConfirmed
  *
  * @typedef {Object} PersonalProfileDraft
  * @property {string} userId
@@ -311,6 +348,9 @@ function createEmptyFormData() {
     interests: [],
     travelPace: null,
     specialNeeds: [],
+    customInstructions: '',
+    customPreferences: {},
+    customPreferencesConfirmed: false,
   }
 }
 
@@ -332,6 +372,9 @@ function formDataFromPrefsAndDraft(prefs, draft) {
       interests: [...draft.formData.interests],
       travelPace: draft.formData.travelPace ?? null,
       specialNeeds: [...(draft.formData.specialNeeds || [])],
+      customInstructions: draft.formData.customInstructions || '',
+      customPreferences: draft.formData.customPreferences || {},
+      customPreferencesConfirmed: draft.formData.customPreferencesConfirmed === true,
     }
   }
   return {
@@ -340,6 +383,57 @@ function formDataFromPrefsAndDraft(prefs, draft) {
     interests: Array.isArray(prefs?.interests) ? [...prefs.interests] : [],
     travelPace: prefs?.travel_pace || null,
     specialNeeds: Array.isArray(prefs?.special_needs) ? [...prefs.special_needs] : [],
+    customInstructions: prefs?.custom_instructions || '',
+    customPreferences: prefs?.custom_preferences || {},
+    customPreferencesConfirmed: Boolean(
+      prefs?.custom_instructions && prefs?.custom_preferences_confirmed_at
+    ),
+  }
+}
+
+function summaryItemsFromCustomPreferences(preferences) {
+  const items = []
+  const schedule = preferences?.schedule || {}
+  const budget = preferences?.budget || {}
+  const dietary = preferences?.dietary || {}
+  const transport = preferences?.transport || {}
+  const companions = preferences?.companions || {}
+  if (schedule.earliest_start_time) items.push(`每天最早 ${schedule.earliest_start_time} 开始行程`)
+  if (schedule.latest_end_time) items.push(`每天最晚 ${schedule.latest_end_time} 结束行程`)
+  if (schedule.needs_nap) items.push('需要预留午休时间')
+  if (budget.daily_amount) items.push(`每日预算约 ${budget.daily_amount} ${budget.currency || 'CNY'}`)
+  if (dietary.avoid?.length) items.push(`避免饮食：${dietary.avoid.join('、')}`)
+  if (dietary.allergies?.length) items.push(`过敏原：${dietary.allergies.join('、')}`)
+  if (transport.preferred?.length) items.push(`优先交通：${transport.preferred.join('、')}`)
+  if (transport.avoid?.length) items.push(`避免交通：${transport.avoid.join('、')}`)
+  if (companions.children) items.push('有儿童同行')
+  if (companions.elderly) items.push('有老人同行')
+  if (companions.wheelchair_user) items.push('需要轮椅/无障碍条件')
+  if (companions.pet) items.push('有宠物同行')
+  if (preferences?.must_visit?.length) items.push(`必去：${preferences.must_visit.join('、')}`)
+  if (preferences?.avoid_places?.length) items.push(`避开：${preferences.avoid_places.join('、')}`)
+  return items
+}
+
+function hydrateCustomParseState() {
+  const text = formData.value.customInstructions.trim()
+  customPreferenceError.value = ''
+  if (!text) {
+    parsedCustomText.value = ''
+    customParseResult.value = null
+    return
+  }
+  if (!formData.value.customPreferencesConfirmed) {
+    parsedCustomText.value = ''
+    customParseResult.value = null
+    return
+  }
+  parsedCustomText.value = text
+  customParseResult.value = {
+    parsed_preferences: formData.value.customPreferences || {},
+    summary_items: summaryItemsFromCustomPreferences(formData.value.customPreferences || {}),
+    clarification_questions: [],
+    warnings: [],
   }
 }
 
@@ -417,6 +511,10 @@ const submitError = ref(null)
 const draftRestored = ref(false)
 /** @type {import('vue').Ref<'get' | 'put' | null>} 上一次失败来源(决定重试方向) */
 const lastErrorSource = ref(/** @type {'get' | 'put' | null} */ (null))
+const isParsingCustomPreference = ref(false)
+const customParseResult = ref(null)
+const parsedCustomText = ref('')
+const customPreferenceError = ref('')
 
 // ─────────────── Computed ───────────────
 
@@ -430,22 +528,46 @@ const hasChanged = computed(() => {
     || formData.value.interests.join(',') !== originalData.value.interests.join(',')
     || formData.value.travelPace !== originalData.value.travelPace
     || formData.value.specialNeeds.join(',') !== originalData.value.specialNeeds.join(',')
+    || formData.value.customInstructions !== originalData.value.customInstructions
+    || JSON.stringify(formData.value.customPreferences)
+      !== JSON.stringify(originalData.value.customPreferences)
   )
 })
 
-/** 3 段必填是否都已填(gender + ageRange + interests ≥ 1)
- * v0.2.0 不变:travel_pace / special_needs 可选(段 4 / 段 5 不参与必填校验,per spec §5.1 + AC-17)
- */
-const hasRequiredFields = computed(() => {
+/** 编辑页允许任一画像信息独立保存，不强迫用户填写与本次修改无关的字段。 */
+const hasAnyProfileValue = computed(() => {
   return formData.value.gender !== null
-    && formData.value.ageRange !== null
-    && formData.value.interests.length >= 1
+    || formData.value.ageRange !== null
+    || formData.value.interests.length > 0
+    || formData.value.travelPace !== null
+    || formData.value.specialNeeds.length > 0
+    || formData.value.customInstructions.trim().length > 0
 })
 
-/** 保存按钮可点判定:3 必填全填 + 非 saving 态 */
+/** 保存按钮可点判定：至少有一项画像，且自定义文本已经解析确认。 */
 const canSave = computed(() => {
   if (currentStep.value !== 'editing') return false
-  return hasRequiredFields.value
+  return hasAnyProfileValue.value
+    && isCustomPreferenceConfirmed.value
+    && hasChanged.value
+})
+
+const canParseCustomPreference = computed(() => {
+  const text = formData.value.customInstructions.trim()
+  return currentStep.value === 'editing'
+    && !isParsingCustomPreference.value
+    && text.length > 0
+    && text.length <= 500
+    && text !== parsedCustomText.value
+})
+
+const isCustomPreferenceConfirmed = computed(() => {
+  const text = formData.value.customInstructions.trim()
+  if (!text) return true
+  return parsedCustomText.value === text
+    && customParseResult.value !== null
+    && formData.value.customPreferencesConfirmed === true
+    && customParseResult.value.clarification_questions.length === 0
 })
 
 /** _FormHeader 5 段当前值摘要(性别:X | 年龄:X | 兴趣:N 项 | 旅行节奏:X | 特殊需求:N 项)
@@ -493,6 +615,10 @@ function onLoadPage() {
   submitError.value = null
   draftRestored.value = false
   lastErrorSource.value = null
+  customParseResult.value = null
+  parsedCustomText.value = ''
+  customPreferenceError.value = ''
+  isParsingCustomPreference.value = false
   currentStep.value = 'loading'
 
   // 1) 草稿恢复优先(spec §5.1 + §5.3.E)
@@ -507,6 +633,7 @@ function onLoadPage() {
       specialNeeds: [...fd.specialNeeds],
     }
     draftRestored.value = true
+    hydrateCustomParseState()
     logger.info('[PersonalProfilePage] draft restored', { userId: MVP_USER_ID, savedAt: draft.savedAt })
     uni.showToast({
       title: strings.draftRestoredToast,
@@ -548,6 +675,7 @@ function handleFetchResult(result) {
         interests: [...fd.interests],
         specialNeeds: [...fd.specialNeeds],
       }
+      hydrateCustomParseState()
     }
     currentStep.value = 'editing'
     submitError.value = null
@@ -588,16 +716,79 @@ function onBack() {
   navigateBack()
 }
 
+/** 后端保存成功后清除该用户的本地草稿，避免下次进入恢复旧数据。 */
+function clearUserProfileDraft() {
+  try {
+    const raw = uni.getStorageSync(STORAGE_KEY)
+    if (!raw || typeof raw !== 'object') return
+    const map = { ...raw }
+    delete map[MVP_USER_ID]
+    uni.setStorageSync(STORAGE_KEY, map)
+  } catch (err) {
+    logger.warn('[PersonalProfilePage] clearUserProfileDraft failed', err)
+  }
+}
+
+function onCustomInstructionsInput(event) {
+  const value = String(event?.detail?.value ?? '').slice(0, 500)
+  formData.value.customInstructions = value
+  formData.value.customPreferences = {}
+  formData.value.customPreferencesConfirmed = false
+  parsedCustomText.value = ''
+  customParseResult.value = null
+  customPreferenceError.value = ''
+}
+
+async function onParseCustomPreference() {
+  if (!canParseCustomPreference.value) return
+  isParsingCustomPreference.value = true
+  customPreferenceError.value = ''
+  try {
+    const text = formData.value.customInstructions.trim()
+    const response = await parseCustomPreferences(text, {
+      travel_pace: formData.value.travelPace,
+      interests: [...formData.value.interests],
+      special_needs: [...formData.value.specialNeeds],
+    })
+    const result = response.data
+    customParseResult.value = {
+      parsed_preferences: result.parsed_preferences || {},
+      summary_items: Array.isArray(result.summary_items) ? result.summary_items : [],
+      clarification_questions: Array.isArray(result.clarification_questions)
+        ? result.clarification_questions
+        : [],
+      warnings: Array.isArray(result.warnings) ? result.warnings : [],
+    }
+    formData.value.customPreferences = customParseResult.value.parsed_preferences
+    parsedCustomText.value = text
+    formData.value.customPreferencesConfirmed = (
+      customParseResult.value.clarification_questions.length === 0
+    )
+  } catch (err) {
+    logger.error('[PersonalProfilePage] custom preference parse failed', err)
+    customPreferenceError.value = err?.message || '个性化偏好整理失败，请稍后重试'
+  } finally {
+    isParsingCustomPreference.value = false
+  }
+}
+
 /**
  * 「保存」按钮 → onSave 校验 → currentStep='saving' → 并行 PUT + 写草稿
  * spec §5.2 Step 2-3
  */
 function onSave() {
   if (!canSave.value) {
-    logger.warn('[PersonalProfilePage] save blocked, missing required', {
+    if (!isCustomPreferenceConfirmed.value && formData.value.customInstructions.trim()) {
+      uni.showToast({
+        title: '请先整理并确认个性化偏好',
+        icon: 'none',
+      })
+    }
+    logger.warn('[PersonalProfilePage] save blocked', {
       gender: formData.value.gender,
       ageRange: formData.value.ageRange,
       interestsCount: formData.value.interests.length,
+      customConfirmed: isCustomPreferenceConfirmed.value,
     })
     return
   }
@@ -626,6 +817,10 @@ async function doSave() {
     interests: [...formData.value.interests],
     travel_pace: formData.value.travelPace,
     special_needs: [...formData.value.specialNeeds],
+    custom_instructions: formData.value.customInstructions.trim(),
+    custom_preferences: formData.value.customInstructions.trim()
+      ? formData.value.customPreferences
+      : {},
   })
     .then(() => ({ ok: true }))
     .catch((err) => ({ ok: false, err }))
@@ -658,23 +853,25 @@ async function doSave() {
     return
   }
 
-  // 成功
-  currentStep.value = 'saved'
+  // 成功后留在当前页，让用户直接看到已保存的原文和解析摘要。
+  originalData.value = {
+    ...formData.value,
+    interests: [...formData.value.interests],
+    specialNeeds: [...formData.value.specialNeeds],
+    customPreferences: JSON.parse(JSON.stringify(formData.value.customPreferences || {})),
+  }
+  clearUserProfileDraft()
+  currentStep.value = 'editing'
   submitError.value = null
   lastErrorSource.value = null
   logger.info('[PersonalProfilePage] save ok', { userId: MVP_USER_ID })
 
-  // Toast 提前(setTimeout 200ms 期间显示)
   uni.showToast({
     title: strings.saveSuccessToast,
     icon: 'success',
     duration: 1500,
   })
 
-  // 200ms 后 navigateBack(per spec §3.7 + §5.2 Step 3 备注)
-  setTimeout(() => {
-    navigateBack()
-  }, 200)
 }
 
 /**
@@ -1065,6 +1262,78 @@ onUnmounted(() => {
   margin-left: 8rpx;
   /* space-sm,标红文字与 chips 间 8rpx 视觉缓冲 */
 }
+
+.custom-preference-input {
+  width: 100%;
+  min-height: 220rpx;
+  padding: 20rpx;
+  border: 2rpx solid #E3DBCF;
+  border-radius: 20rpx;
+  background: #FDFBF7;
+  color: #2C2C2C;
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 28rpx;
+  line-height: 1.6;
+  box-sizing: border-box;
+}
+
+.custom-preference-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #9A9A9A;
+  font-size: 22rpx;
+}
+
+.btn-parse-preference {
+  min-height: 72rpx;
+  padding: 0 24rpx;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2rpx solid #2D6A5E;
+  border-radius: 999rpx;
+  color: #2D6A5E;
+  background: #FDFBF7;
+  font-size: 26rpx;
+  font-weight: 600;
+}
+
+.btn-parse-preference-disabled {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.custom-preference-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  padding: 20rpx;
+  border-radius: 18rpx;
+  background: rgba(45, 106, 94, 0.07);
+}
+
+.custom-preview-title {
+  color: #2D6A5E;
+  font-size: 28rpx;
+  font-weight: 600;
+}
+
+.custom-preview-item,
+.custom-preview-empty,
+.custom-preview-warning,
+.custom-preview-question,
+.custom-preference-unconfirmed {
+  display: block;
+  font-size: 24rpx;
+  line-height: 1.5;
+}
+
+.custom-preview-item { color: #2C2C2C; }
+.custom-preview-empty { color: #7A7A7A; }
+.custom-preview-warning { color: #9A6500; }
+.custom-preview-question,
+.custom-preference-unconfirmed { color: #C44A3A; }
 
 /* ───────── Action Bar(单 CTA) ───────── */
 .action-bar {

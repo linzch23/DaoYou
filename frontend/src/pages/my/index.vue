@@ -124,6 +124,11 @@
               v-else
               class="empty-text"
             >{{ strings.explanationEmpty }}</text>
+
+            <view v-if="customInstructions" class="custom-preference-summary">
+              <text class="custom-preference-title">个性化偏好</text>
+              <text class="custom-preference-text">{{ customInstructions }}</text>
+            </view>
           </view>
 
           <!-- _MenuList(6 项 v-for 渲染,per spec §3.4 + §3 备注 5) -->
@@ -264,6 +269,12 @@ const explanationLabel = computed(() => {
     children: '亲子讲解',
   }
   return labelMap[style] || null
+})
+
+/** 用户保存的个性化偏好原文。 */
+const customInstructions = computed(() => {
+  const value = userStore.preferences?.custom_instructions
+  return typeof value === 'string' ? value.trim() : ''
 })
 
 /** error 态显示文案(spec §9 AC-08) */
@@ -692,6 +703,33 @@ async function onRetry() {
   font-size: 26rpx;
   color: #2C2C2C;
   line-height: 1.4;
+}
+
+.custom-preference-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 8rpx;
+  margin-top: 4rpx;
+  padding: 20rpx;
+  background: rgba(45, 106, 94, 0.07);
+  border-radius: 16rpx;
+}
+
+.custom-preference-title {
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 26rpx;
+  font-weight: 600;
+  color: #2D6A5E;
+  line-height: 1.4;
+}
+
+.custom-preference-text {
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 26rpx;
+  color: #2C2C2C;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* _MenuList(spec §3.4) */

@@ -1,10 +1,11 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from decimal import Decimal
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.agent.contracts import MemoryCandidate
+from app.agent.custom_preferences import parse_custom_preferences as parse_custom_preferences_text
 from app.agent.memory import (
     extract_explicit_memory_candidates,
     extract_memory_candidates_with_llm,
@@ -23,6 +24,9 @@ DEFAULT_PREFERENCES = {
     "travel_pace": "slow",
     "interests": ["history", "photo"],
     "special_needs": ["less_walking"],
+    "custom_instructions": "",
+    "custom_preferences": {},
+    "custom_preferences_confirmed_at": None,
 }
 PROFILE_KEY = "profile"
 MEMORY_SETTINGS_KEY = "memory_settings"
@@ -38,11 +42,14 @@ def get_preferences(user_id: int, *, db: Session) -> dict[str, dict[str, object]
     )
     if record is None:
         return {"preferences": dict(DEFAULT_PREFERENCES)}
-    return {"preferences": dict(record.preference_value)}
+    return {"preferences": {**DEFAULT_PREFERENCES, **record.preference_value}}
 
 
 def update_preferences(payload: UpdatePreferencesRequest, *, db: Session) -> dict[str, bool]:
     require_user(db, payload.user_id)
+    changes = dict(payload.preferences)
+    if "custom_instructions" in changes or "custom_preferences" in changes:
+        changes["custom_preferences_confirmed_at"] = datetime.now(timezone.utc).isoformat()
     record = db.scalar(
         select(UserPreference).where(
             UserPreference.user_id == payload.user_id,
@@ -52,7 +59,7 @@ def update_preferences(payload: UpdatePreferencesRequest, *, db: Session) -> dic
     if record is None:
         merged_preferences = {
             **DEFAULT_PREFERENCES,
-            **payload.preferences,
+            **changes,
         }
         db.add(
             UserPreference(
@@ -64,12 +71,25 @@ def update_preferences(payload: UpdatePreferencesRequest, *, db: Session) -> dic
     else:
         record.preference_value = {
             **record.preference_value,
-            **payload.preferences,
+            **changes,
         }
         record.updated_at = datetime.utcnow()
 
     db.commit()
     return {"updated": True}
+
+
+def parse_custom_preferences(
+    user_id: int,
+    text: str,
+    current_preferences: dict[str, object],
+    *,
+    db: Session,
+) -> dict[str, object]:
+    require_user(db, user_id)
+    stored_preferences = get_preferences(user_id=user_id, db=db)["preferences"]
+    effective_preferences = {**stored_preferences, **current_preferences}
+    return parse_custom_preferences_text(text, effective_preferences)
 
 
 def get_memory_settings(user_id: int, *, db: Session) -> dict[str, bool]:

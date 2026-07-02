@@ -86,12 +86,12 @@ def test_update_preferences_merges_partial_payload(db: Session) -> None:
     )
 
     result = get_preferences(user_id=1, db=db)["preferences"]
-    assert result == {
-        "explanation_style": "children",
-        "travel_pace": "slow",
-        "interests": ["family"],
-        "special_needs": ["less_queue"],
-    }
+    assert result["explanation_style"] == "children"
+    assert result["travel_pace"] == "slow"
+    assert result["interests"] == ["family"]
+    assert result["special_needs"] == ["less_queue"]
+    assert result["custom_instructions"] == ""
+    assert result["custom_preferences"] == {}
 
 
 def test_summarize_memory_requires_owned_trip(db: Session) -> None:

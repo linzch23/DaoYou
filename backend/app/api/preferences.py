@@ -4,6 +4,7 @@ from app.core.response import success
 from app.db.session import DbSession
 from app.schemas.preferences import (
     MemorySummaryRequest,
+    ParseCustomPreferencesRequest,
     UpdateMemorySettingsRequest,
     UpdatePreferencesRequest,
 )
@@ -13,6 +14,7 @@ from app.services.preference_service import (
     get_memory_settings,
     get_preferences,
     get_relevant_memories,
+    parse_custom_preferences,
     summarize_memory,
     update_memory_settings,
     update_preferences,
@@ -32,6 +34,21 @@ def update_preferences_endpoint(
     db: DbSession,
 ) -> dict[str, object]:
     return success(update_preferences(payload, db=db))
+
+
+@router.post("/preferences/parse")
+def parse_custom_preferences_endpoint(
+    payload: ParseCustomPreferencesRequest,
+    db: DbSession,
+) -> dict[str, object]:
+    return success(
+        parse_custom_preferences(
+            user_id=payload.user_id,
+            text=payload.text,
+            current_preferences=payload.current_preferences,
+            db=db,
+        )
+    )
 
 
 @router.post("/memory/summary")
