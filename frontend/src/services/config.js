@@ -18,7 +18,8 @@
 //   - 拦截器关闭后,HTTP 真连后端,失败时本 fallback 链接管
 
 /** @type {string} FastAPI 后端根地址(per docs/API接口文档.md §1 + 全项目 MVP 约定) */
-export const BASE_URL = 'https://8.163.114.90'
+// export const BASE_URL = 'https://8.163.114.90'
+export const BASE_URL = 'http://localhost:8000'
 
 /** @type {number} MVP 单用户固定 id,service 内部注入 */
 export const MVP_USER_ID = 1
