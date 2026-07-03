@@ -5,6 +5,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError
+from app.models.chat import ChatMessage
 from app.models.pending_action import PendingAction
 from app.models.trip import Trip, TripDay, TripItem
 from app.models.user import User
@@ -14,7 +15,16 @@ from app.services.action_service import (
     create_pending_actions,
     reject_action,
 )
+from app.services.amap_geocoding_provider import GeocodedLocation
 from app.services.trip_service import get_trip_detail, update_trip_item
+
+
+class _FakeGeocoder:
+    def geocode(self, *, city: str, address: str) -> GeocodedLocation:
+        return GeocodedLocation(
+            longitude=121.62,
+            latitude=38.91,
+        )
 
 
 def _seed_trip(db: Session) -> TripItem:
@@ -213,3 +223,187 @@ def test_create_action_can_atomically_create_missing_day_and_item(db: Session) -
     assert result["status"] == "confirmed"
     assert created is not None
     assert created.trip_day_id != 10
+
+
+def _create_batch_action(db: Session, action_options: list[dict[str, object]]) -> dict[str, object]:
+    current_trip = get_trip_detail(user_id=1, trip_id=1, db=db)
+    options = create_pending_actions(
+        user_id=1,
+        trip_id=1,
+        current_trip=current_trip,
+        action_options=action_options,
+        db=db,
+    )
+    assert len(options) == 1
+    assert options[0]["operation"] == "batch"
+    return options[0]
+
+
+def test_batch_confirm_creates_multiple_days_and_items_once(db: Session) -> None:
+    _seed_trip(db)
+    option = _create_batch_action(db, [
+        {
+            "operation": "create_trip_item", "trip_id": 1,
+            "target_date": "2026-07-02", "target_day_index": 2,
+            "label": "第二天新增星海广场",
+            "payload": {"city": "大连", "title": "星海广场", "start_time": "09:00"},
+        },
+        {
+            "operation": "create_trip_item", "trip_id": 1,
+            "target_date": "2026-07-02", "target_day_index": 2,
+            "label": "第二天新增贝壳博物馆",
+            "payload": {"city": "大连", "title": "大连贝壳博物馆", "start_time": "14:00"},
+        },
+        {
+            "operation": "create_trip_item", "trip_id": 1,
+            "target_date": "2026-07-03", "target_day_index": 3,
+            "label": "第三天新增东港",
+            "payload": {"city": "大连", "title": "东港", "start_time": "10:00"},
+        },
+    ])
+    db.commit()
+
+    first = confirm_action(
+        str(option["action_id"]), user_id=1, db=db, geocoder=_FakeGeocoder()
+    )
+    second = confirm_action(
+        str(option["action_id"]), user_id=1, db=db, geocoder=_FakeGeocoder()
+    )
+    days = list(db.scalars(select(TripDay).where(TripDay.trip_id == 1)))
+    titles = set(db.scalars(select(TripItem.title)).all())
+    success_messages = list(db.scalars(
+        select(ChatMessage).where(ChatMessage.content == "已成功写入 3 项行程安排。")
+    ))
+
+    assert first["result"]["total"] == 3
+    assert first["result"]["created"] == 3
+    assert first["result"]["updated"] == 0
+    assert second["idempotent"] is True
+    assert len(days) == 3
+    assert {"星海广场", "大连贝壳博物馆", "东港"} <= titles
+    assert len(success_messages) == 1
+
+
+def test_batch_confirm_normalizes_blank_optional_item_fields(db: Session) -> None:
+    _seed_trip(db)
+    option = _create_batch_action(db, [
+        {
+            "operation": "create_trip_item", "trip_id": 1,
+            "target_date": "2026-07-02", "target_day_index": 2,
+            "payload": {
+                "city": "大连", "title": "陈家祠", "start_time": "09:00",
+                "end_time": "", "address": "", "notes": "室内景点",
+            },
+        },
+        {
+            "operation": "create_trip_item", "trip_id": 1,
+            "target_date": "2026-07-02", "target_day_index": 2,
+            "payload": {
+                "city": "大连", "title": "沙面岛", "start_time": "14:00",
+                "end_time": "", "address": "",
+            },
+        },
+    ])
+    db.commit()
+
+    result = confirm_action(
+        str(option["action_id"]), user_id=1, db=db, geocoder=_FakeGeocoder()
+    )
+    chen_clan = db.scalar(select(TripItem).where(TripItem.title == "陈家祠"))
+
+    assert result["result"]["created"] == 2
+    assert chen_clan is not None
+    assert chen_clan.end_time is None
+    assert chen_clan.address is None
+
+
+def test_batch_failure_rolls_back_every_operation(db: Session) -> None:
+    _seed_trip(db)
+    option = _create_batch_action(db, [
+        {
+            "operation": "create_trip_item", "trip_id": 1,
+            "target_date": "2026-07-02", "target_day_index": 2,
+            "payload": {
+                "city": "大连", "title": "第一项", "start_time": "09:00", "end_time": "11:00"
+            },
+        },
+        {
+            "operation": "create_trip_item", "trip_id": 1,
+            "target_date": "2026-07-02", "target_day_index": 2,
+            "payload": {
+                "city": "大连", "title": "冲突项", "start_time": "10:00", "end_time": "12:00"
+            },
+        },
+    ])
+    db.commit()
+
+    with pytest.raises(AppError, match="已有行程"):
+        confirm_action(
+            str(option["action_id"]), user_id=1, db=db, geocoder=_FakeGeocoder()
+        )
+
+    assert db.scalar(select(TripDay).where(TripDay.day_index == 2)) is None
+    assert db.scalar(select(TripItem).where(TripItem.title == "第一项")) is None
+
+
+def test_batch_rejects_duplicate_existing_item_targets(db: Session) -> None:
+    _seed_trip(db)
+    current_trip = get_trip_detail(user_id=1, trip_id=1, db=db)
+
+    with pytest.raises(AppError, match="重复修改或删除"):
+        create_pending_actions(
+            user_id=1,
+            trip_id=1,
+            current_trip=current_trip,
+            action_options=[
+                {
+                    "operation": "update_trip_item",
+                    "trip_id": 1,
+                    "item_id": 20,
+                    "payload": {"title": "A"},
+                },
+                {"operation": "delete_trip_item", "trip_id": 1, "item_id": 20, "payload": {}},
+            ],
+            db=db,
+        )
+
+
+def test_batch_supports_mixed_create_update_and_delete(db: Session) -> None:
+    _seed_trip(db)
+    db.add(TripItem(
+        id=21,
+        trip_day_id=10,
+        city="大连",
+        title="待删除节点",
+        status="planned",
+    ))
+    db.commit()
+    option = _create_batch_action(db, [
+        {
+            "operation": "update_trip_item", "trip_id": 1, "item_id": 20,
+            "label": "调整贝壳博物馆",
+            "payload": {"notes": "改为轻松游览"},
+        },
+        {
+            "operation": "delete_trip_item", "trip_id": 1, "item_id": 21,
+            "label": "删除原节点", "payload": {},
+        },
+        {
+            "operation": "create_trip_item", "trip_id": 1, "trip_day_id": 10,
+            "label": "新增星海广场",
+            "payload": {"city": "大连", "title": "星海广场"},
+        },
+    ])
+    db.commit()
+
+    result = confirm_action(
+        str(option["action_id"]), user_id=1, db=db, geocoder=_FakeGeocoder()
+    )
+
+    assert result["result"]["created"] == 1
+    assert result["result"]["updated"] == 1
+    assert result["result"]["deleted"] == 1
+    assert db.get(TripItem, 20).notes == "改为轻松游览"
+    db.expire_all()
+    assert db.scalar(select(TripItem).where(TripItem.title == "待删除节点")) is None
+    assert db.scalar(select(TripItem).where(TripItem.title == "星海广场")) is not None

@@ -107,7 +107,16 @@ def test_location_route_and_user_columns_are_registered() -> None:
 
 
 def test_chat_replan_returns_action_options(db: Session, monkeypatch) -> None:
-    monkeypatch.setattr("app.agent.nodes.call_llm", lambda messages: None)
+    monkeypatch.setattr(
+        "app.agent.nodes.call_llm",
+        lambda messages: (
+            '{"needs_clarification":false,"clarifying_question":"",'
+            '"summary":"改为轻松的室内安排。","reason":"用户感到疲惫。",'
+            '"operations":[{"operation":"update_trip_item",'
+            '"target_item_title":"贝壳博物馆","label":"调整为轻松游览",'
+            '"payload":{"notes":"放慢节奏，减少步行"}}]}'
+        ),
+    )
     db.add(User(id=1, nickname="演示用户"))
     db.flush()
     trip = Trip(

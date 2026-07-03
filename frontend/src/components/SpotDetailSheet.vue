@@ -166,7 +166,11 @@ const typeEmoji = computed(
 
 const timeText = computed(() => {
   if (!props.spot) return ''
-  return `${props.spot.start_time}${SpotDetailSheetStrings.timeRangeSeparator}${props.spot.end_time}`
+  const startTime = props.spot.start_time || ''
+  const endTime = props.spot.end_time || ''
+  return endTime
+    ? `${startTime}${SpotDetailSheetStrings.timeRangeSeparator}${endTime}`
+    : startTime
 })
 
 const introText = computed(() => {

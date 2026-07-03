@@ -3,7 +3,7 @@ import re
 
 from app.agent.contracts import AgentIntent, IntentClassification
 from app.agent.llm import call_llm
-from app.agent.prompts import INTENT_CLASSIFY_PROMPT
+from app.agent.prompts import INTENT_CLASSIFY_PROMPT, PLAN_CONFIRMATION_PROMPT
 from app.agent.state import AgentState
 
 HIGH_CONFIDENCE_SCORE = 4
@@ -38,6 +38,26 @@ def classify_intent(state: AgentState) -> IntentClassification:
             confidence=0.98,
             reason="用户正在补充上一轮行程编辑所缺信息",
             source="conversation_state",
+        )
+
+    if _is_plan_confirmation_reply(state):
+        return IntentClassification(
+            intent=AgentIntent.REPLAN,
+            confidence=0.98,
+            reason="用户确认应用上一轮明确待写入的行程方案",
+            source="conversation_state",
+        )
+
+    pending_invitation = _pending_plan_invitation(state)
+    if pending_invitation and _classify_plan_confirmation_with_llm(
+        message=str(state.get("user_message") or ""),
+        invitation=pending_invitation,
+    ):
+        return IntentClassification(
+            intent=AgentIntent.REPLAN,
+            confidence=0.9,
+            reason="用户语义上确认应用待写入的行程方案",
+            source="llm_confirmation",
         )
 
     message = str(state.get("user_message") or "").strip()
@@ -77,6 +97,18 @@ def classify_intent(state: AgentState) -> IntentClassification:
     )
 
 
+def is_pending_plan_confirmation(message: str) -> bool:
+    if re.search(
+        r"(?:确认|就按|按这个|可以|没问题|就这么定|照办|照你说的办|采纳|定下来)",
+        message,
+    ):
+        return True
+    return _classify_plan_confirmation_with_llm(
+        message=message,
+        invitation="服务端已有一份尚未写入、正在等待用户确认的行程方案。",
+    )
+
+
 def _score_intents(
     message: str,
     state: AgentState,
@@ -87,6 +119,13 @@ def _score_intents(
     def add(intent: AgentIntent, score: int, feature: str) -> None:
         scores[intent] += score
         features[intent].append(feature)
+
+    write_trip_pattern = (
+        r"(?:写入|写进|加入到|添加到|保存到)"
+        r".*(?:行程|第[一二三四五六七八九十\d]+天|上午|下午|晚上)"
+    )
+    if re.search(write_trip_pattern, message):
+        add(AgentIntent.REPLAN, 4, "explicit_trip_write")
 
     if re.search(r"(?:帮我|请|我要|我想|把).*(?:新增|添加|加入|插入)", message):
         add(AgentIntent.REPLAN, 4, "imperative_create")
@@ -217,3 +256,58 @@ def _is_trip_item_clarification_reply(state: AgentState) -> bool:
         for message in recent_messages
     )
     return has_create_request and has_clarification
+
+
+def _is_plan_confirmation_reply(state: AgentState) -> bool:
+    message = str(state.get("user_message") or "").strip()
+    if not re.search(
+        r"(?:确认|就按|按这个|可以|没问题|就这么定|照办|照你说的办|采纳|定下来)",
+        message,
+    ):
+        return False
+
+    return _has_plan_confirmation_context(state)
+
+
+def _has_plan_confirmation_context(state: AgentState) -> bool:
+    return bool(_pending_plan_invitation(state))
+
+
+def _pending_plan_invitation(state: AgentState) -> str:
+    history = state.get("chat_history")
+    if not isinstance(history, list):
+        return ""
+    return next(
+        (
+            str(item.get("content") or "")
+            for item in reversed(history[-10:])
+            if isinstance(item, dict)
+            and item.get("role") == "assistant"
+            and re.search(
+            r"确认后.{0,20}(?:写入|写进|添加到|保存到).{0,8}行程",
+            str(item.get("content") or ""),
+        )
+        ),
+        "",
+    )
+
+
+def _classify_plan_confirmation_with_llm(*, message: str, invitation: str) -> bool:
+    llm_text = call_llm([
+        {"role": "system", "content": PLAN_CONFIRMATION_PROMPT},
+        {
+            "role": "user",
+            "content": json.dumps(
+                {"pending_plan_invitation": invitation, "user_message": message},
+                ensure_ascii=False,
+            ),
+        },
+    ])
+    if not llm_text:
+        return False
+    try:
+        data = json.loads(llm_text)
+        confidence = float(data.get("confidence"))
+    except (json.JSONDecodeError, TypeError, ValueError):
+        return False
+    return data.get("decision") == "confirm" and confidence >= 0.65

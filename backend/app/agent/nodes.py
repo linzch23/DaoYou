@@ -152,8 +152,6 @@ def replan_node(state: AgentState) -> AgentState:
         structured_data = llm_result
     elif _is_trip_item_create_request(str(state.get("user_message") or "")):
         structured_data = _clarification_payload("请告诉我想添加到旅行中的哪一天，以及具体安排。")
-    elif settings.demo_fallbacks_enabled:
-        structured_data = _mock_replan_payload(trip, map_result, preferences)
     else:
         structured_data = _clarification_payload(
             "规划服务暂时不可用，我没有生成可能不准确的行程修改，请稍后重试。"
@@ -167,12 +165,16 @@ def replan_node(state: AgentState) -> AgentState:
             "clarifying_question": action_error,
             "operations": [],
         }
-    reply = str(
-        structured_data.get("clarifying_question")
-        if structured_data.get("needs_clarification")
-        else structured_data.get("summary")
-        or "我已经整理好行程调整方案，请确认后应用。"
-    )
+    if structured_data.get("needs_clarification"):
+        reply = str(structured_data.get("clarifying_question") or "请补充行程调整信息。")
+    elif action_options:
+        operation_count = len(structured_data.get("operations") or action_options)
+        reply = (
+            f"已整理好包含 {operation_count} 项操作的行程方案，当前尚未写入。"
+            "请确认后应用。"
+        )
+    else:
+        reply = "这次没有生成可执行的行程操作，当前行程尚未修改。"
     final_response = {
         "intent": "replan",
         "reply": reply,
@@ -579,16 +581,6 @@ def _mock_replan_payload(
                 "target_item_id": target_item.get("id"),
                 "label": f"改为{payload.get('title') or '附近咖啡馆休息'}",
                 "payload": payload,
-            },
-            {
-                "operation": "update_trip_item",
-                "target_item_id": target_item.get("id"),
-                "label": "跳过下一站",
-                "description": "直接将下一站标记为跳过。",
-                "payload": {
-                    "status": "skipped",
-                    "notes": "用户临时取消该安排",
-                },
             },
         ],
     }

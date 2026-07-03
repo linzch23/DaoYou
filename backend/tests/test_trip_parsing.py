@@ -5,11 +5,11 @@ import pytest
 from sqlalchemy import func, select
 
 from app.agent import trip_parser
+from app.core.errors import AppError
 from app.models.trip import Trip, TripDay, TripItem
 from app.models.user import User
 from app.schemas.trips import CreateTripFromDraftRequest
 from app.services.trip_service import create_trip_from_draft
-from app.core.errors import AppError
 
 
 def test_parser_keeps_unmentioned_fields_empty(monkeypatch) -> None:

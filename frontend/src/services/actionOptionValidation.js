@@ -1,4 +1,11 @@
 export function validateActionOption(option) {
+  if (option?.operation === 'batch') {
+    const hasActionId = typeof option.action_id === 'string' && option.action_id.length > 0
+    const hasOperations = Array.isArray(option.operations)
+      && option.operations.length > 1
+      && option.operations.length <= 20
+    return hasActionId && hasOperations ? null : 'invalid_batch'
+  }
   if (!option?.payload || typeof option.payload !== 'object') {
     return 'invalid_payload'
   }

@@ -342,6 +342,30 @@ Agent 识别到行程编辑意图时，通过该结构返回可供用户选择�
 | item_id | int \| null | 修改节点时必填，必须属于当前旅行 |
 | payload | object | 创建或更新字段；删除操作固定为空对象，不包含 `user_id`、归属 ID |
 
+当同一个方案包含多条累计操作时，服务端将它们保存为一个批量待确认动作：
+
+```json
+{
+  "action_id": "uuid",
+  "operation": "batch",
+  "label": "写入第一天和第二天行程",
+  "description": "共 4 项安排",
+  "operation_count": 4,
+  "operations": [
+    {
+      "operation": "create_trip_item",
+      "target_day_index": 1,
+      "target_date": "2026-07-01",
+      "label": "新增俄罗斯风情街"
+    }
+  ],
+  "status": "pending",
+  "expires_at": "2026-07-03T12:15:00+00:00"
+}
+```
+
+批量动作最多包含 20 项新增、修改或删除操作。确认时全部操作在同一事务执行；任一项失败则整体回滚。同一天缺少 TripDay 时只创建一次并供该批次内后续节点复用。
+
 
 ## 4. 健康检查
 ### 4.1 GET `/health`
@@ -1313,6 +1337,9 @@ Content-Type: application/json
 + 用户放弃方案时调用 `POST /api/actions/{action_id}/reject`。
 + 服务端确认时重新校验用户/旅行归属、过期时间、旅行版本指纹、字段白名单和业务冲突，并在一个事务中执行。
 + 重复确认同一个已成功 action 返回原执行结果，不重复创建或修改数据。
++ 多条 `operations` 属于同一个累计方案，不是互斥选项；服务端返回单个 `operation=batch` 待确认动作。
++ batch 确认成功后，`result` 返回 `total`、`created`、`updated`、`deleted` 和逐项执行结果。
++ 未经确认时 Agent 必须明确说明“尚未写入”，不能声称已经新增、修改或删除成功。
 + 行程已变化、action 已过期、已拒绝或不属于当前用户时拒绝执行，前端应提示重新生成方案。
 + 修改和删除目标按 ID、完整标题、唯一包含匹配、日期时间线索和最近聊天提及逐级解析；候选不唯一时返回追问，不生成操作选项。
 + `create_trip_item`、`update_trip_item`、`delete_trip_item` 的原始 REST API 仍供手动编辑页面使用；Chat 确认流程必须走 Action API。

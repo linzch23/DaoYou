@@ -1,10 +1,13 @@
+import re
+
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.agent.graph import run_agent
+from app.agent.intent import is_pending_plan_confirmation
 from app.models.chat import ChatMessage
 from app.schemas.chat import ChatRequest
-from app.services.action_service import create_pending_actions
+from app.services.action_service import create_pending_actions, get_reusable_pending_action
 from app.services.preference_service import (
     get_memory_settings,
     get_preferences,
@@ -56,6 +59,28 @@ def send_chat_message(payload: ChatRequest, *, db: Session) -> dict[str, object]
     )
     db.add(user_message)
     db.flush()
+    reusable_action = get_reusable_pending_action(
+        user_id=payload.user_id,
+        trip_id=payload.trip_id,
+        current_trip=current_trip,
+        db=db,
+    )
+    if reusable_action is not None and is_pending_plan_confirmation(payload.message):
+        reply = "待确认的行程方案仍未写入，请点击确认按钮后应用。"
+        db.add(ChatMessage(
+            user_id=payload.user_id,
+            trip_id=payload.trip_id,
+            role="assistant",
+            content=reply,
+        ))
+        db.commit()
+        return {
+            "reply": reply,
+            "intent": "replan",
+            "action_options": [reusable_action],
+            "follow_up_questions": [],
+            "clarification_options": [],
+        }
     memory_enabled = get_memory_settings(user_id=payload.user_id, db=db)["enabled"]
 
     # 成员 C 接入点：把聊天请求组装成 AgentState，具体推理统一交给 run_agent。
@@ -92,6 +117,10 @@ def send_chat_message(payload: ChatRequest, *, db: Session) -> dict[str, object]
         action_options=agent_result["action_options"],
         db=db,
     )
+    reply = _guard_unverified_write_claim(
+        reply=agent_result["reply"],
+        action_options=action_options,
+    )
     if memory_enabled:
         persist_memory_candidates(
             user_id=payload.user_id,
@@ -105,17 +134,35 @@ def send_chat_message(payload: ChatRequest, *, db: Session) -> dict[str, object]
             user_id=payload.user_id,
             trip_id=payload.trip_id,
             role="assistant",
-            content=agent_result["reply"],
+            content=reply,
         )
     )
     db.commit()
     return {
-        "reply": agent_result["reply"],
+        "reply": reply,
         "intent": agent_result["intent"],
         "action_options": action_options,
         "follow_up_questions": agent_result["follow_up_questions"],
         "clarification_options": agent_result.get("clarification_options", []),
     }
+
+
+def _guard_unverified_write_claim(
+    *,
+    reply: str,
+    action_options: list[dict[str, object]],
+) -> str:
+    if action_options:
+        return reply
+    if not re.search(
+        r"(?:已|已经|成功|正式).{0,8}"
+        r"(?:写入|写进|写进去|添加|新增|更新|修改|删除|安排|记下|记录)"
+        r"|(?:写入|写进|写进去|添加|新增|更新|修改|删除|安排|记下|记录)"
+        r".{0,8}(?:成功|完成|好了|啦|了)",
+        reply,
+    ):
+        return reply
+    return "当前没有生成可确认的行程操作，因此尚未写入。请明确要修改的日期和安排。"
 
 
 def get_chat_history(

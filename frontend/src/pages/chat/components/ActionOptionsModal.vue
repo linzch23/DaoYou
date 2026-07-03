@@ -80,6 +80,13 @@
                 v-if="getOptionDescription(opt)"
                 class="action-option-description"
               >{{ getOptionDescription(opt) }}</text>
+              <view v-if="getBatchOperations(opt).length" class="batch-operation-list">
+                <text
+                  v-for="(operation, operationIndex) in getBatchOperations(opt)"
+                  :key="operationIndex"
+                  class="batch-operation-item"
+                >• {{ operation.label || operation.operation }}</text>
+              </view>
             </view>
             <view
               v-if="selectedIdx === idx"
@@ -163,10 +170,12 @@ const selectedIdx = ref(null)
 
 // 弹窗关闭后清空选中态(避免下次弹时残留)
 watch(
-  () => props.visible,
-  (next) => {
-    if (!next) {
+  () => [props.visible, props.options.length],
+  ([visible, optionCount]) => {
+    if (!visible) {
       selectedIdx.value = null
+    } else if (optionCount === 1) {
+      selectedIdx.value = 0
     }
   }
 )
@@ -195,6 +204,12 @@ function getOptionDescription(opt) {
     return opt.description
   }
   return ''
+}
+
+function getBatchOperations(opt) {
+  return opt?.operation === 'batch' && Array.isArray(opt.operations)
+    ? opt.operations
+    : []
 }
 
 /**
@@ -382,6 +397,20 @@ function onMaskClick() {
   color: #5A5A5A;
   /* inkLight */
   line-height: 1.4;
+}
+
+.batch-operation-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4rpx;
+  margin-top: 8rpx;
+}
+
+.batch-operation-item {
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 24rpx;
+  color: #5A5A5A;
+  line-height: 1.5;
 }
 
 .action-option-check {

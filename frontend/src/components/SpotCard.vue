@@ -106,9 +106,13 @@ const typeEmoji = computed(
   () => ItemTypeEmoji[props.spot.item_type] || ItemTypeEmoji.default
 )
 
-const timeText = computed(
-  () => `${props.spot.start_time}${HomeStrings.timeRangeSeparator}${props.spot.end_time}`
-)
+const timeText = computed(() => {
+  const startTime = props.spot.start_time || ''
+  const endTime = props.spot.end_time || ''
+  return endTime
+    ? `${startTime}${HomeStrings.timeRangeSeparator}${endTime}`
+    : startTime
+})
 
 const ariaLabel = computed(
   () => `${props.spot.title},${timeText.value},${statusLabel.value}`

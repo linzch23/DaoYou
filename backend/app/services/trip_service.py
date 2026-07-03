@@ -69,7 +69,7 @@ def create_trip_from_draft(payload: CreateTripFromDraftRequest, db: Session) -> 
             if item.start_time is not None and item.end_time is not None:
                 timed_items.append(item)
         timed_items.sort(key=lambda item: item.start_time)
-        for previous, current in zip(timed_items, timed_items[1:]):
+        for previous, current in zip(timed_items, timed_items[1:], strict=False):
             if previous.end_time > current.start_time:
                 raise AppError(ErrorCode.INVALID_REQUEST, "同一行程日存在重叠时段")
     if seen_indexes and sorted(seen_indexes) != list(range(1, len(seen_indexes) + 1)):

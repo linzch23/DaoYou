@@ -911,8 +911,9 @@ async function applyActionOption(selectedOption) {
   isApplyingAction.value = true
 
   try {
+    let decisionResult = null
     if (hasServerAction) {
-      await confirmAgentAction(actionId)
+      decisionResult = await confirmAgentAction(actionId)
     } else if (operation === 'create_trip_item') {
       let tripDayId = Number(selectedOption?.trip_day_id)
 
@@ -964,9 +965,12 @@ async function applyActionOption(selectedOption) {
     actionOptionsInvalidMessage.value = ''
     actionOptions.value = []
 
-    const successTitle = operation === 'update_trip_item'
-      ? ChatPageStrings.replanSuccess
-      : ChatPageStrings.actionOptionsApplied
+    const batchTotal = Number(decisionResult?.data?.result?.total)
+    const successTitle = operation === 'batch' && Number.isInteger(batchTotal)
+      ? ChatPageStrings.batchActionApplied.replace('{count}', String(batchTotal))
+      : operation === 'update_trip_item'
+        ? ChatPageStrings.replanSuccess
+        : ChatPageStrings.actionOptionsApplied
 
     uni.showToast({
       title: successTitle,
@@ -978,7 +982,13 @@ async function applyActionOption(selectedOption) {
       operation,
       optionTripId,
       itemId: selectedOption?.item_id,
+      batchTotal: Number.isInteger(batchTotal) ? batchTotal : null,
     })
+
+    await Promise.allSettled([
+      useHomeStore().refreshAll(),
+      chatStore.fetchHistory(),
+    ])
 
     return true
   } catch (err) {
