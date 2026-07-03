@@ -56,3 +56,4 @@ CLAUDE.md
 # mavis team plan bundles (debug artifacts)
 plan-*.yaml
 frontend/workflow/PageStatus.yaml
+/frontend/workflow

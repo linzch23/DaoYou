@@ -233,23 +233,21 @@ export const HomeItemStatusLabel = Object.freeze({
  * v0.6.1.1 修订(per fix-trip-status-machine v0.6.1 状态机重写 + verifier feedback):
  *   - 新增 `inProgress` 键:对应 `utils/tripStatus.js:computeEffectiveStatus` v0.6.1
  *     返回值 'inProgress' 字段(完整行程 + today <= end_date)
- *   - **核心 bug 修复 2**(per user 19:46 期望「草稿能转进行中」):
- *     DB `status='draft'` 但 4 字段全有(itinerary_count >= 1)的 trip,v0.6.1 helper
- *     返回 'inProgress';旧 v0.5.0 fallback chain `HomeTripStatusLabel[effectiveStatus]
- *     || HomeTripStatusLabel[trip.status]` 会回退到 'draft' = 「草稿」,导致核心
- *     bug 修复 2 名存实亡。加 `inProgress` 键后,label 走「进行中」,语义正确
- *   - 复用 `HomeStrings.tripStatusActive`(= '进行中')作为 inProgress 文案,
- *     与 `TripDetailStatusLabel.inProgress` 文案 1:1 对齐(避免新增 i18n 字符串)
- *   - 不删 `active` 键:作为 `trip.status='active'` 字面值的后备显示(虽然
- *     v0.6.1 helper 已不再返回 'active',但旧 mock 数据 + 边界场景仍可能)
- * @type {Readonly<Record<import('../api/types').TripStatus | 'inProgress' | 'deleted', string>>}
+ * v0.7.0 修订(per fix-trip-status-v0.7.0 2026-07-03 + issues/Cross-Page/TripStatusConsistent-001):
+ *   - 删 `active` 键(helper v0.7.0 已不再返回 'active',且 trip.status='active'
+ *     字面 fallback 到 'inProgress' / 'upcoming' / 'finished',active 键变成不可达)
+ *   - 加 `upcoming` 键 = HomeStrings.statusUpcoming '即将到来'(沿用 13 页面惯例;v0.7.1 修订:与 TripDetailStatusLabel.upcoming 字面统一)
+ *   - 保留 `draft` / `inProgress` / `finished` / `deleted` 4 键(共 5 键)
+ *
+ * @type {Readonly<Record<'draft' | 'upcoming' | 'inProgress' | 'finished' | 'deleted', string>>}
  */
 export const HomeTripStatusLabel = Object.freeze({
   draft: HomeStrings.tripStatusDraft,
-  active: HomeStrings.tripStatusActive,
-  finished: HomeStrings.tripStatusFinished,
-  // v0.6.1.1 新增:helper 派生 'inProgress' 时的徽章文案(完整行程 + today <= end_date)
+  // v0.7.0 新增:helper 派生 'upcoming'(status='active' + today<start_date)
+  upcoming: HomeStrings.statusUpcoming,
+  // v0.6.1.1 新增:helper 派生 'inProgress'(status='active' + today in [start_date, end_date])
   inProgress: HomeStrings.tripStatusActive,
+  finished: HomeStrings.tripStatusFinished,
   // 显示别名(TrashPage 复用,非 TripStatus enum value)
   deleted: HomeStrings.tripStatusFinished,
 })
@@ -362,9 +360,11 @@ export const TripDetailStrings = {
   // 加载(spec §3.4 loading 态)
   loadingText: '正在加载行程详情...',
 
-  // 5 子态徽章(spec §3.4 状态判定矩阵)
+  // 4 子态徽章(v0.7.1 spec 字面保留 5 个文案,删 expired key;统一文案与 HomeStrings 一致)
+  // v0.7.1 (2026-07-03): 统一 upcoming 文案 '即将到来' 与 HomeStrings.statusUpcoming 对齐,
+  //   解决 HomePage/TripCard 显示「即将到来」与 TripDetailPage/EditTripPage._FormHeader 显示「未开始」的字面不一致
   statusInProgress: '进行中',
-  statusUpcoming: '未开始',
+  statusUpcoming: '即将到来',
   statusExpired: '已过期',
   statusFinished: '已结束',
   statusDraft: '草稿',
@@ -434,16 +434,16 @@ export const TripDetailWeekdays = Object.freeze([
 ])
 
 /**
- * 5 子态徽章文案(spec §3.4 + §4.6,1:1 对齐 currentSubStatus 5 枚举)
- * 5 键值引用 `TripDetailStrings.statusXxx`,避免重复字面值
- * @type {Readonly<Record<'inProgress' | 'upcoming' | 'expired' | 'finished' | 'draft', string>>}
+ * 4 子态徽章文案(spec §3.4 + §4.6,v0.7.0 修订:1:1 对齐 currentSubStatus 4 枚举,删 expired)
+ * 4 键值引用 `TripDetailStrings.statusXxx`,避免重复字面值
+ * 注:TripDetailStrings.statusExpired 字符串本身保留(沿 13 页面惯例 + 留 spec-writer 后续决策是否同步清理 strings.js)
+ * @type {Readonly<Record<'draft' | 'upcoming' | 'inProgress' | 'finished', string>>}
  */
 export const TripDetailStatusLabel = Object.freeze({
-  inProgress: TripDetailStrings.statusInProgress, // '进行中'
-  upcoming:   TripDetailStrings.statusUpcoming,   // '未开始'
-  expired:    TripDetailStrings.statusExpired,    // '已过期'
-  finished:   TripDetailStrings.statusFinished,   // '已结束'
   draft:      TripDetailStrings.statusDraft,      // '草稿'
+  upcoming:   TripDetailStrings.statusUpcoming,   // '即将到来'(v0.7.1 修订:与 HomeStrings.statusUpcoming 字面统一)
+  inProgress: TripDetailStrings.statusInProgress, // '进行中'
+  finished:   TripDetailStrings.statusFinished,   // '已结束'
 })
 
 /**

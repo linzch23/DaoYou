@@ -346,6 +346,41 @@ function deriveTitle(fd) {
 }
 
 /**
+ * 派生 TripItem.city 字段(per Cross-Page issue location-real-fix-v2-2026-06-25 §2.4 +
+ * Cross-Page issue TripCreateEditFix-001)
+ *
+ * 后端 Pydantic `CreateTripDraftItemRequest.city: str` 必填(per `backend/app/schemas/trips.py:141`),
+ * 而前端 NewTripPage form 表单**不**含顶层 city 字段(spec 7 字段设计:title / city / start_date /
+ * end_date / companions / budget / transport / special_needs,**v0.4.0 移除顶层 city 字段**,
+ * city 退化为 itineraryArrange item 级字段),所以从 trip.title 启发式提取城市名,作为
+ * `buildTripDraftPayload(formData, title, creationKey, cityFallback)` 的 `cityFallback` 参数
+ * (后者在 `utils/tripParsing.js:57` 内 `city: item.city || cityFallback` 用作兜底)。
+ *
+ * 提取策略:
+ *   1. trip.title.trim() 非空 → 取前 1-3 个连续中文字符作为 city(启发式)
+ *   2. 提取不到中文(全部英文/数字/标点)→ fallback 用 trip.title 字面值
+ *      (后端 Pydantic min_length=1, max_length=200 接受任意非空字符串)
+ *   3. trip.title 为空 → 返回空字符串(理论上 3 必填校验已过,title 一定有值,这里仅防御)
+ *
+ * v0.4.1(2026-07-03 per fix-newtrip-derive-city-undefined):函数本应在 commit e114305
+ * 「feat: geocode trip destinations on backend」refactor 中随旧 createItineraryForTrip 路径
+ * 一同删除,但 `submitTripRequest` 顶部 `const cityFallback = deriveCity(title)` 调用点
+ * 漏删,导致点「确定」时 ReferenceError 被 try/catch 捕获后 mapErrorToMessage 兜底显示「网络异常」。
+ * 本 fix 恢复函数(签名 + JSDoc + 实现 1:1 还原 v0.4.0 旧实现)。
+ *
+ * @param {string} tripTitle  派生后的 trip.title(由 `deriveTitle(formData)` 派生)
+ * @returns {string}  city 字段值(允许空字符串兜底,但后端会 422)
+ */
+function deriveCity(tripTitle) {
+  if (!tripTitle || !tripTitle.trim()) return ''
+  // 启发式:取 trip.title 中开头的 1-3 个连续中文字符
+  const m = tripTitle.match(/^[\u4e00-\u9fa5]{1,3}/)
+  if (m) return m[0]
+  // fallback:无中文开头则用 trip.title 字面值
+  return tripTitle.trim().slice(0, 50)
+}
+
+/**
  * 复制模式 fallback mock(per UI-024 任务原文 + issue §3.1 + UI-025 §5)
  * 当 db_trips 暂无该 tripId 时(Plan 1 落地后 db_trips 仍空,因任务 2 仅 seed users),
  * 用此 mock 兜底(形状基于 api/mock/_seed.ts:205 seedTrip3 西安四日)

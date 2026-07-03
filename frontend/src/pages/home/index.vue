@@ -182,6 +182,9 @@ import { HomeStrings } from '../../constants/strings.js'
 import { AppRoutes } from '../../constants/routes.js'
 import { logger } from '../../utils/logger.js'
 import { loadFavorites, saveFavorites } from '../../services/home.js'
+// v0.7.0 新增(per fix-trip-status-v0.7.0 2026-07-03 + issues/Cross-Page/TripStatusConsistent-001):
+// 点击/删除/可见性 全部用 helper 派生,与 TripCard 显示文案 1:1 对齐(显示/点击同源)
+import { computeEffectiveStatus } from '../../utils/tripStatus.js'
 
 import HomeDiary from '../../components/HomeDiary.vue'
 import TripList from '../../components/TripList.vue'
@@ -442,15 +445,23 @@ function onViewFullTrip() {
 /**
  * TripList → TripDetailPage / EditTripPage(草稿)
  *
- * 草稿状态(per issues/UI/UI-023-draft-page-prefill.md §步骤 1):
- *   - status='draft' → 跳 EditTripPage?tripId=X&mode=draft
- *     草稿页字段预填(db_trips 读,沿 Plan 1 placeholder 扩展)
- *   - 其他状态 → 跳 TripDetailPage(原流程)
+ * v0.7.0 修订(per fix-trip-status-v0.7.0 2026-07-03 + issues/Cross-Page/TripStatusConsistent-001):
+ *   显示端(TripCard statusLabel)用 helper 派生 effectiveStatus,点击端(onSelectTrip)**也**用 helper 派生,
+ *   二者 1:1 对齐 — 草稿 trip 「首页显示草稿 + 点击跳编辑」全链路一致;
+ *   非草稿 trip 「首页显示进行中 / 未开始 / 已结束 + 点击跳详情」全链路一致。
+ *   助手:hover-fail 边界(per Issue §5.1):deleted trip 走 viewMode='notfound' 兜底路由,
+ *   本函数不会收到 'deleted'(store 层不会渲染已删 trip)。
+ *
+ * 决策树(per effectiveStatus 派生值):
+ *   - 'draft'    → 跳 EditTripPage?tripId=X&mode=draft
+ *   - 'upcoming' | 'inProgress' | 'finished' → 跳 TripDetailPage(详情页自身 decideViewMode 兜底)
+ *   - 'deleted'  → 兜底跳 TripDetailPage(详情页 notfound 态处理)
  */
 function onSelectTrip(trip) {
   if (!trip) return
-  logger.info('[HomePage] select trip', { tripId: trip.id, status: trip.status })
-  if (trip.status === 'draft') {
+  const status = computeEffectiveStatus(trip)
+  logger.info('[HomePage] select trip', { tripId: trip.id, status })
+  if (status === 'draft') {
     // 草稿 → EditTripPage 接管(per UI-023 §步骤 1)
     uni.navigateTo({ url: `${AppRoutes.EditTrip}?tripId=${trip.id}&mode=draft` })
       .catch((err) => {
@@ -459,7 +470,7 @@ function onSelectTrip(trip) {
       })
     return
   }
-  // 其他状态(active/finished/deleted) → TripDetailPage
+  // 其他状态(upcoming / inProgress / finished / deleted) → TripDetailPage
   uni.navigateTo({ url: `${AppRoutes.TripDetail}?tripId=${trip.id}` })
     .catch((err) => {
       logger.warn('[HomePage] navigateTo(TripDetail) fail', err)
@@ -484,17 +495,24 @@ function onChatTrip(trip) {
 
 /**
  * TripCard.delete emit → DeleteConfirmDialog(2026-06-24 UserRound2-001 §3 Bug C)
- * 门控:active trip 不允许在首页直接删,引导走回收站(per HomeStrings.deleteActiveTripToast);
- * 其他状态(draft / finished)→ 弹 DeleteConfirmDialog 二次确认。
+ * 门控:active(派生为 upcoming / inProgress)trip 不允许在首页直接删,引导走回收站(per HomeStrings.deleteActiveTripToast);
+ * 草稿(draft)/已结束(finished)→ 弹 DeleteConfirmDialog 二次确认;
+ * 已删(deleted)→ 不可达(store 层不渲染)。
+ *
+ * v0.7.0 修订(per fix-trip-status-v0.7.0 2026-07-03 + issues/Cross-Page/TripStatusConsistent-001):
+ *   改用 helper 派生 effectiveStatus 与 TripCard.vue canDelete / statusLabel 1:1 对齐,
+ *   显示端(草稿 trip 显示「草稿」徽章 + 显示删除按钮)+ 点击端(点删除按钮弹窗)全链路同源
  */
 function onDeleteTrip(trip) {
   if (!trip) return
-  if (trip.status === 'active') {
-    logger.info('[HomePage] delete trip blocked (active)', { tripId: trip.id })
+  const status = computeEffectiveStatus(trip)
+  // upcoming / inProgress 不允许在首页直接删(引导走回收站)
+  if (status === 'upcoming' || status === 'inProgress') {
+    logger.info('[HomePage] delete trip blocked (active)', { tripId: trip.id, status })
     uni.showToast({ title: strings.deleteActiveTripToast, icon: 'none', duration: 1500 })
     return
   }
-  logger.info('[HomePage] delete trip tap', { tripId: trip.id, status: trip.status })
+  logger.info('[HomePage] delete trip tap', { tripId: trip.id, status })
   pendingDeleteTrip.value = trip
   deleteConfirmVisible.value = true
 }

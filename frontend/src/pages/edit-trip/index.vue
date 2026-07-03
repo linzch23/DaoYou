@@ -289,6 +289,9 @@ import { AppRoutes } from '../../constants/routes.js'
 import { logger } from '../../utils/logger.js'
 import { getTripItemErrorMessage } from '../../services/tripItemForm.js'
 import { useHomeStore } from '../../stores/homeStore.js'
+// v0.7.0 新增(per fix-trip-status-v0.7.0 2026-07-03 + issues/Cross-Page/TripStatusConsistent-001):
+// _FormHeader 状态徽章沿 helper 派生,与 home / trip-detail 显示端 1:1 对齐(显示/点击同源)
+import { computeEffectiveStatus } from '../../utils/tripStatus.js'
 import {
   getTripDetail,
   updateTrip,
@@ -440,21 +443,24 @@ function decideAfterFetch(result) {
  *   后端 UpdateTripRequest 2026-06-26 v0.5.0 扩展(per `backend/app/schemas/trips.py:20-32`):
  *     `user_id, title?, status?, start_date?, end_date?`
  *
+ * v0.7.0(per fix-trip-status-v0.7.0 2026-07-03 + issues/Cross-Page/TripStatusConsistent-001 §2.4):
+ *   **加回** `status?: TripStatus` 字段(v0.4.0 移除,本次按 user Q1 决策 C 方案重新启用)
+ *   **仅在隐式发布路径下发**:草稿 trip 满足「完整字段 + ≥1 item」时,doUpdate 自动附 status='active'
+ *   后端 Pydantic UpdateTripRequest 已支持 status(per backend v0.5.0);前端 PUT 透传实测 200 OK
+ *   不发 status 时,**不**主动发 'finished' 或 强切 'draft'(沿 v0.4.0 TripCreateEditFix-001 决策)
+ *
  * v0.5.0(2026-06-25 per UserRound2-001 Bug A):**移除** itineraryArrange 字段,
  *   item CRUD 走独立 3 handler(onAddItem / onUpdateItem / onRemoveItem)
  *   + 独立 service 函数(createTripItem / updateTripItem / deleteTripItem)。
- *   原因:后端 Pydantic UpdateTripRequest 实际忽略 itineraryArrange(Pydantic extra=ignore
- *   静默丢,实测 200 OK 但不入表,per trips.js:48 备注),所有 item 改动原本永远落不到后端。
- *   现路径:item 改动走 /api/trip-items 端点,精确持久化;
- *   本 PUT 仅承担 title / start_date / end_date 改动。
  *
  * v0.4.0(TripCreateEditFix-001):移除 status 字段(后端 UpdateTripRequest 不接收,
  *   spec §3.4 Field 8 移除),仅发 title? + itineraryArrange?。
  *
- * @returns {{ title?: string, start_date?: string, end_date?: string }}
+ * @returns {{ title?: string, start_date?: string, end_date?: string, status?: import('../../api/types').TripStatus }}
+ *   status 默认 undefined;**只**在 doUpdate 隐式发布分支被注入
  */
 function buildUpdateRequest() {
-  /** @type {{ title?: string, start_date?: string, end_date?: string }} */
+  /** @type {{ title?: string, start_date?: string, end_date?: string, status?: import('../../api/types').TripStatus }} */
   const req = {}
   if (formData.value.title.trim() !== originalData.value.title.trim()) {
     req.title = formData.value.title.trim()
@@ -466,6 +472,7 @@ function buildUpdateRequest() {
   if (formData.value.end_date && formData.value.end_date !== originalData.value.end_date) {
     req.end_date = formData.value.end_date
   }
+  // 注:status 字段在此函数**不**主动设置;由 doUpdate 在隐式发布分支注入
   return req
 }
 
@@ -571,38 +578,28 @@ const formHintText = computed(() => {
   return strings.formHint
 })
 
-/** _FormHeader 状态徽章文案:沿用 TripDetailStatusLabel 5 键 + currentSubStatus 派生 */
+/**
+ * _FormHeader 状态徽章文案:v0.7.0 修订(per fix-trip-status-v0.7.0 2026-07-03)
+ *   走 helper 派生 effectiveStatus,与 home / trip-detail 显示端 1:1 对齐
+ *   - helper 返回 'deleted' → 徽章不显示(已有 notfound 路径)
+ *   - helper 返回 'upcoming' | 'inProgress' | 'finished' | 'draft' 4 态 → 走 TripDetailStatusLabel 文案
+ * 注:helper v0.7.0 直接返回 4 状态,这里仅做 deleted 拦截 + 文案查找
+ */
 const tripStatusBadge = computed(() => {
-  if (!trip.value) return ''
-  const t = trip.value
-  if (t.status === 'deleted') return ''
-  // active × 日期交叉
-  if (t.status === 'active') {
-    const now = new Date()
-    const start = new Date(t.start_date)
-    const end = new Date(t.end_date)
-    if (now < start) return TripDetailStatusLabel.upcoming
-    if (now > end) return TripDetailStatusLabel.expired
-    return TripDetailStatusLabel.inProgress
-  }
-  if (t.status === 'finished') return TripDetailStatusLabel.finished
-  if (t.status === 'draft') return TripDetailStatusLabel.draft
-  return ''
+  const status = computeEffectiveStatus(trip.value)
+  if (!trip.value || status === 'deleted') return ''
+  return TripDetailStatusLabel[status] || ''
 })
 
-/** 状态徽章颜色 class(按 spec §3.1 TripDetailPage 配色矩阵) */
+/**
+ * 状态徽章颜色 class(per spec §3.1 TripDetailPage 配色矩阵)
+ * v0.7.0:同样走 helper 派生,与 home / trip-detail CSS class 1:1 对齐
+ * helper 返回 4 状态字面(draft / upcoming / inProgress / finished),可直接做 CSS class 后缀
+ */
 const tripStatusBadgeClass = computed(() => {
-  if (!trip.value) return ''
-  const t = trip.value
-  if (t.status === 'active') {
-    const now = new Date()
-    const start = new Date(t.start_date)
-    const end = new Date(t.end_date)
-    if (now < start) return 'upcoming'
-    if (now > end) return 'expired'
-    return 'inProgress'
-  }
-  return t.status
+  const status = computeEffectiveStatus(trip.value)
+  if (!trip.value || status === 'deleted') return ''
+  return status
 })
 
 // ─────────────── Store ───────────────
@@ -874,16 +871,38 @@ function onSave() {
 
 /**
  * 实际发起 PUT(spec §5.2 Step 3)
+ *
+ * v0.7.0 修订(per fix-trip-status-v0.7.0 2026-07-03 + issues/Cross-Page/TripStatusConsistent-001 §2.4):
+ *   **隐式发布** 草稿 → active 升级:
+ *     - 触发条件:trip 当前 status='draft' + 完整字段(title + start_date + end_date 都非空) + ≥1 item
+ *     - 行为:req.status = 'active'(隐式发布,不需要 user 显式「发布」按钮)
+ *     - 失败处理:整个 PUT 失败,currentStep='error',与既有错误处理一致
+ *     - 不发 status 时,**不**主动发 'finished' 或 强切 'draft'(沿 v0.4.0 决策)
+ *   这是 user 2026-07-03 12:39 Q1 决策 C 方案(完整字段 + ≥1 item 自动升级 active)
  */
 async function doUpdate() {
   if (tripId.value === null) return
   currentStep.value = 'saving'
   const req = buildUpdateRequest()
+
+  // v0.7.0 隐式发布判定(per user 2026-07-03 Q1 决策 C 方案):
+  // 草稿 trip 在满足「完整字段 + 至少 1 item」时,保存时自动升级为 active
+  // 不需要 user 显式「发布」按钮,降低 MVP 阶段操作成本
+  const isDraftBeingPromoted = trip.value?.status === 'draft'
+    && formData.value.title.trim() !== ''
+    && formData.value.start_date !== ''
+    && formData.value.end_date !== ''
+    && formData.value.itineraryArrange.length > 0
+  if (isDraftBeingPromoted) {
+    req.status = 'active'
+    logger.info('[EditTripPage] implicit publish draft → active', { tripId: tripId.value })
+  }
+
   try {
     await updateTrip(/** @type {number} */ (tripId.value), req)
     currentStep.value = 'success'
     submitError.value = null
-    logger.info('[EditTripPage] save ok', { tripId: tripId.value })
+    logger.info('[EditTripPage] save ok', { tripId: tripId.value, statusAfter: req.status || trip.value?.status })
     // 200ms 后:刷新 HomePage 列表 + navigateBack(AC-05)
     setTimeout(() => {
       homeStore.fetchTrips()

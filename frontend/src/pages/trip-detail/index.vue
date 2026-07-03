@@ -270,6 +270,7 @@ import { AppRoutes } from '../../constants/routes.js'
 import { logger } from '../../utils/logger.js'
 import { getTripDetail, deleteTrip } from '../../services/trips.js'
 import { ApiError } from '../../services/preferences.js'
+import { computeEffectiveStatus } from '../../utils/tripStatus.js'
 
 import SpotCard from '../../components/SpotCard.vue'
 import SpotDetailSheet from '../../components/SpotDetailSheet.vue'
@@ -294,8 +295,9 @@ const viewMode = ref('loading')
 const trip = ref(null)
 
 /**
- * 5 子态(基于 trip.status + 当前日期 × start_date/end_date 派生)
- * @type {import('vue').Ref<'inProgress' | 'upcoming' | 'expired' | 'finished' | 'draft'>}
+ * 4 子态(基于 trip.status + 当前日期 × start_date/end_date 派生,走 computeEffectiveStatus helper)
+ * v0.7.0 修订(per fix-trip-status-v0.7.0):enum 从 5 缩到 4,删 'expired'
+ * @type {import('vue').Ref<'draft' | 'upcoming' | 'inProgress' | 'finished'>}
  */
 const currentSubStatus = ref('upcoming')
 
@@ -470,21 +472,25 @@ function decideViewMode() {
 
 /**
  * 子态判定(spec §5.4 decideSubStatus)
- * 优先级:finished(后端 status) > draft > active × 日期交叉
+ *
+ * v0.7.0 简化(per fix-trip-status-v0.7.0 2026-07-03 + issues/Cross-Page/TripStatusConsistent-001):
+ *   直接 return `computeEffectiveStatus(t, ref)` 4 状态基线 helper 派生值;
+ *   v0.6.x 的 5 子态细分(inProgress 拆 today<start → upcoming / today in [start, end] → inProgress)
+ *   已经被 helper 内部消化 — helper 本身就把 status='active' + today<start_date 映射到 'upcoming',
+ *   status='active' + today in [start, end] 映射到 'inProgress',helper 派生值就是 4 子态;
+ *   不再需要 trip-detail 内部再拆。
+ *
+ * 副作用:`'expired'` 子态不可达且**删除**(helper 拦到 'finished',spec 字面与代码不再 1:1,留 spec-writer 后续修订);
+ *   `currentSubStatus` enum 从 5 缩到 4:`'inProgress' | 'upcoming' | 'finished' | 'draft'`。
+ *
  * @param {import('../../api/types').Trip} t
  * @param {Date} ref
- * @returns {'inProgress' | 'upcoming' | 'expired' | 'finished' | 'draft'}
+ * @returns {'draft' | 'upcoming' | 'inProgress' | 'finished'}
+ *   (helper 已经把 deleted 拦到 viewMode='notfound',本函数不会返回 'deleted')
  */
 function decideSubStatus(t, ref) {
-  if (t.status === 'finished') return 'finished'
-  if (t.status === 'draft') return 'draft'
-  // status === 'active' 时按日期交叉判定
-  const start = parseDate(t.start_date)
-  const end = parseDate(t.end_date)
-  const now = ref.getTime()
-  if (now < start) return 'upcoming'
-  if (now > end) return 'expired'
-  return 'inProgress'
+  // v0.7.0:4 状态直传 helper 派生值
+  return computeEffectiveStatus(t, ref)
 }
 
 /**
@@ -1079,7 +1085,7 @@ function onNavigate(item) {
   line-height: 1.4;
 }
 
-/* 5 子态配色(spec §3.4 矩阵) */
+/* 4 子态配色(spec §3.4 矩阵,v0.7.0 修订:删 .status-badge-expired,'expired' 子态不可达) */
 .status-badge-inProgress {
   background: #2D6A5E;
   /* active */
@@ -1095,14 +1101,6 @@ function onNavigate(item) {
 .status-badge-upcoming .status-badge-text {
   color: #2C2C2C;
   /* ink */
-}
-
-.status-badge-expired {
-  background: #9A9A9A;
-  /* inkMuted */
-}
-.status-badge-expired .status-badge-text {
-  color: #FFFFFF;
 }
 
 .status-badge-finished {

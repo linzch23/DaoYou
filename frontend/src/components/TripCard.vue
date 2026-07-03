@@ -91,27 +91,40 @@ const emit = defineEmits(['tap', 'chat', 'delete'])
 const isDisabled = computed(() => props.trip.deleted_at != null)
 
 // 2026-06-24 UserRound2-001 §3 Bug C 新增:delete 按钮可见性门控
-// 仅 draft / finished trip 显示(active 引导走回收站 + 弹 toast 提示);
+// 仅 draft / finished trip 显示(active/upcoming/inProgress 引导走回收站 + 弹 toast 提示);
 // 已删 trip(deleted_at 非空)不可删,与 isDisabled 一致
+// v0.7.0 修订(per fix-trip-status-v0.7.0 2026-07-03 + issues/Cross-Page/TripStatusConsistent-001):
+//   改用 helper 派生 effectiveStatus(显示/点击同源),与首页 onDeleteTrip 路径 1:1 对齐
+//   一个 status='draft' 的 trip 派生 = 'draft'(per v0.7.0 简化)
+//   一个 status='finished' 的 trip 派生 = 'finished'
+//   一个 status='active' + today>end_date 的 trip 派生 = 'finished'(客户端兜底,可删)
+//   一个 status='active' + today<start_date 的 trip 派生 = 'upcoming'(不可删,引导回收站)
+//   一个 status='active' + today in [start, end] 的 trip 派生 = 'inProgress'(不可删,引导回收站)
 const canDelete = computed(
-  () => !isDisabled.value && (props.trip.status === 'draft' || props.trip.status === 'finished')
+  () => !isDisabled.value && (effectiveStatus.value === 'draft' || effectiveStatus.value === 'finished')
 )
 
 // v0.5.0 派生 effective_status(per user-round3-2026-06-26 + ask_user Q2 client-derive 拍板)
 // v0.6.1 重写(per user-round4-2026-06-26 19:46 bug 修复):4 状态派生 —
 //   draft(缺任一字段) / inProgress(完整 + today <= end_date) / finished(完整 + today > end_date) / deleted(软删)
+// v0.7.0 重写(per fix-trip-status-v0.7.0 2026-07-03 + issues/Cross-Page/TripStatusConsistent-001 v2):
+//   完全废除 v0.6.x 的字段完整性启发式;只看 trip.status + today vs 日期
+//   新 5 状态:draft(upcoming) / inProgress / finished / deleted
+//   helper 派生值与 v0.6.2 在大多数场景下一致,差异仅在「草稿 + 完整字段 + items」场景
 // 派生规则见 src/utils/tripStatus.js
 // 不修改入参 trip / 不调 API / 不持久化,纯计算
 const effectiveStatus = computed(
   () => computeEffectiveStatus(props.trip)
 )
 
-// 显示文案:沿用 HomeTripStatusLabel(已有 draft/active/finished/inProgress/deleted 5 键,per v0.6.1.1 fix)
+// 显示文案:沿用 HomeTripStatusLabel(v0.7.0 收敛为 5 键:draft / upcoming / inProgress / finished / deleted)
 // v0.6.1.1 fix(per verifier feedback attempt 1):新增 inProgress 键,核心 bug 修复 2 才能落地
-//   - 旧 v0.5.0 fallback chain `HomeTripStatusLabel[effectiveStatus] || HomeTripStatusLabel[trip.status]`
-//     对 DB `status='draft'` + itinerary_count >= 1 的 trip 持续显示「草稿」(因为 fallback 回 'draft' 键)
-//   - 修法:加 inProgress 键后,label 走「进行中」,与 v0.6.1 helper 派生值一致
-// 视觉:东莞 trip 过期显示「已结束」(核心 bug 修复 1);草稿 trip 加 item 后变「进行中」(核心 bug 修复 2)
+// v0.7.0 修订(per fix-trip-status-v0.7.0 2026-07-03 + issues/Cross-Page/TripStatusConsistent-001):
+//   - 删 `active` 键(已不再用,等不到 fallback 入参;trip.status='active' 直接走 helper 派生 upcoming/inProgress/finished)
+//   - 加 `upcoming` 键 = HomeStrings.statusUpcoming(沿用 13 页面惯例)
+//   - 保留 `draft` / `inProgress` / `finished` / `deleted` 4 键
+//   - fallback chain 简化为只 fallback 到 trip.status 字面(draft / active / finished 3 键)
+// 视觉:东莞 trip 过期显示「已结束」(核心 bug 修复 1);草稿 trip 永远显示「草稿」(per v0.7.0 简化);
 const statusLabel = computed(
   () => HomeTripStatusLabel[effectiveStatus.value]
     || HomeTripStatusLabel[props.trip.status]
@@ -242,6 +255,18 @@ function onDeleteTap() {
 .trip-card-status-draft .trip-card-status-text {
   color: #5A5A5A;
   /* inkLight */
+}
+
+/* v0.7.0 新增(per fix-trip-status-v0.7.0 2026-07-03 + issues/Cross-Page/TripStatusConsistent-001):
+   upcoming 浅色背景,跟 trip-detail .status-badge-upcoming 配色一致(AppColors.upcoming 派生) */
+.trip-card-status-upcoming {
+  background: rgba(216, 208, 196, 0.5);
+  /* upcoming 半透明 */
+}
+
+.trip-card-status-upcoming .trip-card-status-text {
+  color: #2C2C2C;
+  /* ink */
 }
 
 .trip-card-status-finished {

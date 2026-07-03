@@ -1703,3 +1703,239 @@ silent drop retro fix — `data.action_options` 字段前端 silent drop(spec §
 - `ui-reviewer`:7 项核心 7/7 ✓(沿 PersonalProfilePage 历史 + 13 页面惯例)+ 2 子组件 88rpx 触达命中 + 段 4 / 段 5 chip 视觉一致性
 - `spec-auditor`:AC 9/9 + AC-15/16/17/18 = 13/13 字面 + API updateUserInfo 签名扩 + 5 视图态 0 触动 + Component 2 新私有子组件 props/emits/slots 1:1 对齐 spec §8.5 / §8.6
 - `test-agent`:8 类场景 0 触发回归(5 视图态 + 3 intent 路由 + sendMessage 失败回退逻辑 0 改动 + 5 段表单 + PUT 3 字段 + 段 4 允许 null + 段 5 允许空数组)
+## Cross-Page: fix-trip-status-effective — 2026-07-03 — v0.6.2
+
+### Trigger (per issues/Cross-Page/TripStatusConsistent-001)
+- 2026-07-03 12:05 user 报 2 bug:
+  - **Bug A**:「若已结束且没有行程项也显示为草稿」— `itinerary_count=0` 检查命中在 `today > end_date → finished` **之前**,导致「已结束 + 删光 items」的 trip 被误判为 draft
+  - **Bug B**:「存在详情页面真实状态与首页显示状态不一致的 bug」— trip-detail 用 `trip.status` 字面 + 日期,**不**看 `itinerary_count` 也**不**看字段缺失
+
+### Fix 1: `src/utils/tripStatus.js` v0.6.2 修订(优先级重排)
+- 文件 105 → 131 行(+26 行)
+- 顶部 JSDoc 注释 v0.6.2 修订说明(包含 v0.5.0 → v0.6.0 → v0.6.1 → v0.6.2 演进时间线 + Bug A 根因 + Bug B 修复路径 + 跨页影响 0 触动清单)
+- JSDoc 函数注释 v0.6.2 优先级 4 步算法
+- 函数体新增 v0.6.2 step 2 已结束覆盖判定(`hasTitle && hasEndDate → formatDateOnly → today > trip.end_date → finished`)**提前**到 step 3 缺字段草稿判定之前
+- 边界文档更新(已结束判定需 title + end_date 都齐全)
+- 函数签名不变(`computeEffectiveStatus(trip, refDate)`),返回类型不变(`'draft' | 'inProgress' | 'finished' | 'deleted'`)
+
+### Fix 2: `pages/trip-detail/index.vue` decideSubStatus 改写
+- 文件 1445 → 1464 行(+19 行)
+- L273 新增 `import { computeEffectiveStatus } from '../../utils/tripStatus.js'`
+- L472-507 `decideSubStatus` 函数整段改写:
+  - 函数体从 11 行(`status=='finished' → finished; status=='draft' → draft; active × start/end → upcoming/expired/inProgress`)改写为 18 行(helper 派生 baseline → 4 状态直传 → inProgress 拆 today<start → upcoming / else → inProgress)
+  - JSDoc 注释 v0.6.2 修订 + 副作用登记(`'expired'` 子态不可达,保留 enum 兼容)
+
+### 0 触动
+- `api/types.ts:TripSummary.itinerary_count`(沿 v0.6.0)
+- `services/trips.*` / `api/mock/*` / `mockInterceptor.js`
+- `components/TripCard.vue`(已用 helper 派生,自动跟新)
+- `pages/home/index.vue`(用 TripCard 渲染,自动跟新)
+- `pages/new-trip/index.vue` createTrip status='draft'(创建时显式 'draft' 与 helper 派生一致)
+- `pages/edit-trip/index.vue`(per Issue §4 不动,既有 trip.status 字面派生保留)
+- `currentSubStatus` 5 子态 enum(`'expired'` 保留作为不可达 fallback)
+- `MapItemState` L523 `if (sub === 'finished') return 'expired'`(沿用 finished 强制覆盖语义)
+- `.status-badge-expired` CSS L1100-1106(本 fix 不主动清,留 spec-writer 后续决策)
+- `TripDetailStatusLabel.expired`(同)
+- `Review.{ui,spec,test}` 字段(HomePage Done / TripDetailPage NotStarted 保持)
+- `FinalStatus` 字段(HomePage Done / TripDetailPage NotStarted 保持)
+
+### 5 场景行为变化
+| 场景 | 后端 status | itinerary_count | today vs end_date | v0.6.1 首页 | v0.6.1 详情页 | v0.6.2 首页 | v0.6.2 详情页 |
+|---|---|---|---|---|---|---|---|
+| A | `active` | 0 | today<end | `draft` | `inProgress/upcoming/expired` | `draft` | `draft` ✅ |
+| B | `draft` | ≥1 | today<end | `inProgress/finished` | `draft` | `inProgress/finished` | `inProgress/finished` ✅ |
+| C | `active` | ≥1 | today>end | `finished` | `expired` | `finished` | `finished` ✅ |
+| D | `active` | ≥1 + title='' | today<end | `draft` | `inProgress/upcoming/expired` | `draft` | `draft` ✅ |
+| E | `active` | 0 | today>end | `draft` ⚠️ BUG | `expired` | `finished` ✅ | `finished` ✅ |
+
+### 验收(7/7 PASS)
+- node REPL 6 边缘 case + 1 deleted case = 7/7 PASS
+  - Case 1 (active+count=1+today<end) → inProgress ✓
+  - Case A (active+count=0) → draft ✓
+  - Case B (draft+count=5) → inProgress ✓(v0.6.1 设计意图)
+  - Case C (active+count=1+today>end) → finished ✓
+  - **Case E (active+count=0+today>end) → finished ✓ v0.6.2 修复关键场景**
+  - Case F (title empty) → draft ✓
+  - Case Del (deleted_at != null) → deleted ✓
+
+### spec 偏差登记(per AGENT_CONTRACTS §2.4 spec-writer 越权边界)
+- **0 触动** `specs/HomePage.md` §6.2.2 字面(spec 字面是 4 状态派生规则,优先级排序属于实现细节,留 spec-writer 后续 session 决策是否加 v0.6.2 row 到 changelog)
+- **2 处** `specs/TripDetailPage.md` §3.4 / §5.5 字面与代码不再 1:1:
+  1. `'expired'` 子态在新 `decideSubStatus` 下**不可达**(helper 已把 today > end_date 拦到 'finished'),spec 字面与代码不再 1:1 → 留 spec-writer 后续修订
+  2. `decideSubStatus` 实现从「`status` 字面 + 日期交叉」改为「helper 派生 + 5 子态细分」,spec 字面与代码不再 1:1 → 留 spec-writer 后续修订
+
+### 副作用登记(per Issue §5)
+- **副作用 1**:`currentSubStatus === 'expired'` 在新逻辑下不可达
+  - 影响文件:`.status-badge-expired` CSS + `TripDetailStatusLabel.expired` + `mapItemState(item, 'expired', ...)` 调用点
+  - **本 fix 不主动清理**(避免 spec 字面偏差升级;留 spec-writer 后续决策)
+- **副作用 2**:`currentSubStatus === 'upcoming'` 仍可达(today < start_date + helper 返回 inProgress)
+  - 影响:无
+- **副作用 3**:helper 调用方(TripCard.vue / HomePage)自动跟新 0 改动
+  - 影响:无
+
+### Issue Status
+- 关闭:`issues/Cross-Page/TripStatusConsistent-001.md` Status: Open → Resolved(由 review 复审,per AGENT_CONTRACTS §2.4 + §3.1)
+- 新建:0(纯跨页 fix,无新 Issue)
+
+### PageStatus.yaml
+- 追加 1 个新 Cross-Page 块:`fix-trip-status-effective`(沿 plan-userround2-001-2026-06-24.yaml precedent)
+- 0 触动既有 17 page 块 / 17 cross-page 块
+
+### 后续待办(给 issue-manager 派)
+1. spec-writer session 决策是否合并 `utils/tripStatus.js` v0.6.2 优先级到 `specs/HomePage.md` §6.2.2
+2. spec-writer session 决策是否合并 trip-detail `decideSubStatus` helper 派生到 `specs/TripDetailPage.md` §3.4 / §5.5
+3. cleanup `expired` 子态:code-writer 后续 plan 派清 trip-detail `.status-badge-expired` CSS + `TripDetailStatusLabel.expired` + 移除 `currentSubStatus` 5 子态 enum 中 `expired` 项
+4. user-round6 `upcoming` 决策:user 后续报要「未开始」子态显示,后续 plan 派 spec-writer 决策
+
+## Cross-Page: fix-trip-status-machine — 2026-07-03 — v0.7.0
+
+### Trigger (per issues/Cross-Page/TripStatusConsistent-001.md v2)
+- 2026-07-03 12:33 user 报首页行程列表状态 bug,根因是**三重脱节**:
+  1. **显示**用 helper 派生(看字段 + items + 日期)→ 跟字段/items 走
+  2. **点击/删除**用后端 `trip.status` 字面 → 跟后端字段走
+  3. **EditTripPage 保存**不发 status 字段 → 草稿 trip 加 item 后,后端 status 仍是 'draft'
+
+- 4 场景对照表(脱节暴露):
+  - 「保存为草稿」+ 加 item → 后端 `draft` + 首页显示 `inProgress` + 点击仍进 EditTrip ❌
+  - 「确定保存」+ 0 item → 后端 `active` + 首页显示 `draft`(缺 items)+ 点击进 TripDetail ❌
+  - 显示端(看字段 + items)+ 点击端(看 status)+ 后端 status 持久化三者不一致
+
+- user 12:39 决策:
+  - Q1 草稿 + 加 item → 变 active:**C 方案**(EditTripPage 隐式发布)
+  - Q2 「确定保存」+ 0 item:保持现状(不动 NewTripPage)
+  - Q3 草稿 vs 回收站:不存在该问题(草稿/finished 互斥)
+
+### Fix 1: `src/utils/tripStatus.js` v0.7.0 重写
+- 文件 131 → 134 行(净增 3 行)
+- **完全废除** v0.6.x「缺字段/items=0 → 草稿」启发式
+- 4 状态独立判定,只看 `trip.status` + `today vs 日期`:
+  ```
+  1. deleted_at != null                       → 'deleted'
+  2. trip.status === 'draft'                  → 'draft' (后端持久化的草稿语义)
+  3. trip.status === 'finished'               → 'finished' (后端字段优先)
+  4. status='active' 按日期派生:
+     - today < start_date   → 'upcoming'
+     - today > end_date     → 'finished'
+     - today in [start,end] → 'inProgress'
+  ```
+- 文件顶部 JSDoc 注释 v0.5.0 → v0.6.0 → v0.6.1 → v0.6.2 → v0.7.0 完整演进时间线
+
+### Fix 2: 显示/点击同源化(per Issue §2.2)
+- **`src/components/TripCard.vue`**: `canDelete` 改用 `effectiveStatus === 'draft' || === 'finished'` 派生;statusLabel 沿用既有 fallback chain;新增 `.trip-card-status-upcoming` CSS 1 段
+- **`src/pages/home/index.vue`**: `onSelectTrip` + `onDeleteTrip` 改用 helper 派生
+  - onSelectTrip: `status === 'draft'` → EditTrip;其他(均含 upcoming/inProgress/finished)→ TripDetail
+  - onDeleteTrip: `status === 'upcoming' || === 'inProgress'` → toast 引导回收站;`draft` / `finished` → 弹 DeleteConfirmDialog
+- **`src/pages/trip-detail/index.vue`**: `decideSubStatus` 函数体 18 行 → 1 行(`return computeEffectiveStatus(t, ref)`);`currentSubStatus` enum 5→4 缩;`.status-badge-expired` CSS 删除(`expired` 子态不可达)
+- **`src/pages/edit-trip/index.vue`**: `_FormHeader` 状态徽章改用 helper 派生(避免触发 `TripDetailStatusLabel.expired` 不存在的 ReferenceError)
+
+### Fix 3: `constants/strings.js` keys 调整
+- `HomeTripStatusLabel` Object.freeze:删 `active` 键 + 加 `upcoming` 键(共 5 键保持)
+- `TripDetailStatusLabel` Object.freeze:删 `expired` 键(5→4)
+- `TripDetailStrings.statusExpired` 字符串本身**保留**(沿 13 页面惯例 + 留 spec-writer 后续决策)
+
+### Fix 4: `pages/edit-trip/index.vue` 隐式发布(per user Q1 决策 C 方案)
+- `buildUpdateRequest` 返回类型加 `status?: TripStatus` 字段(JSDoc 全面 v0.7.0 修订)
+- `doUpdate` 加 `isDraftBeingPromoted` 判定 = `status='draft'` + title 非空 + start_date 非空 + end_date 非空 + ≥1 item
+- 满足条件 → `req.status = 'active'` + `logger.info('[EditTripPage] implicit publish draft → active')` + 既有 PUT 流程不变
+- 不发时:**不**主动发 'finished' / 强切 'draft'(沿 v0.4.0 TripCreateEditFix-001 决策)
+
+### Fix 5: `api/types.ts` 0 触动(no-op,验证)
+- `UpdateTripRequest.status?: TripStatus` 字段在 `api/types.ts:214` **已经**存在(task #7「加回」字面与实际不符,本 fix **不**触动 types 文件)
+- 后端 Pydantic `UpdateTripRequest` 2026-06-26 v0.5.0 扩展已接受 status 字段,PUT 透传实测 200 OK
+
+### 0 触动
+- `api/types.ts`(READ-ONLY for code-writer;UpdateTripRequest.status? 已存在)
+- `services/trips.updateTrip` 已支持 status 字段透传
+- `api/mock/_seed.ts` / `mockInterceptor.js`
+- `pages/new-trip/index.vue` 创建路径(status='active'/'draft' 沿用,helper 派生与既有显示兼容)
+- 9 components(除 TripCard 自动跟新外)+ 4 stores + 8 services + pages.json
+
+### 9-scenario 行为对照表(per Issue §3)
+| 场景 | 后端 status | 派生 | 显示 | 点击 | 一致性 |
+|---|---|---|---|---|---|
+| 1. 草稿+加 item 后隐式发布 | active | inProgress | 进行中 | TripDetail | ✓ |
+| 2. 确定保存 + 0 item | active | inProgress | 进行中 | TripDetail | ✓ |
+| 3. 确定保存 + 1 item | active | inProgress | 进行中 | TripDetail | ✓ |
+| 4. 纯草稿 | draft | draft | 草稿 | EditTrip | ✓ |
+| 5. 草稿+item 但未保存 | draft | draft | 草稿 | EditTrip | ✓ |
+| 6. 老数据 active+0 items | active | inProgress | 进行中 | TripDetail | ✓ |
+| 7. 后端 status=finished | finished | finished | 已结束 | TripDetail | ✓ |
+| 8. active+today<start | active | upcoming | 未开始 | TripDetail | ✓ |
+| 9. active+today>end | active | finished | 已结束 | TripDetail | ✓ |
+
+**所有 9 场景显示端 + 点击端 1:1 对齐**,显示/点击完全同源。
+
+### 验收(11/11 PASS)
+- node REPL 7-case 全 PASS(测试 1-7 全部命中预期;task verification table 测试 1 期望与新算法不一致,详见 deliverable §"Task spec deviation note")
+- 9-scenario 矩阵 全 PASS
+- grep `computeEffectiveStatus` 5 文件 = 16 命中(5 imports + 11 callsites)
+- grep `req.status = 'active'\|isDraftBeingPromoted` edit-trip = 2 命中
+- grep `console\.` 5 文件 = 0 命中
+- git status --short specs/ = 空
+- TripDetailStatusLabel enum = 4 键(spec 字面 5 - expired)
+- HomeTripStatusLabel enum = 5 键(active 删 + upcoming 增)
+- .trip-card-status-upcoming CSS = 新增 1 段
+- trip-detail decideSubStatus = 1 行 direct return
+- api/types.ts 0 触动(UpdateTripRequest.status? 已存在)
+- 隐式发布 5 字段判定(title + start_date + end_date + items + status='draft')精确
+
+### spec 偏差登记(per AGENT_CONTRACTS §2.4 spec-writer 越权边界)
+- **0 触动** `specs/HomePage.md` §6.2.2 字面(spec 字段完整性启发式 vs v0.7.0 只看 status+日期,spec 字面与代码不再 1:1)
+- **0 触动** `specs/TripDetailPage.md` §3.4 / §5.5 字面(5 子态 vs 4 子态,expired 不可达)
+- 后续待办 spec-writer 同步修订,本 fix 不主动改
+
+### 副作用登记(per Issue §5)
+- **副作用 1**:`status='draft'` + 完整字段 + items 的老 trip 显示从 v0.6.2「进行中」→「草稿」字面 spec break;但 EditTripPage 隐式发布兜底降低 drift;user 期望「草稿 = user 显式保存」(per user 12:33)
+- **副作用 2**:trip-detail `currentSubStatus` enum 5→4 缩;`.status-badge-expired` CSS 删除;`TripDetailStatusLabel.expired` 键删除;`TripDetailStrings.statusExpired` 字符串**保留**
+- **副作用 3**:helper 调用方 TripCard / HomePage / TripDetailPage / EditTripPage 全部自动跟新 0 触动(本 fix 显式改这些文件以确保同源)
+- **副作用 4**:`_FormHeader` 状态徽章改用 helper 派生(避免触发 `TripDetailStatusLabel.expired` 不存在的 ReferenceError)
+
+### Issue Status
+- 关闭:`issues/Cross-Page/TripStatusConsistent-001.md` Status 由 review 复审后改 Resolved(本 session code-writer **不**关闭,per AGENT_CONTRACTS §2.4)
+- 新建:0(纯跨页 fix,无新 Issue)
+
+### PageStatus.yaml
+- 追加 1 个新 Cross-Page 块:`fix-trip-status-machine-v0.7.0-2026-07-03`(沿 `fix-trip-status-effective` precedent)
+- 0 触动既有 17 page 块 / 17 cross-page 块
+
+### 后续待办(给 issue-manager 派)
+1. spec-writer session 决策是否合并 utils/tripStatus.js v0.7.0 简化算法(只看 status+日期,废除字段完整性启发式)到 specs/HomePage.md §6.2.2
+2. spec-writer session 决策是否合并 trip-detail 4 子态(draft/upcoming/inProgress/finished,删 expired)到 specs/TripDetailPage.md §3.4 / §5.5
+3. cleanup TripDetailStrings.statusExpired 字符串本身(constants/strings.js:368)
+4. regression 测试 user 端到端验 9 场景一致性
+5. committed issue close:issues/Cross-Page/TripStatusConsistent-001.md Status 由 review 复审后改 Resolved
+6. 老数据兼容 advisory:status=draft + 完整字段 + items 老 trip 显示从「进行中」→「草稿」字面 spec break,EditTripPage 隐式发布兜底降低 drift
+
+---
+
+## 2026-07-03 v0.7.1 — Cross-Page fix: 文案统一「未开始」→「即将到来」(per user 2026-07-03 13:37 反馈)
+
+### 背景
+User 实测发现:同一个 trip 在首页显示「即将到来」,进入详情页却显示「未开始」,两处文案不一致。期望统一为「即将到来」。
+
+### 根因
+- `src/constants/strings.js:87` `HomeStrings.statusUpcoming = '即将到来'`(HomePage + TripCard 用)
+- `src/constants/strings.js:365` `TripDetailStrings.statusUpcoming = '未开始'`(TripDetailPage + EditTripPage._FormHeader 用)
+- 两处 Object.freeze 字面值不一致 → user 视觉跳变
+
+### 修改清单(1 文件 4 处)
+| 文件 | 行 | 改动 |
+|---|---|---|
+| `src/constants/strings.js` | L365 | 字面值 `'未开始'` → `'即将到来'` |
+| `src/constants/strings.js` | L363-364 | JSDoc 注释 v0.7.1 修订说明追加(注 2026-07-03 user 反馈 + 文案统一) |
+| `src/constants/strings.js` | L239 | HomeTripStatusLabel JSDoc 注释同步(从 '未开始' → '即将到来') |
+| `src/constants/strings.js` | L444 | TripDetailStatusLabel.upcoming 注释同步(从 '未开始' → '即将到来') |
+
+### 跨页影响(0 触动)
+- `pages/home/index.vue` + `components/TripCard.vue`:显示文案通过 `HomeTripStatusLabel.upcoming` 引用 → 自动跟新 0 改动
+- `pages/trip-detail/index.vue` + `pages/edit-trip/index.vue`:显示文案通过 `TripDetailStatusLabel.upcoming` 引用 → 自动跟新 0 改动
+- `utils/tripStatus.js` + 9 components + 4 stores + 8 services + `api/types.ts` + mock 数据:0 触动
+
+### 验收(3/3 PASS)
+- grep `'未开始'` 用户可见字面 = 0 命中(剩余 5 处 JSDoc/CSS 注释是描述「未开始」概念,字面 "即将到来" 不矛盾,保留)
+- grep `'即将到来'` `statusUpcoming` 字面 = 2 命中(HomeStrings + TripDetailStrings)
+- 1 文件改动 + 0 触动既有 page 块 / 0 console.* / 0 spec 触动
+
+### 后续待办(给 issue-manager 派)
+1. spec-writer session 修订 `specs/HomePage.md §6.2.2` + `specs/TripDetailPage.md §3.4 / §5.5` 中「未开始」字面 → 「即将到来」(spec-writer 越权边界,本 fix 不触动)
+2. regression 测试 user 端到端验 TripDetailPage 状态徽章文案显示为「即将到来」(之前是「未开始」)
