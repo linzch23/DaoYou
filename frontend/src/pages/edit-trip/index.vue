@@ -163,17 +163,17 @@
             </view>
 
             <!-- Field 4: 行程安排(itineraryArrange)UI-025 — 横向 scroll-view 拖动排序 + 每条需 date + start_time + end_time
-                 v0.5.0(2026-06-25 per UserRound2-001 Bug A):接 3 emit 调 item CRUD API
+                 v0.5.0(2026-06-25 per UserRound2-001 Bug A):接 item CRUD 事件
                  - @add    → onAddItem    POST /api/trip-items
-                 - @update → onUpdateItem 拖动 reorder(MVP 不调 API,仅本地展示顺序变化)
+                 - @update-item → onUpdateItem PUT /api/trip-items/{id}
                  - @remove → onRemoveItem DELETE /api/trip-items/{id}
-                 v-model 仍走 update:modelValue 同步 formData;emit 3 事件用于精确 API 调度
+                 v-model 仍走 update:modelValue 同步 formData；拖动 update 事件仅用于本地排序
             -->
             <ItineraryArrangeField
               v-model="formData.itineraryArrange"
               :readonly="false"
               @add="onAddItem"
-              @update="onUpdateItem"
+              @update-item="onUpdateItem"
               @remove="onRemoveItem"
             />
           </view>
@@ -1047,27 +1047,35 @@ async function onAddItem(newItem) {
  *   2) await updateTripItem;成功 → 替换 formData.itineraryArrange[idx]
  *   3) 失败 → Toast「更新失败」+ logger.error(formData 保留客户端版本,用户可重试)
  *
- * @param {number} idx formData.itineraryArrange 数组索引
  * @param {ItineraryItem} updatedItem 新内容
  */
-async function onUpdateItem(idx, updatedItem) {
-  const item = formData.value.itineraryArrange[idx]
-  if (!item || !item.id) {
-    logger.warn('[EditTripPage] updateItem blocked, item has no server id (new item not yet saved)', { idx })
+async function onUpdateItem(updatedItem) {
+  if (!updatedItem || !updatedItem.id) {
+    logger.warn('[EditTripPage] updateItem blocked, item has no server id (new item not yet saved)')
     return
   }
-  logger.info('[EditTripPage] updateItem start', { idx, id: item.id, title: updatedItem.title })
+  const idx = formData.value.itineraryArrange.findIndex((item) => item.id === updatedItem.id)
+  if (idx < 0) {
+    logger.warn('[EditTripPage] updateItem blocked, item not found', { id: updatedItem.id })
+    return
+  }
+  logger.info('[EditTripPage] updateItem start', { idx, id: updatedItem.id, title: updatedItem.title })
   try {
-    await updateTripItem(item.id, {
+    await updateTripItem(updatedItem.id, {
       city: updatedItem.city,
       title: updatedItem.title,
-      item_type: updatedItem.item_type || item.item_type || 'attraction',
+      item_type: updatedItem.item_type || 'attraction',
       start_time: updatedItem.start_time || '',
       end_time: updatedItem.end_time || '',
     })
-    formData.value.itineraryArrange.splice(idx, 1, { ...item, ...updatedItem })
+    const currentIdx = formData.value.itineraryArrange.findIndex(
+      (item) => item.id === updatedItem.id,
+    )
+    if (currentIdx >= 0) {
+      formData.value.itineraryArrange.splice(currentIdx, 1, updatedItem)
+    }
     uni.showToast({ title: EditTripStrings.itemUpdatedToast, icon: 'success', duration: 1500 })
-    logger.info('[EditTripPage] updateItem ok', { id: item.id })
+    logger.info('[EditTripPage] updateItem ok', { id: updatedItem.id })
   } catch (err) {
     logger.error('[EditTripPage] updateItem failed', err)
     uni.showToast({

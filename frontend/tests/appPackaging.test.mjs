@@ -47,6 +47,34 @@ test('trip card action icons use ASCII static asset paths', async () => {
   assert.doesNotMatch(source, /\/static\/tabbar\/(?:AI对话|删除_delete)\.png/)
 })
 
+test('trip item editing uses a dedicated event and restores the city field', async () => {
+  const fieldSource = await readFile(
+    path.join(
+      frontendRoot,
+      'src/pages/new-trip/components/ItineraryArrangeField.vue',
+    ),
+    'utf8',
+  )
+  const pageSource = await readFile(
+    path.join(frontendRoot, 'src/pages/edit-trip/index.vue'),
+    'utf8',
+  )
+
+  assert.match(fieldSource, /'update-item'/)
+  assert.match(fieldSource, /emit\('update-item', updatedItem\)/)
+  assert.match(fieldSource, /city:\s*item\.city\s*\|\|\s*''/)
+  assert.doesNotMatch(
+    fieldSource,
+    /id:\s*existing\?\.id[\s\S]{0,400}id:\s*Date\.now\(\)/,
+  )
+  assert.match(pageSource, /@update-item="onUpdateItem"/)
+  assert.match(pageSource, /async function onUpdateItem\(updatedItem\)/)
+  assert.match(
+    pageSource,
+    /updateTripItem\(updatedItem\.id,\s*\{/,
+  )
+})
+
 test('packaged app uses the product display name', async () => {
   const manifest = JSON.parse(
     await readFile(path.join(frontendRoot, 'src/manifest.json'), 'utf8'),

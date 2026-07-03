@@ -22,8 +22,9 @@ export function getInheritedCity(items) {
 }
 
 
-export function normalizeNewTripItem(form) {
+export function normalizeNewTripItem(form, existing = {}) {
   return {
+    ...existing,
     city: form.city.trim(),
     title: form.title.trim(),
     date: form.date,

@@ -39,6 +39,37 @@ test('normalizeNewTripItem trims and preserves city and title', () => {
   )
 })
 
+test('normalizeNewTripItem preserves the server id when editing an existing item', () => {
+  assert.deepEqual(
+    normalizeNewTripItem(
+      {
+        city: ' 广州 ',
+        title: ' 中山大学南校园 ',
+        date: '2026-07-04',
+        start_time: '09:00',
+        end_time: '11:00',
+        item_type: 'attraction',
+      },
+      {
+        id: 42,
+        tripDayId: 7,
+        city: '广州',
+        title: '旧地点',
+      },
+    ),
+    {
+      id: 42,
+      tripDayId: 7,
+      city: '广州',
+      title: '中山大学南校园',
+      date: '2026-07-04',
+      start_time: '09:00',
+      end_time: '11:00',
+      item_type: 'attraction',
+    },
+  )
+})
+
 
 test('buildTripItemPayload never includes client coordinates', () => {
   assert.deepEqual(

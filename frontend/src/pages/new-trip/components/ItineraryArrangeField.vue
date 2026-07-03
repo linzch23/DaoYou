@@ -16,8 +16,7 @@
                                                           emit('remove', id) **先**,v-model splice **后** — 父级
                                                           handler findIndex 时 arr 还在,避免 -1 early return
     update             : (arr: ItineraryItem[]) => void   v0.5.0 拖动结束发;EditTripPage MVP 不调 API
-                                                          v0.5.1(per UserRound2-002 Bug D):也用于 onUpdateExistingItem
-                                                          (用户编辑现有 item 路径,MVP 简化不实现 UI,协议保留)
+    update-item        : (item: ItineraryItem) => void    编辑已有 item 时通知 EditTripPage 调 PUT
 
   跨端硬约束(per issues/UI/UI-025 §实现挑战):
     - 不用 HTML5 drag-and-drop(Android uni-app x UTS 不解析)
@@ -280,6 +279,7 @@ const emit = defineEmits([
   'add',
   'remove',
   'update',
+  'update-item',
 ])
 
 // ──────────── Touch / Drag 状态 ────────────
@@ -567,18 +567,11 @@ function confirmAdd() {
   const existing = editingId.value === null
     ? null
     : props.modelValue.find((item) => item.id === editingId.value)
-  const newItem = {
-    ...(existing || {}),
-    // 客户端生成稳定 key(Date.now() + 随机后缀避免同毫秒冲突)
-    id: existing?.id || Date.now() * 1000 + Math.floor(Math.random() * 1000),
-    title: addForm.value.title.trim(),
-    date: addForm.value.date,
-    start_time: addForm.value.start_time,
-    end_time: addForm.value.end_time,
-    item_type: addForm.value.item_type,
+  // 编辑时保留服务端 id；仅新增项生成客户端临时 id。
+  const baseItem = existing || {
     id: Date.now() * 1000 + Math.floor(Math.random() * 1000),
-    ...normalizeNewTripItem(addForm.value),
   }
+  const newItem = normalizeNewTripItem(addForm.value, baseItem)
   // 2026-06-25 新增(per UserRound2-002 Bug D):重叠检测
   //   - 同 date + 时段重叠 → 拒绝 + Toast 警告 + 不 emit
   //   - 沿 PhotoGuidePage §8.3 错误处理模式(uni.showToast 简单反馈)
@@ -620,6 +613,7 @@ function onEditItem(item) {
   if (props.readonly || isDragging.value) return
   editingId.value = item.id
   addForm.value = {
+    city: item.city || '',
     title: item.title || '',
     date: item.date || '',
     start_time: item.start_time || '',
@@ -634,7 +628,8 @@ function onEditItem(item) {
  * 用户编辑现有 item 后 → 查重 + 排序 + emit update
  * 2026-06-25 新增(per UserRound2-002 Bug D):MVP 简化不实现 ✏️ UI 触发(沿 NewTripPage §8.2 +
  * PhotoGuidePage §8.3 决策),本函数保留供未来 IssueManager 提议 hook(per issue §4.3.3 决策)。
- * 协议签名:接收 updatedItem(完整 item 含 id),内部查重 + 替换 + 排序 + emit('update:modelValue', sorted) + emit('update', updatedItem)。
+ * 协议签名:接收 updatedItem(完整 item 含 id),内部查重 + 替换 + 排序
+ * + emit('update:modelValue', sorted) + emit('update-item', updatedItem)。
  *
  * @param {import('../../../api/types').ItineraryItem} updatedItem
  */
@@ -657,7 +652,7 @@ function onUpdateExistingItem(updatedItem) {
   const arr = props.modelValue.map((it) => (it.id === updatedItem.id ? updatedItem : it))
   const sorted = sortItems(arr)
   emit('update:modelValue', sorted)
-  emit('update', updatedItem)
+  emit('update-item', updatedItem)
   logger.info('[ItineraryArrangeField] update item', { id: updatedItem.id, totalCount: sorted.length })
 }
 
