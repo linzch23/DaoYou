@@ -55,7 +55,7 @@ def seed_trip(
         title="上海一日游",
         start_date=date(2026, 6, 28),
         end_date=date(2026, 6, 28),
-        status="draft",
+        status="active",
     )
     db.add(trip)
     db.flush()
@@ -184,3 +184,80 @@ def test_scan_skips_stale_location(db: Session) -> None:
     assert result.skipped_count == 1
     assert route_provider.calls == 0
     assert db.scalar(select(DepartureAlert.id)) is None
+
+
+def test_scan_ignores_draft_trip(db: Session) -> None:
+    now = datetime(2026, 6, 28, 2, 0, tzinfo=timezone.utc)
+    trip, day = seed_trip(db, now=now)
+    trip.status = "draft"
+    db.add(
+        TripItem(
+            trip_day_id=day.id,
+            city="上海",
+            title="草稿目的地",
+            start_time=time(10, 40),
+            latitude=Decimal("31.3304000"),
+            longitude=Decimal("121.5737000"),
+        )
+    )
+    db.commit()
+
+    result = run_departure_alert_scan(
+        db=db,
+        now=now,
+        route_provider=FakeRouteProvider(),
+        push_provider=FakePushProvider(),
+    )
+
+    assert result.evaluated_count == 0
+    assert db.scalar(select(DepartureAlert.id)) is None
+
+
+def test_scan_selects_latest_active_trip(db: Session) -> None:
+    now = datetime(2026, 6, 28, 2, 0, tzinfo=timezone.utc)
+    older, older_day = seed_trip(db, now=now)
+    latest = Trip(
+        user_id=1,
+        title="最新行程",
+        start_date=date(2026, 6, 28),
+        end_date=date(2026, 6, 28),
+        status="active",
+    )
+    db.add(latest)
+    db.flush()
+    latest_day = TripDay(
+        trip_id=latest.id,
+        day_index=1,
+        trip_date=date(2026, 6, 28),
+    )
+    db.add(latest_day)
+    db.flush()
+    db.add_all([
+        TripItem(
+            trip_day_id=older_day.id,
+            city="上海",
+            title="旧行程目的地",
+            start_time=time(10, 40),
+            latitude=Decimal("31.3304000"),
+            longitude=Decimal("121.5737000"),
+        ),
+        TripItem(
+            trip_day_id=latest_day.id,
+            city="上海",
+            title="最新行程目的地",
+            start_time=time(10, 40),
+            latitude=Decimal("31.3404000"),
+            longitude=Decimal("121.5837000"),
+        ),
+    ])
+    db.commit()
+
+    result = run_departure_alert_scan(
+        db=db,
+        now=now,
+        route_provider=FakeRouteProvider(),
+        push_provider=FakePushProvider(),
+    )
+
+    assert result.sent_count == 1
+    assert db.scalar(select(DepartureAlert.trip_id)) == latest.id

@@ -2,6 +2,7 @@ const INTERVAL_MS = 15 * 60 * 1000
 
 export function createLocationReporter({
   checkPermission,
+  requestPermission,
   getLocation,
   updateLocation: uploadLocation,
   setIntervalFn,
@@ -13,7 +14,13 @@ export function createLocationReporter({
   let reportingPromise = null
 
   async function doReport() {
-    const permission = await checkPermission()
+    let permission = await checkPermission()
+    if (permission === 'not determined' && requestPermission) {
+      const requested = await requestPermission()
+      if (requested === 'granted') {
+        permission = 'authorized'
+      }
+    }
     if (permission !== 'authorized') return false
     const location = await getLocation()
     await uploadLocation({
@@ -39,10 +46,11 @@ export function createLocationReporter({
 
   async function start() {
     stop()
-    await reportNow()
+    const reported = await reportNow()
     timerId = setIntervalFn(() => {
       void reportNow()
     }, INTERVAL_MS)
+    return reported
   }
 
   function stop() {

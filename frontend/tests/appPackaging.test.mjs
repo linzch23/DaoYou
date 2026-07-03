@@ -83,6 +83,38 @@ test('packaged app uses the product display name', async () => {
   assert.equal(manifest.name, '导友')
 })
 
+test('app location uses the DCloud Geolocation AMap configuration with a local key placeholder', async () => {
+  const manifest = JSON.parse(
+    await readFile(path.join(frontendRoot, 'src/manifest.json'), 'utf8'),
+  )
+  const appPlus = manifest['app-plus']
+
+  assert.deepEqual(appPlus.modules.Geolocation, {})
+  assert.equal(appPlus.modules.Amap, undefined)
+  assert.deepEqual(
+    appPlus.distribute.sdkConfigs.geolocation.amap,
+    {
+      __platform__: ['android'],
+      appkey_android: '__AMAP_ANDROID_APP_KEY__',
+    },
+  )
+  assert.equal(appPlus.distribute.sdkConfigs.amap, undefined)
+})
+
+test('production app packaging injects the local AMap Android key and copies native plugins', async () => {
+  const script = await readFile(
+    path.join(frontendRoot, 'scripts/build-app-package.ps1'),
+    'utf8',
+  ).catch(() => '')
+
+  assert.match(script, /AMAP_ANDROID_APP_KEY/)
+  assert.match(script, /__AMAP_ANDROID_APP_KEY__/)
+  assert.match(script, /Get-Content\s+-LiteralPath\s+\$envPath\s+-Encoding\s+UTF8/)
+  assert.match(script, /npm(?:\.cmd)?\s+run\s+build:app/)
+  assert.match(script, /nativeplugins/)
+  assert.match(script, /finally/)
+})
+
 test('background location service records recent-task removal for device diagnostics', async () => {
   const source = await readFile(
     path.join(
@@ -166,6 +198,31 @@ test('notification settings are registered and reachable from My', async () => {
   assert.match(page, /openNotificationSettings/)
 })
 
+test('location and background reminder settings are registered and reachable from My', async () => {
+  const routes = await readFile(
+    path.join(frontendRoot, 'src/constants/routes.js'),
+    'utf8',
+  )
+  const pages = JSON.parse(
+    await readFile(path.join(frontendRoot, 'src/pages.json'), 'utf8'),
+  )
+  const strings = await readFile(
+    path.join(frontendRoot, 'src/constants/strings.js'),
+    'utf8',
+  )
+  const page = await readFile(
+    path.join(frontendRoot, 'src/pages/location-setting/index.vue'),
+    'utf8',
+  ).catch(() => '')
+
+  assert.match(routes, /LocationSetting:\s*['"]\/pages\/location-setting\/index['"]/)
+  assert.ok(pages.pages.some((item) => item.path === 'pages/location-setting/index'))
+  assert.match(strings, /id:\s*['"]location-setting['"]/)
+  assert.match(page, /openAppSettings/)
+  assert.match(page, /getBackgroundLocationStatus/)
+  assert.match(page, /requestLocationPermission/)
+})
+
 test('photo guide route is registered', async () => {
   const pages = JSON.parse(
     await readFile(path.join(frontendRoot, 'src/pages.json'), 'utf8'),
@@ -178,5 +235,8 @@ test('App checks notification permission when it becomes visible', async () => {
   const source = await readFile(path.join(frontendRoot, 'src/App.vue'), 'utf8')
 
   assert.match(source, /ensureNotificationPermission/)
-  assert.match(source, /void\s+ensureNotificationPermission\(\)/)
+  assert.match(
+    source,
+    /startLocationReporter\(\)\.finally\(async \(\) => \{[\s\S]*await syncBackgroundLocation\(\)[\s\S]*await ensureNotificationPermission\(\)/,
+  )
 })

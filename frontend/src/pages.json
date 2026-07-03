@@ -111,6 +111,16 @@
       }
     },
     {
+      "path": "pages/location-setting/index",
+      "style": {
+        "navigationBarTitleText": "定位与后台提醒",
+        "navigationStyle": "custom",
+        "navigationBarTextStyle": "black",
+        "navigationBarBackgroundColor": "#FDFBF7",
+        "backgroundColor": "#F7F3EC"
+      }
+    },
+    {
       "path": "pages/style-setting/index",
       "style": {
         "navigationBarTitleText": "讲解风格",

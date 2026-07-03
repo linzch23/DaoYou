@@ -2,6 +2,7 @@ import json
 from datetime import date
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import func, select
 
 from app.agent import trip_parser
@@ -9,7 +10,20 @@ from app.core.errors import AppError
 from app.models.trip import Trip, TripDay, TripItem
 from app.models.user import User
 from app.schemas.trips import CreateTripFromDraftRequest
+from app.services.amap_geocoding_provider import AmapGeocodingError, GeocodedLocation
 from app.services.trip_service import create_trip_from_draft
+
+
+class StubGeocoder:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.calls: list[tuple[str, str]] = []
+
+    def geocode(self, *, city: str, address: str) -> GeocodedLocation:
+        self.calls.append((city, address))
+        if self.fail:
+            raise AmapGeocodingError("test failure")
+        return GeocodedLocation(latitude=30.246, longitude=120.151)
 
 
 def test_parser_keeps_unmentioned_fields_empty(monkeypatch) -> None:
@@ -62,14 +76,20 @@ def test_atomic_creation_and_idempotency(db) -> None:
         }],
     })
 
-    first = create_trip_from_draft(payload, db)
-    second = create_trip_from_draft(payload, db)
+    geocoder = StubGeocoder()
+    first = create_trip_from_draft(payload, db, geocoder=geocoder)
+    second = create_trip_from_draft(payload, db, geocoder=geocoder)
 
     assert first["created"] is True
     assert second == {"trip_id": first["trip_id"], "created": False}
+    assert geocoder.calls == [("杭州", "西湖")]
     assert db.scalar(select(func.count()).select_from(Trip)) == 1
     assert db.scalar(select(func.count()).select_from(TripDay)) == 1
     assert db.scalar(select(func.count()).select_from(TripItem)) == 1
+    item = db.scalar(select(TripItem))
+    assert item is not None
+    assert float(item.latitude) == pytest.approx(30.246)
+    assert float(item.longitude) == pytest.approx(120.151)
 
 
 def test_atomic_creation_rejects_invalid_day_without_partial_trip(db) -> None:
@@ -88,3 +108,48 @@ def test_atomic_creation_rejects_invalid_day_without_partial_trip(db) -> None:
         create_trip_from_draft(payload, db)
 
     assert db.scalar(select(func.count()).select_from(Trip)) == 0
+
+
+def test_atomic_creation_rolls_back_when_destination_cannot_be_geocoded(db) -> None:
+    db.add(User(id=1, nickname="test"))
+    db.commit()
+    payload = CreateTripFromDraftRequest.model_validate({
+        "user_id": 1,
+        "title": "杭州旅行",
+        "start_date": "2026-08-12",
+        "end_date": "2026-08-12",
+        "idempotency_key": "trip-create-geocode-failure",
+        "days": [{
+            "day_index": 1,
+            "trip_date": "2026-08-12",
+            "items": [{"title": "不存在地点", "city": "杭州"}],
+        }],
+    })
+
+    with pytest.raises(AppError):
+        create_trip_from_draft(payload, db, geocoder=StubGeocoder(fail=True))
+
+    assert db.scalar(select(func.count()).select_from(Trip)) == 0
+    assert db.scalar(select(func.count()).select_from(TripDay)) == 0
+    assert db.scalar(select(func.count()).select_from(TripItem)) == 0
+
+
+def test_draft_creation_rejects_client_destination_coordinates() -> None:
+    with pytest.raises(ValidationError):
+        CreateTripFromDraftRequest.model_validate({
+            "user_id": 1,
+            "title": "杭州旅行",
+            "start_date": "2026-08-12",
+            "end_date": "2026-08-12",
+            "idempotency_key": "trip-create-client-coordinates",
+            "days": [{
+                "day_index": 1,
+                "trip_date": "2026-08-12",
+                "items": [{
+                    "title": "西湖",
+                    "city": "杭州",
+                    "latitude": 1,
+                    "longitude": 2,
+                }],
+            }],
+        })

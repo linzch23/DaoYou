@@ -78,3 +78,34 @@ test('permission denial skips location and upload', async () => {
   assert.equal(locationCalls, 0)
   assert.equal(uploadCalls, 0)
 })
+
+
+test('first start requests undetermined location permission and uploads immediately', async () => {
+  let permissionStatus = 'not determined'
+  let permissionRequests = 0
+  const reports = []
+  const reporter = createLocationReporter({
+    checkPermission: async () => permissionStatus,
+    requestPermission: async () => {
+      permissionRequests += 1
+      permissionStatus = 'authorized'
+      return 'granted'
+    },
+    getLocation: async () => ({ latitude: 23.1, longitude: 113.3 }),
+    updateLocation: async (payload) => reports.push(payload),
+    setIntervalFn: () => 1,
+    clearIntervalFn: () => {},
+    nowSeconds: () => 2000,
+  })
+
+  const result = await reporter.start()
+
+  assert.equal(permissionRequests, 1)
+  assert.equal(result, true)
+  assert.equal(reports.length, 1)
+  assert.deepEqual(reports[0], {
+    latitude: 23.1,
+    longitude: 113.3,
+    timestamp: 2000,
+  })
+})

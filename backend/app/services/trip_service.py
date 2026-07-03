@@ -46,7 +46,12 @@ def create_trip(payload: CreateTripRequest, db: Session) -> dict[str, int]:
     return {"trip_id": trip.id}
 
 
-def create_trip_from_draft(payload: CreateTripFromDraftRequest, db: Session) -> dict[str, object]:
+def create_trip_from_draft(
+    payload: CreateTripFromDraftRequest,
+    db: Session,
+    *,
+    geocoder: "DestinationGeocoder | None" = None,
+) -> dict[str, object]:
     require_user(db, payload.user_id)
     existing = db.scalar(select(Trip).where(Trip.creation_key == payload.idempotency_key))
     if existing is not None:
@@ -96,7 +101,15 @@ def create_trip_from_draft(payload: CreateTripFromDraftRequest, db: Session) -> 
             db.add(day)
             db.flush()
             for item_data in day_data.items:
-                db.add(TripItem(trip_day_id=day.id, **item_data.model_dump()))
+                values = item_data.model_dump()
+                location = _geocode_destination(
+                    city=item_data.city,
+                    address=item_data.address or item_data.title,
+                    geocoder=geocoder,
+                )
+                values["latitude"] = location.latitude
+                values["longitude"] = location.longitude
+                db.add(TripItem(trip_day_id=day.id, **values))
         db.commit()
         db.refresh(trip)
         return {"trip_id": trip.id, "created": True}
