@@ -1423,6 +1423,7 @@ export const ChatPageStrings = {
   actionOptionsConfirm: '应用此方案',
   actionOptionsComingSoon: '该功能即将上线',
   actionOptionsApplied: '行程已更新',
+  batchActionApplied: '已写入{count}项安排',
   actionOptionsApplyFailed: '应用失败,请稍后重试',
   actionOptionsInvalid: '方案已失效,请重新获取',
   deleteActionTitle: '永久删除该行程项?',

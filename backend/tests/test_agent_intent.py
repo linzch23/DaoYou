@@ -41,6 +41,125 @@ def test_hybrid_intent_rules_avoid_single_keyword_false_positives(
     assert result.intent is expected
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "请正式帮我写入：第一天上午沙面岛，下午陈家祠。",
+        "把刚才规划的两天一起写进行程",
+        "按这个方案保存到行程里",
+    ],
+)
+def test_explicit_trip_write_requests_are_replan(monkeypatch, message: str) -> None:
+    monkeypatch.setattr("app.agent.intent.call_llm", lambda messages: None)
+
+    result = classify_intent({"user_message": message, "current_trip": _trip()})
+
+    assert result.intent is AgentIntent.REPLAN
+    assert result.source == "rules"
+
+
+def test_confirmation_after_assistant_write_invitation_is_replan(monkeypatch) -> None:
+    monkeypatch.setattr("app.agent.intent.call_llm", lambda messages: None)
+
+    result = classify_intent({
+        "user_message": "确认，就按上午陈家祠、下午北京路来安排吧。",
+        "current_trip": _trip(),
+        "chat_history": [
+            {
+                "role": "assistant",
+                "content": "要不先记下这个方案？你确认后我就帮你写进行程。",
+            },
+            {
+                "role": "user",
+                "content": "确认，就按上午陈家祠、下午北京路来安排吧。",
+            },
+        ],
+    })
+
+    assert result.intent is AgentIntent.REPLAN
+    assert result.source == "conversation_state"
+
+
+@pytest.mark.parametrize("message", ["就这么定", "照你说的办", "这个方案可以，采纳"])
+def test_common_confirmation_phrases_do_not_need_llm(monkeypatch, message: str) -> None:
+    def fail_if_called(messages):
+        raise AssertionError("common confirmation should not call the LLM classifier")
+
+    monkeypatch.setattr("app.agent.intent.call_llm", fail_if_called)
+
+    result = classify_intent({
+        "user_message": message,
+        "current_trip": _trip(),
+        "chat_history": [
+            {
+                "role": "assistant",
+                "content": "你确认后我就帮你把这个方案写进行程。",
+            },
+        ],
+    })
+
+    assert result.intent is AgentIntent.REPLAN
+    assert result.source == "conversation_state"
+
+
+def test_plain_confirmation_without_write_invitation_stays_chat(monkeypatch) -> None:
+    monkeypatch.setattr("app.agent.intent.call_llm", lambda messages: None)
+
+    result = classify_intent({
+        "user_message": "确认",
+        "current_trip": _trip(),
+        "chat_history": [{"role": "assistant", "content": "请确认你看到了消息。"}],
+    })
+
+    assert result.intent is AgentIntent.CHAT
+
+
+def test_unfamiliar_confirmation_wording_uses_semantic_fallback(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.agent.intent.call_llm",
+        lambda messages: (
+            '{"decision":"confirm","confidence":0.93,'
+            '"reason":"用户同意应用上一轮待确认方案"}'
+        ),
+    )
+
+    result = classify_intent({
+        "user_message": "那就依你吧",
+        "current_trip": _trip(),
+        "chat_history": [
+            {
+                "role": "assistant",
+                "content": "你确认后我就帮你把这个方案写进行程。",
+            },
+        ],
+    })
+
+    assert result.intent is AgentIntent.REPLAN
+    assert result.source == "llm_confirmation"
+
+
+def test_semantic_fallback_can_decline_pending_plan(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.agent.intent.call_llm",
+        lambda messages: (
+            '{"decision":"not_confirm","confidence":0.96,"reason":"用户还未同意方案"}'
+        ),
+    )
+
+    result = classify_intent({
+        "user_message": "我再考虑一下",
+        "current_trip": _trip(),
+        "chat_history": [
+            {
+                "role": "assistant",
+                "content": "你确认后我就帮你把这个方案写进行程。",
+            },
+        ],
+    })
+
+    assert result.intent is AgentIntent.CHAT
+
+
 def test_ambiguous_intent_uses_llm_classifier(monkeypatch) -> None:
     monkeypatch.setattr(
         "app.agent.intent.call_llm",

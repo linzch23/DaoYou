@@ -388,7 +388,7 @@ def test_reminder_agent_falls_back_when_llm_payload_invalid(monkeypatch) -> None
     assert result["structured_data"]["reminder"]["type"] in {"departure", "conflict"}
 
 
-def test_replan_agent_returns_draft_items(monkeypatch) -> None:
+def test_replan_agent_does_not_invent_action_when_llm_unavailable(monkeypatch) -> None:
     monkeypatch.setattr("app.agent.nodes.call_llm", lambda messages: None)
 
     result = run_agent(
@@ -402,11 +402,10 @@ def test_replan_agent_returns_draft_items(monkeypatch) -> None:
     )
 
     assert result["intent"] == "replan"
-    assert result["structured_data"]["needs_clarification"] is False
-    assert result["structured_data"]["operations"]
-    assert result["action_options"]
-    assert result["action_options"][0]["operation"] == "update_trip_item"
-    assert result["action_options"][0]["trip_id"] == 1
+    assert result["structured_data"]["needs_clarification"] is True
+    assert result["structured_data"]["operations"] == []
+    assert result["action_options"] == []
+    assert "暂时不可用" in result["reply"]
 
 
 def test_replan_agent_uses_llm_payload_when_valid(monkeypatch) -> None:
@@ -488,7 +487,7 @@ def test_replan_agent_extracts_json_from_text_payload(monkeypatch) -> None:
     assert result["structured_data"]["operations"][0]["payload"]["title"] == "附近茶馆"
 
 
-def test_replan_agent_falls_back_when_llm_payload_invalid(monkeypatch) -> None:
+def test_replan_agent_does_not_invent_action_when_llm_payload_invalid(monkeypatch) -> None:
     monkeypatch.setattr("app.agent.nodes.call_llm", lambda messages: "这不是 JSON")
 
     result = run_agent(
@@ -502,8 +501,9 @@ def test_replan_agent_falls_back_when_llm_payload_invalid(monkeypatch) -> None:
     )
 
     assert result["intent"] == "replan"
-    assert result["structured_data"]["needs_clarification"] is False
-    assert result["structured_data"]["operations"][0]["payload"]["title"] == "附近咖啡馆休息"
+    assert result["structured_data"]["needs_clarification"] is True
+    assert result["structured_data"]["operations"] == []
+    assert result["action_options"] == []
 
 
 def test_replan_agent_builds_create_trip_item_option(monkeypatch) -> None:
@@ -793,3 +793,32 @@ def test_replan_agent_rejects_delete_item_from_another_trip(monkeypatch) -> None
 
     assert result["action_options"] == []
     assert result["structured_data"]["needs_clarification"] is True
+
+
+def test_replan_multiple_operations_are_pending_not_reported_as_written(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.agent.nodes.call_llm",
+        lambda messages: (
+            '{"needs_clarification":false,"clarifying_question":"",'
+            '"summary":"第一天和第二天已经写入成功。","reason":"用户确认计划。",'
+            '"operations":['
+            '{"operation":"create_trip_item","target_date":"2026-07-01",'
+            '"target_day_index":1,"label":"第一天新增星海广场",'
+            '"payload":{"city":"大连","title":"星海广场"}},'
+            '{"operation":"create_trip_item","target_date":"2026-07-02",'
+            '"target_day_index":2,"label":"第二天新增贝壳博物馆",'
+            '"payload":{"city":"大连","title":"大连贝壳博物馆"}}]}'
+        ),
+    )
+
+    result = run_agent({
+        "user_id": 1,
+        "trip_id": 1,
+        "intent_hint": "replan",
+        "user_message": "确认把两天计划一起写入",
+        "current_trip": _trip_context(),
+    })
+
+    assert len(result["action_options"]) == 2
+    assert "当前尚未写入" in result["reply"]
+    assert "写入成功" not in result["reply"]
