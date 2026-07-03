@@ -131,10 +131,46 @@
                     @tap="onMessageImageTap(msg)"
                   />
                 </view>
-                <text
+                <view
                   class="message-text"
                   :class="`message-text-${msg.role}`"
-                >{{ truncateContent(msg.content) }}</text>
+                >
+                  <template
+                    v-for="(seg, i) in parseMdLite(truncateContent(msg.content))"
+                    :key="`${msg.id !== undefined ? msg.id : `idx-${idx}`}-${i}`"
+                  >
+                    <text
+                      v-if="seg.type === 'text' || seg.type === 'bold'"
+                      class="message-text-line"
+                      :selectable="true"
+                      space="emsp"
+                      :style="seg.type === 'bold' ? 'font-weight: 600' : ''"
+                    >{{ seg.text }}</text>
+                    <view
+                      v-else-if="seg.type === 'list'"
+                      class="md-list"
+                    >
+                      <view
+                        v-for="(item, j) in seg.items"
+                        :key="j"
+                        class="md-list-item"
+                      >
+                        <text class="md-list-bullet" aria-hidden="true">•</text>
+                        <text
+                          class="message-text-line md-list-item-content"
+                          :selectable="true"
+                          space="emsp"
+                        >
+                          <text
+                            v-for="(sub, k) in item"
+                            :key="k"
+                            :style="sub.type === 'bold' ? 'font-weight: 600' : ''"
+                          >{{ sub.text }}</text>
+                        </text>
+                      </view>
+                    </view>
+                  </template>
+                </view>
                 <!-- _FollowUpChips(仅 assistant msg + 末尾追加) -->
                 <view
                   v-if="msg.role === 'assistant' && msg.follow_up_questions && msg.follow_up_questions.length > 0"
@@ -346,6 +382,7 @@ import { createTripDay, createTripItem, deleteTripItem } from '../../services/tr
 import { confirmAgentAction, rejectAgentAction } from '../../services/actions.js'
 import { validateActionOption } from '../../services/actionOptionValidation.js'
 import { getCurrentLocation, checkLocationPermission } from '../../utils/location.js'
+import { parseMdLite } from '../../utils/markdown-lite.js'
 import ActionOptionsModal from './components/ActionOptionsModal.vue'
 import ApplyPlanConfirmDialog from './components/ApplyPlanConfirmDialog.vue'
 // v0.2.0 新增 4 私有子组件(spec §3.10/§3.11/§3.4/§3.12 + §8.5/§8.6/§8.7/§8.8)
@@ -1606,6 +1643,11 @@ onUnmounted(() => {
   font-size: 28rpx;
   /* 14px */
   line-height: 1.6;
+}
+
+.message-text-line {
+  /* 子 <text> 继承外层 view 的 font-family / font-size / line-height / color;
+     pre-wrap + word-break 由子 <text> 单独设置(因为 view 不支持 white-space) */
   white-space: pre-wrap;
   word-break: break-word;
 }
@@ -1618,6 +1660,40 @@ onUnmounted(() => {
 .message-text-assistant {
   color: #2C2C2C;
   /* ink */
+}
+
+/* ───────── markdown 列表(per 2026-07-03 v0.4.1)───────── */
+.md-list {
+  display: block;
+  margin: 4rpx 0;
+  box-sizing: border-box;
+}
+
+.md-list-item {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  margin-bottom: 4rpx;
+  box-sizing: border-box;
+}
+
+.md-list-bullet {
+  /* 纯文本 "•" 字符(unicode U+2022),跨 H5 + Android 100% 兼容,0 字体依赖 */
+  flex-shrink: 0;
+  display: inline-block;
+  width: 28rpx;
+  /* 等于 font-size,保证 1 字符宽度 */
+  font-family: 'Noto Sans SC', sans-serif;
+  font-size: 28rpx;
+  line-height: 1.6;
+  color: inherit;
+  text-align: center;
+}
+
+.md-list-item-content {
+  flex: 1;
+  min-width: 0;
+  /* flex item 默认 min-width:auto 会撑爆容器,显式 0 让 word-break 生效 */
 }
 
 /* ───────── _FollowUpChips ───────── */
