@@ -27,7 +27,8 @@
 //   - 注:`USE_MOCK_FALLBACK` import 保留(从 services/config.js 导出,可能其他 helper 引用),
 //     但本服务**不再使用**它做 fallback 决策
 //   - 真接入高德(per cross-page issue §2.1):`utils/location.js` v0.4.1 显式条件编译 +
-//     `manifest.modules.Amap: {}` + `sdkConfigs.amap.appid_android` 让 HBuilderX 云打包
+//     `manifest.modules.Geolocation: {}` + `sdkConfigs.geolocation.amap.appkey_android`
+//     让 HBuilderX 云打包
 //     时动态 bundle 高德 AAR,JS 层不感知
 //
 // 历史:
@@ -92,7 +93,8 @@ function mapFail(err, reject) {
  * **定位能力不在本 service 内**(per integrate-r2 task 决策):
  *   - 本函数**只**接受 page 层已经获取到的 {latitude, longitude} 数字
  *   - 真正的定位能力由 page 层调 `uni.getLocation` / 高德 SDK 获取
- *   - 高德 Android SDK 由 `manifest.modules.Amap: {}` + `sdkConfigs.amap.appid_android`
+ *   - 高德 Android SDK 由 `manifest.modules.Geolocation: {}` +
+ *     `sdkConfigs.geolocation.amap.appkey_android`
  *     在 HBuilderX 云打包时动态 bundle,JS 层不感知(per cross-page issue §2.1)
  *
  * @param {object} payload

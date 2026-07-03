@@ -1,6 +1,6 @@
 from datetime import date
 
-from sqlalchemy import case, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.core.errors import AppError, ErrorCode
@@ -26,7 +26,7 @@ def get_today_home(
             Trip.start_date <= query_date,
             Trip.end_date >= query_date,
         )
-        .order_by(case((Trip.status == "active", 0), else_=1), Trip.id)
+        .order_by(Trip.id.desc())
     )
     if trip is None:
         raise AppError(ErrorCode.NOT_FOUND, "当前日期没有可用旅行")

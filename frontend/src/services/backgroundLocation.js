@@ -1,6 +1,7 @@
 import { BASE_URL, MVP_USER_ID } from './config.js'
 import { getToday } from './home.js'
 import { logger } from '../utils/logger.js'
+import { checkLocationPermission } from '../utils/location.js'
 import { hasPendingDestination } from './backgroundLocationCore.js'
 
 const PLUGIN_NAME = 'BackgroundLocationPlugin'
@@ -40,9 +41,15 @@ export async function syncBackgroundLocation() {
   // #endif
 
   try {
+    const permission = await checkLocationPermission()
+    if (permission !== 'authorized') {
+      await callPlugin('stopBackgroundLocation')
+      return { success: false, code: 'location_permission_required' }
+    }
     const today = await getToday(localDate())
     if (!hasPendingDestination(today)) {
-      return callPlugin('stopBackgroundLocation')
+      await callPlugin('stopBackgroundLocation')
+      return { success: false, code: 'no_pending_destination' }
     }
     return callPlugin('startBackgroundLocation', {
       baseUrl: BASE_URL,

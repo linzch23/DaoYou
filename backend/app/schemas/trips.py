@@ -137,14 +137,14 @@ class ParsedTripDraft(BaseModel):
 
 
 class CreateTripDraftItemRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     title: str = Field(min_length=1, max_length=200)
     city: str = Field(min_length=1, max_length=100)
     item_type: str = Field(default="attraction", max_length=50)
     start_time: time | None = None
     end_time: time | None = None
     address: str | None = Field(default=None, max_length=300)
-    latitude: float | None = None
-    longitude: float | None = None
     notes: str | None = None
 
 

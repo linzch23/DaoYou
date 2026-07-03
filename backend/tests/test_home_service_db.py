@@ -70,3 +70,34 @@ def test_today_home_ignores_deleted_trip(db: Session) -> None:
         get_today_home(user_id=1, target_date=date(2026, 7, 1), db=db)
 
     assert exc_info.value.code == ErrorCode.NOT_FOUND
+
+
+def test_today_home_selects_latest_active_trip(db: Session) -> None:
+    db.add(User(id=1, nickname="演示用户"))
+    db.flush()
+    older = Trip(
+        user_id=1,
+        title="旧行程",
+        start_date=date(2026, 7, 3),
+        end_date=date(2026, 7, 3),
+        status="active",
+    )
+    latest = Trip(
+        user_id=1,
+        title="新行程",
+        start_date=date(2026, 7, 3),
+        end_date=date(2026, 7, 3),
+        status="active",
+    )
+    db.add_all([older, latest])
+    db.flush()
+    db.add_all([
+        TripDay(trip_id=older.id, day_index=1, trip_date=date(2026, 7, 3)),
+        TripDay(trip_id=latest.id, day_index=1, trip_date=date(2026, 7, 3)),
+    ])
+    db.commit()
+
+    result = get_today_home(user_id=1, target_date=date(2026, 7, 3), db=db)
+
+    assert result["trip_id"] == latest.id
+    assert result["trip_title"] == "新行程"

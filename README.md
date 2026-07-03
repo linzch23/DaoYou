@@ -114,14 +114,25 @@ npm run build:app
 ## Android 原生插件
 
 正式打包前，在根目录 `.env` 填写 `VIVO_PUSH_APP_ID` 和
-`VIVO_PUSH_APP_KEY`，然后从仓库根目录生成本地 AAR：
+`VIVO_PUSH_APP_KEY`，并填写绑定 `com.daoyou.app` 和正式签名 SHA1 的
+`AMAP_ANDROID_APP_KEY`。先从仓库根目录生成本地 AAR：
 
 ```powershell
 & frontend\nativeplugins\VivoPushPlugin\android\build-plugin.ps1
 ```
 
 生成的 `VivoPushPlugin-release.aar` 供 HBuilderX 打包使用，但不提交 Git。
-源码 Manifest 只保留占位符；AppSecret 始终只保存在后端。
+源码 Manifest 只保留占位符；AppSecret 始终只保存在后端。然后生成供 HBuilderX
+导入/云打包的目录：
+
+```powershell
+cd frontend
+npm run build:app:package
+```
+
+该命令只在构建期间注入高德 Android Key，完成后恢复源码 Manifest，并把原生插件
+复制到 `frontend/dist/build/app/nativeplugins/`。不要直接用带占位符的
+`npm run build:app` 产物制作正式 APK。
 
 ## 常用检查
 
@@ -140,7 +151,7 @@ uv run alembic check
 cd frontend
 npm test
 npm run build:h5
-npm run build:app
+npm run build:app:package
 ```
 
 ## 文档

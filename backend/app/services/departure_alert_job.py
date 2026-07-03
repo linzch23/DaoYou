@@ -70,11 +70,12 @@ def run_departure_alert_scan(
             .where(
                 Trip.user_id == user.id,
                 Trip.deleted_at.is_(None),
+                Trip.status == "active",
                 Trip.title != "",
                 Trip.start_date <= local_date,
                 Trip.end_date >= local_date,
             )
-            .order_by(Trip.start_date, Trip.id)
+            .order_by(Trip.id.desc())
         )
         if trip is None:
             result.skipped_count += 1

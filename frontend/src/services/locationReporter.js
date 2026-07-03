@@ -2,12 +2,14 @@ import { updateLocation } from './locations.js'
 import {
   checkLocationPermission,
   getCurrentLocation,
+  requestLocationPermission,
 } from '../utils/location.js'
 import { logger } from '../utils/logger.js'
 import { createLocationReporter } from './locationReporterCore.js'
 
 const reporter = createLocationReporter({
   checkPermission: checkLocationPermission,
+  requestPermission: requestLocationPermission,
   getLocation: getCurrentLocation,
   updateLocation,
   setIntervalFn: setInterval,

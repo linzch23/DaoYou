@@ -889,6 +889,7 @@ export const MyPageStrings = {
   menuTrash: '回收站',                    // 菜单项 2 标签
   menuStyleSetting: '讲解风格',            // 菜单项 3 标签
   menuNotificationSetting: '通知设置',
+  menuLocationSetting: '定位与后台提醒',
   menuHelp: '帮助',                        // 菜单项 5 标签
   menuAbout: '关于',                       // 菜单项 6 标签
   toastHelpComing: '功能即将上线,敬请期待', // 帮助菜单点击弹 Toast(per §3.4)
@@ -936,6 +937,7 @@ export const MyPageMenuOptions = Object.freeze([
   { id: 'trash',                icon: '🗑️', label: MyPageStrings.menuTrash,                route: AppRoutes.Trash,               behavior: 'navigate' },
   { id: 'style-setting',        icon: '🎙️', label: MyPageStrings.menuStyleSetting,        route: AppRoutes.StyleSetting,        behavior: 'navigate' },
   { id: 'notification-setting', icon: '🔔', label: MyPageStrings.menuNotificationSetting, route: AppRoutes.NotificationSetting, behavior: 'navigate' },
+  { id: 'location-setting',     icon: '📍', label: MyPageStrings.menuLocationSetting,     route: AppRoutes.LocationSetting,     behavior: 'navigate' },
   { id: 'help',                 icon: '❓', label: MyPageStrings.menuHelp,                 route: null,                          behavior: 'coming-soon' },
   { id: 'about',                icon: 'ℹ️', label: MyPageStrings.menuAbout,                route: AppRoutes.About,               behavior: 'navigate' },
 ])

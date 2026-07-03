@@ -13,9 +13,11 @@ export default {
   },
   onShow: function () {
     console.log('App Show')
-    void startLocationReporter().finally(() => syncBackgroundLocation())
+    void startLocationReporter().finally(async () => {
+      await syncBackgroundLocation()
+      await ensureNotificationPermission()
+    })
     void ensurePushDeviceRegistered()
-    void ensureNotificationPermission()
   },
   onHide: function () {
     console.log('App Hide')

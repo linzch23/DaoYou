@@ -30,7 +30,7 @@
 // 调研实证(per task §调研):
 //   1. node_modules/@dcloudio/uni-app-plus/dist/uni.runtime.esm.js:API_GET_LOCATION
 //      `getLocation` 内部调 `plus.geolocation.getCurrentPosition({coordsType: type})`
-//      —— 平台 SDK 选择由 HBuilderX runtime 在打包时按 manifest.modules.Amap 配置 bundle
+//      —— 平台 SDK 选择由 HBuilderX runtime 在打包时按 manifest.modules.Geolocation 配置 bundle
 //   2. 同一文件 getLocationSuccess 内含 `gcj02towgs84` / `wgs84togcj02` 转换函数
 //      —— 仅当 `type !== position.coordsType` 时触发(App 显式 gcj02 + Amap SDK 返
 //      GCJ-02 → 不触发转换,直出 GCJ-02)
@@ -38,7 +38,7 @@
 //      `navigator.geolocation.getCurrentPosition` → type 字段对 H5 是文档约定,
 //      实际拿到的是浏览器原生 WGS-84
 //   4. **node_modules 里无 .aar / ApsService / com.amap.api 任何 Java/Kotlin 引用**
-//      —— Amap AAR 由 HBuilderX 云打包时按 `manifest.modules.Amap: {}` 配置动态 bundle,
+//      —— Amap AAR 由 HBuilderX 云打包时按 `manifest.modules.Geolocation: {}` 配置动态 bundle,
 //      **不需要**前端 npm install
 //
 // 坐标系说明(per cross-page issue §2.3):
@@ -130,7 +130,8 @@ export function getCurrentLocation() {
     // #endif
 
     // ───────── App(Android 真包 / iOS 真包)─────────
-    // 走 plus.geolocation(manifest.modules.Amap + sdkConfigs.amap.appid_android 配
+    // 走 plus.geolocation(manifest.modules.Geolocation +
+    // sdkConfigs.geolocation.amap.appkey_android 配
     // 高德 Android SDK)→ 显式 type: 'gcj02' 让 HBuilderX runtime 直接拿 GCJ-02
     // (不经 WGS-84 roundtrip + JS 层再转换)。
     // iOS 未配 key(MVP 暂走 wgs84 兜底),per cross-page issue §2.1 已知妥协。
@@ -331,4 +332,32 @@ export function checkLocationPermission() {
     resolve('authorized')
     // #endif
   })
+}
+
+/**
+ * 打开应用详情设置，用于云真机或权限被拒后手动调整定位、通知权限。
+ *
+ * @returns {boolean}
+ */
+export function openAppSettings() {
+  // #ifndef APP-PLUS
+  return false
+  // #endif
+  // #ifdef APP-PLUS
+  try {
+    const activity = plus.android.runtimeMainActivity()
+    const Intent = plus.android.importClass('android.content.Intent')
+    const Settings = plus.android.importClass('android.provider.Settings')
+    const Uri = plus.android.importClass('android.net.Uri')
+    const intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+    intent.setData(Uri.parse(`package:${activity.getPackageName()}`))
+    activity.startActivity(intent)
+    return true
+  } catch (error) {
+    logger.warn('[location.openAppSettings] failed', {
+      message: error?.message,
+    })
+    return false
+  }
+  // #endif
 }

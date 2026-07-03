@@ -27,7 +27,7 @@
             "delay" : 0
         },
         "modules" : {
-            "Amap" : {}
+            "Geolocation" : {}
         },
         "distribute" : {
             "android" : {
@@ -46,9 +46,13 @@
                 "dSYMs" : false
             },
             "sdkConfigs" : {
-                "amap" : {
-                    "appid_android" : "76e203306d503737b3cda50cd505bbd4",
-                    "appid_ios" : ""
+                "geolocation" : {
+                    "amap" : {
+                        "__platform__" : [
+                            "android"
+                        ],
+                        "appkey_android" : "__AMAP_ANDROID_APP_KEY__"
+                    }
                 }
             }
         }
