@@ -57,3 +57,4 @@ CLAUDE.md
 plan-*.yaml
 frontend/workflow/PageStatus.yaml
 /frontend/workflow
+backend/uvicorn-8000.out.log
