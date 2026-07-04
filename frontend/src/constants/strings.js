@@ -1426,6 +1426,7 @@ export const ChatPageStrings = {
   batchActionApplied: '已写入{count}项安排',
   actionOptionsApplyFailed: '应用失败,请稍后重试',
   actionOptionsInvalid: '方案已失效,请重新获取',
+  actionOptionsIncompatible: '方案版本不兼容，请重新生成',
   deleteActionTitle: '永久删除该行程项?',
   deleteActionMessage: '删除后无法恢复,请确认是否继续。',
   deleteActionConfirm: '确认删除',

@@ -185,7 +185,7 @@ def _create_pending_batch(
 ) -> list[dict[str, object]]:
     normalized: list[dict[str, object]] = []
     targeted_item_ids: set[int] = set()
-    for option in action_options:
+    for index, option in enumerate(action_options, start=1):
         operation = str(option.get("operation") or "")
         if operation not in SUPPORTED_OPERATIONS:
             raise AppError(ErrorCode.AGENT_OUTPUT_INVALID, "Agent 返回了不支持的行程操作")
@@ -204,7 +204,11 @@ def _create_pending_batch(
                     "同一行程项不能在一个批次中重复修改或删除",
                 )
             targeted_item_ids.add(item_id)
-        normalized.append({**option, "payload": payload})
+        normalized.append({
+            **option,
+            "operation_id": f"operation_{index:03d}",
+            "payload": payload,
+        })
 
     now = datetime.now(timezone.utc)
     expires_at = now + timedelta(minutes=settings.pending_action_ttl_minutes)
@@ -268,10 +272,13 @@ def confirm_action(
     action_id: str,
     user_id: int,
     *,
+    selected_operation_ids: list[str] | None = None,
     db: Session,
     geocoder: DestinationGeocoder | None = None,
 ) -> dict[str, object]:
     action = _require_owned_action(action_id, user_id, db=db, for_update=True)
+    if action.operation != "batch" and selected_operation_ids is not None:
+        raise AppError(ErrorCode.INVALID_REQUEST, "单项操作不能提交批次选择")
     if action.status == "confirmed":
         return _action_result(action, idempotent=True)
     if action.status != "pending":
@@ -296,6 +303,7 @@ def confirm_action(
         result = _execute_action(
             action,
             current_trip=current_trip,
+            selected_operation_ids=selected_operation_ids,
             db=db,
             geocoder=geocoder,
         )
@@ -337,6 +345,7 @@ def _execute_action(
     action: PendingAction,
     *,
     current_trip: dict[str, object],
+    selected_operation_ids: list[str] | None = None,
     db: Session,
     geocoder: DestinationGeocoder | None = None,
 ) -> dict[str, object]:
@@ -344,6 +353,7 @@ def _execute_action(
         return _execute_batch(
             action,
             current_trip=current_trip,
+            selected_operation_ids=selected_operation_ids,
             db=db,
             geocoder=geocoder,
         )
@@ -402,12 +412,20 @@ def _execute_batch(
     action: PendingAction,
     *,
     current_trip: dict[str, object],
+    selected_operation_ids: list[str] | None,
     db: Session,
     geocoder: DestinationGeocoder | None = None,
 ) -> dict[str, object]:
-    operations = action.payload.get("operations")
-    if not isinstance(operations, list) or not 1 < len(operations) <= MAX_BATCH_OPERATIONS:
+    stored_operations = action.payload.get("operations")
+    if (
+        not isinstance(stored_operations, list)
+        or not 1 < len(stored_operations) <= MAX_BATCH_OPERATIONS
+    ):
         raise AppError(ErrorCode.AGENT_OUTPUT_INVALID, "批量行程操作格式无效")
+    operations, selected_ids = _select_batch_operations(
+        stored_operations,
+        selected_operation_ids,
+    )
 
     day_cache: dict[tuple[str, object], int] = {}
     for day in current_trip.get("days", []):
@@ -499,6 +517,7 @@ def _execute_batch(
     return {
         "total": len(results),
         **counts,
+        "selected_operation_ids": selected_ids,
         "operations": results,
     }
 
@@ -526,11 +545,12 @@ def _batch_public_option(
             {
                 key: option.get(key)
                 for key in (
-                    "operation", "target_day_index", "target_date", "label", "description"
+                    "operation_id", "operation", "target_day_index", "target_date",
+                    "label", "description",
                 )
                 if option.get(key) is not None
             }
-            for option in operations
+            for option in _operations_with_ids(operations)
         ],
         "status": record.status,
         "expires_at": record.expires_at.isoformat(),
@@ -550,6 +570,40 @@ def _batch_execution_signature(operations: object) -> str:
         if isinstance(option, dict)
     ]
     return json.dumps(canonical, ensure_ascii=False, sort_keys=True, default=str)
+
+
+def _operations_with_ids(operations: list[object]) -> list[dict[str, object]]:
+    return [
+        {
+            **operation,
+            "operation_id": str(operation.get("operation_id") or f"operation_{index:03d}"),
+        }
+        for index, operation in enumerate(operations, start=1)
+        if isinstance(operation, dict)
+    ]
+
+
+def _select_batch_operations(
+    operations: list[object],
+    selected_operation_ids: list[str] | None,
+) -> tuple[list[dict[str, object]], list[str]]:
+    normalized = _operations_with_ids(operations)
+    available_ids = [str(operation["operation_id"]) for operation in normalized]
+    if selected_operation_ids is None:
+        return normalized, available_ids
+    if not selected_operation_ids:
+        raise AppError(ErrorCode.INVALID_REQUEST, "请至少选择一个行程项")
+    if len(selected_operation_ids) != len(set(selected_operation_ids)):
+        raise AppError(ErrorCode.INVALID_REQUEST, "选择的行程项不能重复")
+    unknown_ids = set(selected_operation_ids) - set(available_ids)
+    if unknown_ids:
+        raise AppError(ErrorCode.INVALID_REQUEST, "选择中包含不属于该方案的行程项")
+    selected = set(selected_operation_ids)
+    filtered = [
+        operation for operation in normalized
+        if operation["operation_id"] in selected
+    ]
+    return filtered, [str(operation["operation_id"]) for operation in filtered]
 
 
 def _validate_option_target(

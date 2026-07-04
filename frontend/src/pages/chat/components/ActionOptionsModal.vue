@@ -60,40 +60,38 @@
           :show-scrollbar="false"
         >
           <view
-            v-for="(opt, idx) in options"
-            :key="idx"
+            v-if="planOption"
             class="action-option-row"
-            :class="{
-              'action-option-row-selected': selectedIdx === idx,
-              'action-options-btn-disabled': submitting,
-            }"
-            role="button"
-            :aria-label="getOptionLabel(opt)"
-            :aria-pressed="selectedIdx === idx ? 'true' : 'false'"
-            hover-class="action-option-row-hover"
-            :hover-stay-time="50"
-            @click="onOptionTap(idx)"
+            :class="{ 'action-options-btn-disabled': submitting }"
+            :aria-label="getOptionLabel(planOption)"
           >
             <view class="action-option-row-text">
-              <text class="action-option-title">{{ getOptionTitle(opt) }}</text>
+              <text class="action-option-title">{{ getOptionTitle(planOption) }}</text>
               <text
-                v-if="getOptionDescription(opt)"
+                v-if="getOptionDescription(planOption)"
                 class="action-option-description"
-              >{{ getOptionDescription(opt) }}</text>
-              <view v-if="getBatchOperations(opt).length" class="batch-operation-list">
-                <text
-                  v-for="(operation, operationIndex) in getBatchOperations(opt)"
-                  :key="operationIndex"
-                  class="batch-operation-item"
-                >• {{ operation.label || operation.operation }}</text>
+              >{{ getOptionDescription(planOption) }}</text>
+              <view v-if="batchOperations.length" class="batch-operation-list">
+                <view
+                  v-for="operation in batchOperations"
+                  :key="operation.operation_id"
+                  class="batch-operation-row"
+                  :class="{ 'batch-operation-row-selected': isOperationSelected(operation.operation_id) }"
+                  role="checkbox"
+                  :aria-label="operation.label || operation.operation"
+                  :aria-checked="isOperationSelected(operation.operation_id) ? 'true' : 'false'"
+                  @click="toggleOperation(operation.operation_id)"
+                >
+                  <text class="batch-operation-item">{{ operation.label || operation.operation }}</text>
+                  <view
+                    v-if="isOperationSelected(operation.operation_id)"
+                    class="action-option-check"
+                    aria-hidden="true"
+                  >
+                    <text class="action-option-check-icon">✓</text>
+                  </view>
+                </view>
               </view>
-            </view>
-            <view
-              v-if="selectedIdx === idx"
-              class="action-option-check"
-              aria-hidden="true"
-            >
-              <text class="action-option-check-icon">✓</text>
             </view>
           </view>
         </scroll-view>
@@ -113,15 +111,15 @@
 
         <view
           class="action-options-btn action-options-btn-confirm"
-          :class="{ 'action-options-btn-disabled': selectedIdx === null || submitting || !!invalidMessage }"
+          :class="{ 'action-options-btn-disabled': confirmDisabled }"
           role="button"
-          :aria-label="btnConfirmLabel"
-          :aria-disabled="(selectedIdx === null || submitting || !!invalidMessage) ? 'true' : 'false'"
+          :aria-label="confirmButtonLabel"
+          :aria-disabled="confirmDisabled ? 'true' : 'false'"
           hover-class="action-options-btn-confirm-hover"
           :hover-stay-time="50"
           @click="onConfirm"
         >
-          <text class="action-options-btn-confirm-text">{{ btnConfirmLabel }}</text>
+          <text class="action-options-btn-confirm-text">{{ confirmButtonLabel }}</text>
         </view>
       </view>
     </view>
@@ -129,7 +127,8 @@
 </template>
 
 <script setup>
-import { ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
+import { getBatchOperationIds } from '../../../services/actionOptionValidation.js'
 
 const props = defineProps({
   visible: {
@@ -165,19 +164,35 @@ const props = defineProps({
 
 const emit = defineEmits(['confirm', 'cancel'])
 
-/** @type {import('vue').Ref<number | null>} 当前选中索引(null = 未选) */
-const selectedIdx = ref(null)
+const selectedOperationIds = ref([])
+const planOption = computed(() => props.options.length === 1 ? props.options[0] : null)
+const batchOperations = computed(() => getBatchOperations(planOption.value))
+const confirmDisabled = computed(() => (
+  !planOption.value
+  || props.submitting
+  || !!props.invalidMessage
+  || (batchOperations.value.length > 0 && selectedOperationIds.value.length === 0)
+))
+const confirmButtonLabel = computed(() => (
+  batchOperations.value.length > 0
+    ? `添加选中项（${selectedOperationIds.value.length}）`
+    : props.btnConfirmLabel
+))
 
 // 弹窗关闭后清空选中态(避免下次弹时残留)
 watch(
-  () => [props.visible, props.options.length],
-  ([visible, optionCount]) => {
+  () => [
+    props.visible,
+    props.options.map((option) => option?.action_id || '').join('|'),
+  ],
+  ([visible]) => {
     if (!visible) {
-      selectedIdx.value = null
-    } else if (optionCount === 1) {
-      selectedIdx.value = 0
+      selectedOperationIds.value = []
+    } else {
+      selectedOperationIds.value = getBatchOperationIds(planOption.value)
     }
-  }
+  },
+  { immediate: true }
 )
 
 /**
@@ -227,18 +242,27 @@ function getOptionLabel(opt) {
  * 点击某项 → 选中态切换
  * @param {number} idx
  */
-function onOptionTap(idx) {
+function isOperationSelected(operationId) {
+  return selectedOperationIds.value.includes(operationId)
+}
+
+function toggleOperation(operationId) {
   if (props.submitting) return
-  selectedIdx.value = selectedIdx.value === idx ? null : idx
+  selectedOperationIds.value = isOperationSelected(operationId)
+    ? selectedOperationIds.value.filter((id) => id !== operationId)
+    : [...selectedOperationIds.value, operationId]
 }
 
 /**
  * 「应用此方案」→ emit confirm(option)
  */
 function onConfirm() {
-  if (selectedIdx.value === null || props.submitting) return
-  const opt = props.options[selectedIdx.value]
-  emit('confirm', opt)
+  if (confirmDisabled.value) return
+  emit(
+    'confirm',
+    planOption.value,
+    batchOperations.value.length > 0 ? selectedOperationIds.value : undefined
+  )
 }
 
 /**
@@ -402,14 +426,32 @@ function onMaskClick() {
 .batch-operation-list {
   display: flex;
   flex-direction: column;
-  gap: 4rpx;
-  margin-top: 8rpx;
+  gap: 12rpx;
+  margin-top: 16rpx;
+}
+
+.batch-operation-row {
+  display: flex;
+  align-items: center;
+  gap: 16rpx;
+  min-height: 80rpx;
+  padding: 16rpx 20rpx;
+  border: 1.5rpx solid rgba(45, 106, 94, 0.12);
+  border-radius: 10px;
+  background: #FDFBF7;
+  box-sizing: border-box;
+}
+
+.batch-operation-row-selected {
+  border-color: #2D6A5E;
+  background: rgba(45, 106, 94, 0.08);
 }
 
 .batch-operation-item {
+  flex: 1;
   font-family: 'Noto Sans SC', sans-serif;
-  font-size: 24rpx;
-  color: #5A5A5A;
+  font-size: 27rpx;
+  color: #2C2C2C;
   line-height: 1.5;
 }
 

@@ -1,15 +1,15 @@
 import { ApiError } from './preferences.js'
 import { BASE_URL, MVP_USER_ID } from './config.js'
 
-export function confirmAgentAction(actionId) {
-  return decideAction(actionId, 'confirm')
+export function confirmAgentAction(actionId, selectedOperationIds) {
+  return decideAction(actionId, 'confirm', selectedOperationIds)
 }
 
 export function rejectAgentAction(actionId) {
   return decideAction(actionId, 'reject')
 }
 
-function decideAction(actionId, decision) {
+function decideAction(actionId, decision, selectedOperationIds) {
   if (typeof actionId !== 'string' || !actionId.trim()) {
     return Promise.reject(new ApiError({
       code: 4000,
@@ -22,7 +22,12 @@ function decideAction(actionId, decision) {
       url: `${BASE_URL}/api/actions/${encodeURIComponent(actionId)}/${decision}`,
       method: 'POST',
       header: { 'content-type': 'application/json' },
-      data: { user_id: MVP_USER_ID },
+      data: {
+        user_id: MVP_USER_ID,
+        ...(Array.isArray(selectedOperationIds)
+          ? { selected_operation_ids: selectedOperationIds }
+          : {}),
+      },
       success: (res) => {
         const body = res.data
         if (res.statusCode >= 200 && res.statusCode < 300 && body?.code === 0) {

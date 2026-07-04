@@ -1339,12 +1339,12 @@ Content-Type: application/json
 
 + `/api/chat` 只生成选项，不直接修改 `trip_items`。
 + 前端展示 `action_options`，并在执行前校验选项的 `trip_id` 与当前聊天一致。
-+ 前端确认后只提交 `action_id` 到 `POST /api/actions/{action_id}/confirm`，不得把 Agent payload 作为可信写请求直接执行。
++ 前端确认后提交 `action_id`；batch 可额外提交选中的 `operation_id`，不得把 Agent payload 作为可信写请求直接执行。
 + 用户放弃方案时调用 `POST /api/actions/{action_id}/reject`。
 + 服务端确认时重新校验用户/旅行归属、过期时间、旅行版本指纹、字段白名单和业务冲突，并在一个事务中执行。
 + 重复确认同一个已成功 action 返回原执行结果，不重复创建或修改数据。
 + 多条 `operations` 属于同一个累计方案，不是互斥选项；服务端返回单个 `operation=batch` 待确认动作。
-+ batch 确认成功后，`result` 返回 `total`、`created`、`updated`、`deleted` 和逐项执行结果。
++ batch 内每项包含稳定的 `operation_id`；确认成功后，`result` 返回选中的 ID、`total`、`created`、`updated`、`deleted` 和逐项执行结果。
 + 未经确认时 Agent 必须明确说明“尚未写入”，不能声称已经新增、修改或删除成功。
 + 行程已变化、action 已过期、已拒绝或不属于当前用户时拒绝执行，前端应提示重新生成方案。
 + 修改和删除目标按 ID、完整标题、唯一包含匹配、日期时间线索和最近聊天提及逐级解析；候选不唯一时返回追问，不生成操作选项。
@@ -1414,7 +1414,18 @@ GET /api/chat/history?user_id=1&trip_id=1&limit=20
 {"user_id": 1}
 ```
 
-服务端使用创建 action 时保存的 payload，忽略客户端对展示数据的任何修改。成功响应包含 `status=confirmed`、操作类型、执行结果和 `idempotent`；重复确认返回相同结果且 `idempotent=true`。
+batch 可只执行用户勾选的部分行程项；省略 `selected_operation_ids` 时执行全部，兼容旧客户端：
+
+```json
+{
+  "user_id": 1,
+  "selected_operation_ids": ["operation_001", "operation_003"]
+}
+```
+
+选择列表不能为空、不能重复且必须属于该 batch。普通单项操作不能提交该字段。服务端按原方案顺序执行选中项，并在一个事务中全部提交或全部回滚。
+
+服务端使用创建 action 时保存的 payload，忽略客户端对展示数据的任何修改。成功响应包含 `status=confirmed`、操作类型、实际执行的 `selected_operation_ids`、执行结果和 `idempotent`；重复确认返回第一次执行结果且 `idempotent=true`。
 
 ### 8.4 POST `/api/actions/{action_id}/reject`
 

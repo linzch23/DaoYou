@@ -13,6 +13,7 @@ from app.schemas.trips import UpdateTripItemRequest
 from app.services.action_service import (
     confirm_action,
     create_pending_actions,
+    get_reusable_pending_action,
     reject_action,
 )
 from app.services.amap_geocoding_provider import GeocodedLocation
@@ -282,6 +283,166 @@ def test_batch_confirm_creates_multiple_days_and_items_once(db: Session) -> None
     assert len(days) == 3
     assert {"星海广场", "大连贝壳博物馆", "东港"} <= titles
     assert len(success_messages) == 1
+    assert [
+        operation["operation_id"] for operation in option["operations"]
+    ] == ["operation_001", "operation_002", "operation_003"]
+    assert first["result"]["selected_operation_ids"] == [
+        "operation_001", "operation_002", "operation_003",
+    ]
+
+
+def test_batch_confirm_executes_only_selected_operations(db: Session) -> None:
+    _seed_trip(db)
+    option = _create_batch_action(db, [
+        {
+            "operation": "create_trip_item", "trip_id": 1,
+            "target_date": "2026-07-02", "target_day_index": 2,
+            "payload": {"city": "大连", "title": "第一项", "start_time": "09:00"},
+        },
+        {
+            "operation": "create_trip_item", "trip_id": 1,
+            "target_date": "2026-07-02", "target_day_index": 2,
+            "payload": {"city": "大连", "title": "第二项", "start_time": "11:00"},
+        },
+        {
+            "operation": "create_trip_item", "trip_id": 1,
+            "target_date": "2026-07-02", "target_day_index": 2,
+            "payload": {"city": "大连", "title": "第三项", "start_time": "14:00"},
+        },
+    ])
+    db.commit()
+
+    first = confirm_action(
+        str(option["action_id"]),
+        user_id=1,
+        selected_operation_ids=["operation_001", "operation_003"],
+        db=db,
+        geocoder=_FakeGeocoder(),
+    )
+    second = confirm_action(
+        str(option["action_id"]),
+        user_id=1,
+        selected_operation_ids=["operation_002"],
+        db=db,
+        geocoder=_FakeGeocoder(),
+    )
+    titles = set(db.scalars(select(TripItem.title)).all())
+
+    assert first["result"]["total"] == 2
+    assert first["result"]["selected_operation_ids"] == [
+        "operation_001", "operation_003",
+    ]
+    assert second["idempotent"] is True
+    assert second["result"] == first["result"]
+    assert {"第一项", "第三项"} <= titles
+    assert "第二项" not in titles
+
+
+@pytest.mark.parametrize(
+    ("selected_ids", "message"),
+    [
+        ([], "至少选择一个"),
+        (["operation_001", "operation_001"], "不能重复"),
+        (["operation_999"], "不属于该方案"),
+    ],
+)
+def test_batch_confirm_rejects_invalid_selection(
+    db: Session,
+    selected_ids: list[str],
+    message: str,
+) -> None:
+    _seed_trip(db)
+    option = _create_batch_action(db, [
+        {
+            "operation": "create_trip_item", "trip_id": 1, "trip_day_id": 10,
+            "payload": {"city": "大连", "title": "第一项"},
+        },
+        {
+            "operation": "create_trip_item", "trip_id": 1, "trip_day_id": 10,
+            "payload": {"city": "大连", "title": "第二项"},
+        },
+    ])
+    db.commit()
+
+    with pytest.raises(AppError, match=message):
+        confirm_action(
+            str(option["action_id"]),
+            user_id=1,
+            selected_operation_ids=selected_ids,
+            db=db,
+            geocoder=_FakeGeocoder(),
+        )
+
+    assert db.scalar(select(TripItem).where(TripItem.title == "第一项")) is None
+
+
+def test_legacy_batch_without_operation_ids_supports_partial_selection(db: Session) -> None:
+    _seed_trip(db)
+    option = _create_batch_action(db, [
+        {
+            "operation": "create_trip_item", "trip_id": 1, "trip_day_id": 10,
+            "payload": {"city": "大连", "title": "旧方案第一项"},
+        },
+        {
+            "operation": "create_trip_item", "trip_id": 1, "trip_day_id": 10,
+            "payload": {"city": "大连", "title": "旧方案第二项"},
+        },
+    ])
+    record = db.scalar(select(PendingAction).where(
+        PendingAction.action_id == option["action_id"]
+    ))
+    record.payload = {
+        "operations": [
+            {key: value for key, value in operation.items() if key != "operation_id"}
+            for operation in record.payload["operations"]
+        ]
+    }
+    db.commit()
+
+    public_option = get_reusable_pending_action(
+        user_id=1,
+        trip_id=1,
+        current_trip=get_trip_detail(user_id=1, trip_id=1, db=db),
+        db=db,
+    )
+    result = confirm_action(
+        str(option["action_id"]),
+        user_id=1,
+        selected_operation_ids=["operation_002"],
+        db=db,
+        geocoder=_FakeGeocoder(),
+    )
+
+    assert [operation["operation_id"] for operation in public_option["operations"]] == [
+        "operation_001", "operation_002",
+    ]
+    assert result["result"]["selected_operation_ids"] == ["operation_002"]
+    assert db.scalar(select(TripItem).where(TripItem.title == "旧方案第一项")) is None
+    assert db.scalar(select(TripItem).where(TripItem.title == "旧方案第二项")) is not None
+
+
+def test_single_action_rejects_batch_selection(db: Session) -> None:
+    _seed_trip(db)
+    current_trip = get_trip_detail(user_id=1, trip_id=1, db=db)
+    option = create_pending_actions(
+        user_id=1,
+        trip_id=1,
+        current_trip=current_trip,
+        action_options=[{
+            "operation": "create_trip_item", "trip_id": 1, "trip_day_id": 10,
+            "payload": {"city": "大连", "title": "单项操作"},
+        }],
+        db=db,
+    )[0]
+    db.commit()
+
+    with pytest.raises(AppError, match="单项操作不能提交批次选择"):
+        confirm_action(
+            str(option["action_id"]),
+            user_id=1,
+            selected_operation_ids=["operation_001"],
+            db=db,
+        )
 
 
 def test_batch_confirm_normalizes_blank_optional_item_fields(db: Session) -> None:
