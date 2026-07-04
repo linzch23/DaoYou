@@ -14,7 +14,12 @@
                     "description" : "vivo 推送与 Android 后台定位",
                     "platforms" : "Android",
                     "url" : "",
-                    "android_package_name" : ""
+                    "android_package_name" : "",
+                    "ios_bundle_id" : "",
+                    "isCloud" : false,
+                    "bought" : 1,
+                    "pid" : "",
+                    "parameters" : {}
                 }
             }
         },

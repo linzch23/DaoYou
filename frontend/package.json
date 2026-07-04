@@ -11,6 +11,8 @@
     "dev:app": "uni -p app",
     "build:app": "uni build -p app",
     "build:app:package": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-app-package.ps1",
+    "prepare:hbuilderx": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-hbuilderx-manifest.ps1",
+    "restore:hbuilderx": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-hbuilderx-manifest.ps1 -Restore",
     "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {

@@ -123,17 +123,26 @@ npm run build:app
 ```
 
 生成的 `VivoPushPlugin-release.aar` 供 HBuilderX 打包使用，但不提交 Git。
-源码 Manifest 只保留占位符；AppSecret 始终只保存在后端。然后生成供 HBuilderX
-导入/云打包的目录：
+源码 Manifest 只保留占位符；AppSecret 始终只保存在后端。HBuilderX 云打包前，
+从 `frontend` 目录执行：
 
 ```powershell
 cd frontend
-npm run build:app:package
+npm run prepare:hbuilderx
 ```
 
-该命令只在构建期间注入高德 Android Key，完成后恢复源码 Manifest，并把原生插件
-复制到 `frontend/dist/build/app/nativeplugins/`。不要直接用带占位符的
-`npm run build:app` 产物制作正式 APK。
+随后在 HBuilderX 中导入仓库的 `frontend` 源项目，在
+`manifest.json → App原生插件配置` 中确认选择
+“本地插件 → VivoPushPlugin”，再执行“发行 → 原生App-云打包”。
+
+打包结束后恢复源码占位符，避免误提交本地 Key：
+
+```powershell
+npm run restore:hbuilderx
+```
+
+`npm run build:app:package` 仅用于 CLI 构建验证，不作为包含本地原生插件的 HBuilderX
+云打包入口。
 
 ## 常用检查
 

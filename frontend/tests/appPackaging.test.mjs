@@ -133,6 +133,19 @@ test('app location uses the DCloud Geolocation AMap configuration with a local k
   assert.equal(appPlus.distribute.sdkConfigs.amap, undefined)
 })
 
+test('VivoPushPlugin is declared as a local native plugin', async () => {
+  const manifest = JSON.parse(
+    await readFile(path.join(frontendRoot, 'src/manifest.json'), 'utf8'),
+  )
+  const pluginInfo = manifest['app-plus']
+    .nativePlugins.VivoPushPlugin.__plugin_info__
+
+  assert.equal(pluginInfo.isCloud, false)
+  assert.equal(pluginInfo.bought, 1)
+  assert.equal(pluginInfo.pid, '')
+  assert.deepEqual(pluginInfo.parameters, {})
+})
+
 test('production app packaging injects the local AMap Android key and copies native plugins', async () => {
   const script = await readFile(
     path.join(frontendRoot, 'scripts/build-app-package.ps1'),
@@ -144,7 +157,26 @@ test('production app packaging injects the local AMap Android key and copies nat
   assert.match(script, /Get-Content\s+-LiteralPath\s+\$envPath\s+-Encoding\s+UTF8/)
   assert.match(script, /npm(?:\.cmd)?\s+run\s+build:app/)
   assert.match(script, /nativeplugins/)
+  assert.match(script, /src[\\/]static/)
   assert.match(script, /finally/)
+})
+
+test('HBuilderX source packaging has explicit prepare and restore commands', async () => {
+  const packageJson = JSON.parse(
+    await readFile(path.join(frontendRoot, 'package.json'), 'utf8'),
+  )
+  const script = await readFile(
+    path.join(frontendRoot, 'scripts/prepare-hbuilderx-manifest.ps1'),
+    'utf8',
+  ).catch(() => '')
+
+  assert.match(packageJson.scripts['prepare:hbuilderx'] || '', /prepare-hbuilderx-manifest\.ps1/)
+  assert.match(packageJson.scripts['restore:hbuilderx'] || '', /prepare-hbuilderx-manifest\.ps1.*-Restore/)
+  assert.match(script, /AMAP_ANDROID_APP_KEY/)
+  assert.match(script, /__AMAP_ANDROID_APP_KEY__/)
+  assert.match(script, /\[switch\]\$Restore/)
+  assert.match(script, /Get-Content\s+-LiteralPath\s+\$envPath\s+-Encoding\s+UTF8/)
+  assert.doesNotMatch(script, /Write-Host.*\$amapAndroidKey/)
 })
 
 test('background location service records recent-task removal for device diagnostics', async () => {

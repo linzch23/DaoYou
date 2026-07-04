@@ -53,6 +53,15 @@ try {
     }
     Copy-Item -LiteralPath $nativePluginSource -Destination $nativePluginTarget -Recurse -Force
 
+    # Preserve src/static paths referenced by the compiled manifest.
+    $sourceStaticPath = Join-Path $frontendRoot "src\static"
+    $outputSourceRootPath = Join-Path $outputRoot "src"
+    if (-not (Test-Path -LiteralPath $sourceStaticPath)) {
+        throw "Source static assets are missing: $sourceStaticPath"
+    }
+    New-Item -ItemType Directory -Path $outputSourceRootPath -Force | Out-Null
+    Copy-Item -LiteralPath $sourceStaticPath -Destination $outputSourceRootPath -Recurse -Force
+
     $builtManifest = Join-Path $outputRoot "manifest.json"
     if (-not (Test-Path -LiteralPath $builtManifest)) {
         throw "Built manifest is missing: $builtManifest"
