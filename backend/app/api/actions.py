@@ -14,7 +14,12 @@ def confirm_action_endpoint(
     payload: ActionDecisionRequest,
     db: DbSession,
 ) -> dict[str, object]:
-    return success(confirm_action(action_id=action_id, user_id=payload.user_id, db=db))
+    return success(confirm_action(
+        action_id=action_id,
+        user_id=payload.user_id,
+        selected_operation_ids=payload.selected_operation_ids,
+        db=db,
+    ))
 
 
 @router.post("/{action_id}/reject")

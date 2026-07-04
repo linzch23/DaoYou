@@ -380,7 +380,10 @@ import { useHomeStore } from '../../stores/homeStore.js'
 import { ApiError } from '../../services/chat.js'
 import { createTripDay, createTripItem, deleteTripItem } from '../../services/trips.js'
 import { confirmAgentAction, rejectAgentAction } from '../../services/actions.js'
-import { validateActionOption } from '../../services/actionOptionValidation.js'
+import {
+  validateActionOption,
+  validateActionOptionsResponse,
+} from '../../services/actionOptionValidation.js'
 import { getCurrentLocation, checkLocationPermission } from '../../utils/location.js'
 import { parseMdLite } from '../../utils/markdown-lite.js'
 import ActionOptionsModal from './components/ActionOptionsModal.vue'
@@ -740,6 +743,15 @@ async function onLoadPage(pageOptions = {}) {
 function handleIntentRouting() {
   const intent = chatStore.currentIntent
   if (intent === 'replan' && Array.isArray(actionOptions.value) && actionOptions.value.length > 0) {
+    if (validateActionOptionsResponse(actionOptions.value)) {
+      actionOptionsInvalidMessage.value = ChatPageStrings.actionOptionsIncompatible
+      actionOptionsVisible.value = true
+      logger.warn('[ChatPage] incompatible action options response', {
+        count: actionOptions.value.length,
+      })
+      return
+    }
+    actionOptionsInvalidMessage.value = ''
     actionOptionsVisible.value = true
     logger.info('[ChatPage] intent=replan, show action options', {
       count: actionOptions.value.length,
@@ -869,7 +881,7 @@ function onClarificationOptionClick(option, messageIndex) {
  * @param {any} selectedOption 后端 action_options[] 单元素形态
  *   { item_id?: number, operation: 'create_trip_item' | 'update_trip_item', payload: object, trip_id: number, trip_day_id?: number, target_day_index?: number, target_date?: string }
  */
-async function onActionOptionConfirm(selectedOption) {
+async function onActionOptionConfirm(selectedOption, selectedOperationIds) {
   if (isApplyingAction.value) return
   if (selectedOption?.operation === 'delete_trip_item') {
     pendingDeleteOption.value = selectedOption
@@ -888,10 +900,10 @@ async function onActionOptionConfirm(selectedOption) {
     // 不关闭 modal,让 user 看到 banner 提示 + 重新选 / 取消
     return
   }
-  await applyActionOption(selectedOption)
+  await applyActionOption(selectedOption, selectedOperationIds)
 }
 
-async function applyActionOption(selectedOption) {
+async function applyActionOption(selectedOption, selectedOperationIds) {
   if (isApplyingAction.value) return false
 
   const boundTripId = useHomeStore().currentTripId
@@ -950,7 +962,10 @@ async function applyActionOption(selectedOption) {
   try {
     let decisionResult = null
     if (hasServerAction) {
-      decisionResult = await confirmAgentAction(actionId)
+      decisionResult = await confirmAgentAction(
+        actionId,
+        operation === 'batch' ? selectedOperationIds : undefined
+      )
     } else if (operation === 'create_trip_item') {
       let tripDayId = Number(selectedOption?.trip_day_id)
 
