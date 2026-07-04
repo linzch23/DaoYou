@@ -14,12 +14,12 @@
 //   - services/photos.js
 //
 // 部署口:
-//   - 真后端部署时改 BASE_URL 即可;MVP 阶段 `window.__USE_REAL_API__` 在 main.js 决定是否装 mock 拦截器
+//   - Vite 按模式从 `.env.development` / `.env.production` 注入 API 地址
+//   - `window.__USE_REAL_API__` 在 main.js 决定是否安装 mock 拦截器
 //   - 拦截器关闭后,HTTP 真连后端,失败时本 fallback 链接管
 
 /** @type {string} FastAPI 后端根地址(per docs/API接口文档.md §1 + 全项目 MVP 约定) */
-// export const BASE_URL = 'https://8.163.114.90'
-export const BASE_URL = 'http://localhost:8000'
+export const BASE_URL = import.meta.env.VITE_API_BASE_URL
 
 /** @type {number} MVP 单用户固定 id,service 内部注入 */
 export const MVP_USER_ID = 1

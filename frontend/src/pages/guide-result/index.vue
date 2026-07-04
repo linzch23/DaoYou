@@ -403,6 +403,7 @@ import { logger } from '../../utils/logger.js'
 import { useUserStore } from '../../stores/userStore.js'
 import { useHomeStore } from '../../stores/homeStore.js'
 import { getGuideResult, ApiError } from '../../services/photos.js'
+import { BASE_URL } from '../../services/config.js'
 import ErrorBanner from '../../components/ErrorBanner.vue'
 import SpotCard from '../../components/SpotCard.vue'
 // 2026-06-24 Fix D 移除:清空确认 dialog import + 整文件删除(沿用 chat page 移除决策)
@@ -440,7 +441,7 @@ const styleOptions = PhotoGuideStyleOptions
 function buildFullImageUrl(imagePath) {
   if (!imagePath) return ''
   if (imagePath.startsWith('http://') || imagePath.startsWith('https://')) return imagePath
-  return `http://localhost:8000/${imagePath.replace(/^\/+/, '')}`
+  return `${BASE_URL}/${imagePath.replace(/^\/+/, '')}`
 }
 
 /**

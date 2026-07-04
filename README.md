@@ -100,8 +100,9 @@ npm install
 npm run dev:h5
 ```
 
-前端后端地址配置在 `frontend/src/services/config.js`。真机部署不能使用
-`localhost`，生产环境应使用可访问的 HTTPS 地址。
+前端 API 地址按 Vite 模式配置：`frontend/.env.development` 用于本地开发，
+`frontend/.env.production` 用于 H5/App 正式构建。真机部署不能使用 `localhost`，
+生产环境应使用可访问的 HTTPS 地址；无需手动修改 `config.js`。
 
 其他构建命令：
 

@@ -83,6 +83,33 @@ test('packaged app uses the product display name', async () => {
   assert.equal(manifest.name, '导友')
 })
 
+test('API base URL is selected by Vite mode instead of editing source code', async () => {
+  const config = await readFile(
+    path.join(frontendRoot, 'src/services/config.js'),
+    'utf8',
+  )
+  const developmentEnv = await readFile(
+    path.join(frontendRoot, '.env.development'),
+    'utf8',
+  ).catch(() => '')
+  const productionEnv = await readFile(
+    path.join(frontendRoot, '.env.production'),
+    'utf8',
+  ).catch(() => '')
+  const guideResult = await readFile(
+    path.join(frontendRoot, 'src/pages/guide-result/index.vue'),
+    'utf8',
+  )
+
+  assert.match(config, /export const BASE_URL = import\.meta\.env\.VITE_API_BASE_URL/)
+  assert.doesNotMatch(config, /https?:\/\/(?:localhost|8\.163\.114\.90)/)
+  assert.match(developmentEnv, /^VITE_API_BASE_URL=http:\/\/localhost:8000\s*$/)
+  assert.match(productionEnv, /^VITE_API_BASE_URL=https:\/\/8\.163\.114\.90\s*$/)
+  assert.match(guideResult, /import\s*\{\s*BASE_URL\s*\}\s*from\s*['"]\.\.\/\.\.\/services\/config\.js['"]/)
+  assert.match(guideResult, /return `\$\{BASE_URL\}\/\$\{imagePath\.replace/)
+  assert.doesNotMatch(guideResult, /return `http:\/\/localhost:8000\//)
+})
+
 test('app location uses the DCloud Geolocation AMap configuration with a local key placeholder', async () => {
   const manifest = JSON.parse(
     await readFile(path.join(frontendRoot, 'src/manifest.json'), 'utf8'),
@@ -170,9 +197,12 @@ test('short success toasts fit the native icon layout', async () => {
     path.join(frontendRoot, 'src/constants/strings.js'),
     'utf8',
   )
+  const deleteToastValues = [
+    ...source.matchAll(/deleteSuccessToast:\s*['"]([^'"]+)['"]/g),
+  ].map((match) => match[1])
 
   assert.match(source, /successToast:\s*['"]设置成功['"]/)
-  assert.match(source, /deleteSuccessToast:\s*['"]已移入回收站['"]/)
+  assert.deepEqual(deleteToastValues, ['已移入回收站', '已移入回收站'])
 })
 
 test('notification settings are registered and reachable from My', async () => {

@@ -391,7 +391,7 @@ export const TripDetailStrings = {
   deleteDialogConfirming: '删除中...',
 
   // 删除 Toast(spec §3.3 + §5.3.G/H)
-  deleteSuccessToast: '已放入回收站,30 天内可恢复',
+  deleteSuccessToast: '已移入回收站',
   deleteFailToast: '删除失败,请稍后重试',
 
   // 空 day(_EmptyDaysPlaceholder,spec §3 UI Structure)
