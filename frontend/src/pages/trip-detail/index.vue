@@ -19,7 +19,6 @@
   
   复用(零修改,spec §3.6 + §10 R-1~R-3):
     - components/SpotCard.vue(单 item 卡片,4 态视觉,emit tap)
-    - components/SpotDetailSheet.vue(景点详情浮层,4 emit)
     - components/ErrorBanner.vue(viewMode='error' 兜底)
     - services/trips.getTripDetail / deleteTrip(本次落地)
     - stores/homeStore.fetchTrips(deleteTrip 成功后刷新)
@@ -35,9 +34,12 @@
          此为下游 / 跨页对齐项,见 deliverable §3
 
   v0.3.0 修订(per user-round5-2026-06-27):
-    - SpotDetailSheet 浮层 4 按钮 → 1 按钮(仅保留「导航去这里」),拍照讲解 / 收藏 2 按钮删除
+    - SpotDetailSheet 浮层 4 按钮 → 1 按钮,拍照讲解 / 收藏 2 按钮删除
     - 本页面同步删除 onGuide / onToggleFavorite handler + @guide / @toggle-favorite emit binding
     - 选点 / 导航升级 / 收藏跨页共享 推迟到后续 task
+
+  v0.8.0 修订:
+    - 行程详情页的具体行程项不再支持点击打开地点详情或导航
 -->
 <template>
   <view
@@ -156,7 +158,7 @@
                   :spot="item"
                   :state="mapItemState(item, currentSubStatus, today, day.trip_date)"
                   :is-favorite="false"
-                  @tap="onSpotTap(item)"
+                  :interactive="false"
                 />
               </view>
               <!-- 空 day 兜底(spec §3 + §5.3.E) -->
@@ -233,15 +235,6 @@
       </view>
     </view>
 
-    <!-- 景点详情浮层(spec §8.3 复用) -->
-    <!-- v0.3.0(per user-round5-2026-06-27):删 :is-favorite + @guide + @toggle-favorite
-         SpotDetailSheet 浮层 v0.3.0 起不显示收藏按钮 / 拍照讲解按钮(只剩 1 按钮「导航」) -->
-    <SpotDetailSheet
-      :spot="selectedSpot"
-      @close="onSheetClose"
-      @navigate="onNavigate"
-    />
-
     <!-- 删除确认弹窗(私有组件) -->
     <DeleteConfirmDialog
       :visible="dialogVisible"
@@ -273,7 +266,6 @@ import { ApiError } from '../../services/preferences.js'
 import { computeEffectiveStatus } from '../../utils/tripStatus.js'
 
 import SpotCard from '../../components/SpotCard.vue'
-import SpotDetailSheet from '../../components/SpotDetailSheet.vue'
 import ErrorBanner from '../../components/ErrorBanner.vue'
 import DeleteConfirmDialog from './components/DeleteConfirmDialog.vue'
 
@@ -303,9 +295,6 @@ const currentSubStatus = ref('upcoming')
 
 /** @type {import('vue').Ref<import('../../api/types').TripDay[]>} 冗余于 trip.days,方便 v-for */
 const days = ref([])
-
-/** @type {import('vue').Ref<import('../../api/types').TripItem | null>} 浮层选中项 */
-const selectedSpot = ref(null)
 
 /** @type {import('vue').Ref<boolean>} deleteTrip 飞行中标记(给 uni.showLoading + 按钮置灰用) */
 const isDeleting = ref(false)
@@ -713,7 +702,6 @@ onShow(() => {
  * 释放 local ref;不重置 trip(由 Vue 自动 GC)
  */
 onUnmounted(() => {
-  selectedSpot.value = null
   dialogVisible.value = false
   isDeleting.value = false
   isRetrying.value = false
@@ -855,45 +843,7 @@ async function onDialogConfirm() {
   }
 }
 
-/**
- * SpotCard tap → 打开 SpotDetailSheet 浮层(spec §5.2 Step B)
- * 注:已过期 / 已结束 trip 的 item 状态为 expired,SpotCard 内部 @click 拦截不触发
- */
-function onSpotTap(item) {
-  if (!item) return
-  selectedSpot.value = item
-  logger.info('[TripDetailPage] spot tap', { itemId: item.id })
-}
-
-/**
- * SpotDetailSheet 关闭 → 清空 selectedSpot(spec §5.3.K)
- */
-function onSheetClose() {
-  logger.info('[TripDetailPage] spot sheet close')
-  selectedSpot.value = null
-}
-
-/**
- * SpotDetailSheet「导航去这里」→ 唤起系统地图(spec §5.3.D + §9 AC-04 类似)
- * 导航升级(4 端条件编译 + lat/lng 缺失 Toast + H5 端高德网页兜底)推迟到后续 task
- */
-function onNavigate(item) {
-  if (!item) return
-  logger.info('[TripDetailPage] navigate', { itemId: item.id })
-  uni.openLocation({
-    latitude: Number(item.latitude) || 0,
-    longitude: Number(item.longitude) || 0,
-    name: item.title || '',
-    address: item.address || '',
-    scale: 16,
-  }).catch((err) => {
-    logger.warn('[TripDetailPage] openLocation fail', err)
-  })
-}
-
-// v0.3.0(per user-round5-2026-06-27):删 onGuide / onToggleFavorite 2 函数
-//   拍照讲解 / 收藏 2 按钮在 SpotDetailSheet 浮层中已删除,对应 handler 同步收敛
-//   选点 + 导航升级 + 收藏跨页共享 推迟到后续 task(per issues/Cross-Page/user-round5-...)
+// v0.8.0:行程详情页具体行程项仅展示,不再打开地点详情浮层或导航
 </script>
 
 <style scoped>
@@ -917,7 +867,8 @@ function onNavigate(item) {
   gap: 12rpx;
   padding: 0 40rpx;
   flex-shrink: 0;
-  background: transparent;
+  background: #F7F3EC;
+  border-bottom: 1px solid rgba(45, 106, 94, 0.1);
   box-sizing: border-box;
 }
 

@@ -77,7 +77,7 @@ export async function ensureNotificationPermission() {
   return new Promise((resolve) => {
     uni.showModal({
       title: '开启行程通知',
-      content: '用于接收出发时间和行程紧急提醒，可随时在“我的-通知设置”中修改。',
+      content: '用于接收出发时间和行程紧急提醒，可随时在“我的-权限设置”中修改。',
       confirmText: '继续',
       cancelText: '暂不开启',
       success: async ({ confirm }) => {

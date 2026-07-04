@@ -2,7 +2,7 @@
   <view class="page">
     <view class="header">
       <text class="back" @click="goBack">←</text>
-      <text class="title">定位与后台提醒</text>
+      <text class="title">权限设置</text>
       <view class="spacer" />
     </view>
 
@@ -50,6 +50,12 @@
       <text class="description">
         Android 13及以上需要通知权限才能在通知栏显示后台服务和出发提醒。
       </text>
+      <button v-if="!notificationGranted" class="primary" @click="onRequestNotification">
+        请求通知权限
+      </button>
+      <button class="secondary" @click="onOpenNotificationSettings">
+        打开系统通知设置
+      </button>
     </view>
   </view>
 </template>
@@ -69,6 +75,8 @@ import {
 } from '../../services/locationReporter.js'
 import {
   getNotificationPermissionStatus,
+  openNotificationSettings,
+  requestNotificationPermission,
 } from '../../services/notificationPermission.js'
 import {
   checkLocationPermission,
@@ -111,6 +119,15 @@ function onOpenSettings() {
   openAppSettings()
 }
 
+async function onRequestNotification() {
+  await requestNotificationPermission()
+  await refreshStatus()
+}
+
+function onOpenNotificationSettings() {
+  openNotificationSettings()
+}
+
 async function onRestartBackground() {
   await restartBackgroundLocation()
   await refreshStatus()
@@ -142,8 +159,8 @@ function goBack() {
 </script>
 
 <style scoped>
-.page { min-height: 100vh; padding: 32rpx; background: #F7F3EC; }
-.header { display: flex; align-items: center; min-height: 88rpx; }
+.page { min-height: 100vh; padding: 0 32rpx 32rpx; background: #F7F3EC; box-sizing: border-box; }
+.header { display: flex; align-items: center; min-height: 88rpx; margin: 0 -32rpx; padding: 0 32rpx; background: #F7F3EC; border-bottom: 1px solid rgba(45, 106, 94, 0.1); }
 .back, .spacer { width: 80rpx; font-size: 42rpx; }
 .title { flex: 1; text-align: center; font-size: 36rpx; font-weight: 600; color: #2C2C2C; }
 .card { margin-top: 32rpx; padding: 40rpx; border-radius: 24rpx; background: #FDFBF7; display: flex; flex-direction: column; gap: 24rpx; }

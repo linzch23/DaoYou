@@ -45,7 +45,7 @@
       :hover-stay-time="50"
       @click.stop="onChatTap"
     >
-      <image class="btn-chat-trip-icon" src="/static/tabbar/chat.png" mode="aspectFit" aria-hidden="true" />
+      <image class="btn-chat-trip-icon" src="/static/ai/roamy-chat-entry.png" mode="aspectFit" aria-hidden="true" />
     </view>
     <!-- 2026-06-24 UserRound2-001 §3 Bug C 新增:草稿/已结束 trip 显示删除入口
          @click.stop 阻止冒泡到 card 自身的 onTap(避免同时跳详情);
@@ -141,7 +141,7 @@ const ariaLabel = computed(
 
 // 2026-06-24 新增:chat 按钮 aria 派生(per AGENTS.md §8.6 13 页面惯例)
 // aria 模板带 {title} 占位,运行时插值更准
-// v0.X 修订:不再派生 chatButtonLabel — icon 改为 <image src="/static/tabbar/chat.png"> PNG 渲染,
+// v0.X 修订:不再派生 chatButtonLabel — icon 改为 Roamy PNG 渲染,
 //   详见 template .btn-chat-trip-icon;HomeStrings.btnChatTrip 同步删除
 const chatButtonAria = computed(() =>
   HomeStrings.btnChatTripAria.replace('{title}', props.trip.title)
@@ -315,7 +315,7 @@ function onDeleteTap() {
 
 /* 2026-06-24 新增:chat 入口按钮(per task「每行程独立 chatSession」)
    - 位置:card 右侧,arrow 之前(主操作 → 次操作 → 装饰)
-   - 88×88rpx 圆形,primarySoft 背景,emoji 💬 图标
+   - 88×88rpx 圆形,primarySoft 背景,Roamy 对话图标
    - ≥ 44pt 触达(per AGENTS.md §8.6 NFR)
    - hover 态:背景加深 + scale 0.96(沿 trip-card 一致)
    - disabled:沿 trip-card 一致(opacity 0.5 + pointer-events: none)
@@ -350,9 +350,9 @@ function onDeleteTap() {
 }
 
 .btn-chat-trip-icon {
-  width: 36rpx;
-  /* 18px PNG 图标,与 emoji 字号对齐 */
-  height: 36rpx;
+  width: 52rpx;
+  height: 52rpx;
+  border-radius: 9999px;
 }
 
 /* 2026-06-24 UserRound2-001 §3 Bug C 新增:草稿/已结束 trip 显示的删除入口

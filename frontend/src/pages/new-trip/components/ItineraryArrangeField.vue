@@ -1,8 +1,6 @@
 <!--
   ItineraryArrangeField.vue — 页面私有 4 字段行程安排组件(下划线前缀 = private,见 Code Style §3.4)
 
-  Spec contract: issues/UI/UI-025-itinerary-arrange-drag.md
-
   Props
     modelValue  : ItineraryItem[]   v-model 双向绑定(spec §3.5 Field 6)
     readonly    : boolean            只读标记(任务 4 复制模式预填,本 MVP 默认 false,沿用 v-model)
@@ -15,20 +13,11 @@
                                                           v0.5.1(per UserRound2-002 Bug C):emit 顺序固定为
                                                           emit('remove', id) **先**,v-model splice **后** — 父级
                                                           handler findIndex 时 arr 还在,避免 -1 early return
-    update             : (arr: ItineraryItem[]) => void   v0.5.0 拖动结束发;EditTripPage MVP 不调 API
     update-item        : (item: ItineraryItem) => void    编辑已有 item 时通知 EditTripPage 调 PUT
 
-  跨端硬约束(per issues/UI/UI-025 §实现挑战):
-    - 不用 HTML5 drag-and-drop(Android uni-app x UTS 不解析)
-    - 自写 @touchstart + @touchmove + @touchend(跨 H5 + Android 兼容)
-    - 不引 npm 依赖(沿 MVP 惯例)
-
-  功能(per issues/UI/UI-025 §修复方案 + UserRound2-002 Bug D 升级):
+  功能(per UserRound2-002 Bug D 升级):
     - 横向 scroll-view 渲染 items(每项 280rpx 宽卡)
     - 每项卡:title + start_time~end_time + item_type emoji
-    - 长按 200ms 进入"拖动模式"(该卡半透明 + scale 1.05 + 提示「拖动调整顺序」)
-    - 滑动 → 与相邻项位置碰撞,跨过 50% 阈值自动交换
-    - 松手 → emit('update:modelValue', newOrder)
     - 「+ 添加行程」按钮 → 弹 inline 展开表单(地点名/起止时间/item_type 5 选 1)
     - 每项右上角小 x → 删除(简单 toast 提示后立即删,MVP 简化)
     - v0.5.1(per UserRound2-002 Bug D):自动按 date+start_time 升序 + 重叠检测
@@ -53,21 +42,12 @@
       :enhanced="true"
       :show-scrollbar="false"
       :scroll-with-animation="true"
-      :style="scrollViewPointerEvents"
-      @touchstart="onScrollTouchStart"
-      @touchmove="onScrollTouchMove"
     >
       <view class="items-row">
         <view
-          v-for="(item, idx) in modelValue"
+          v-for="item in modelValue"
           :key="item.id"
           class="item-card"
-          :class="{ 'item-card-dragging': isDragging && draggingId === item.id }"
-          :style="getItemStyle(item.id)"
-          @touchstart="(e) => onItemTouchStart(item, idx, e)"
-          @touchmove.stop.prevent="onItemTouchMove"
-          @touchend="onItemTouchEnd"
-          @touchcancel="onItemTouchEnd"
           @click="onEditItem(item)"
         >
           <!-- 卡片内容 -->
@@ -80,7 +60,6 @@
 
           <!-- 删除按钮(右上角小 x) -->
           <view
-            v-if="!isDragging"
             class="item-card-remove"
             role="button"
             :aria-label="strings.btnRemoveAria"
@@ -123,12 +102,6 @@
         <text class="item-add-btn-text">{{ strings.btnAdd }}</text>
       </view>
     </view>
-
-    <!-- v0.6.0(2026-06-26 per user-round4-2026-06-26):删掉拖动提示浮层
-         原 v-if="isDragging" 块整段删除(显示「拖动调整顺序」),MVP 不实现拖动 UI
-         引用方 0 命中(strings.dragHint 同步删除)
-         保留:touchstart / touchmove / touchend handlers + isDragging computed
-               (per task 简化方案:不删 dead code,避免触碰大段代码引入新 bug) -->
 
     <!-- inline 添加表单 -->
     <view
@@ -270,161 +243,16 @@ const props = defineProps({
 
 const emit = defineEmits([
   'update:modelValue',
-  // v0.5.0(2026-06-25 per UserRound2-001 Bug A):加 3 个显式事件,EditTripPage 接住调 API
+  // v0.5.0(2026-06-25 per UserRound2-001 Bug A):加显式事件,EditTripPage 接住调 API
   //   - `add`    : user 点「确定」添加一条新 item(newItem 形状含 client-generated id)
   //   - `remove` : user 点 item 右上角小 ✕ 删除(emit 该 item 的 id)
-  //   - `update` : user 拖动 reorder(emit 整个新 arr,EditTripPage 可感知顺序变化)
-  // 沿 NewTripPage 兼容路径:NewTripPage **不**接这 3 个事件(只接 v-model),
+  //   - `update-item`: user 编辑已有 item 后保存(emit 完整 item)
+  // 沿 NewTripPage 兼容路径:NewTripPage **不**接这些事件(只接 v-model),
   // 0 breaking change;EventArgs 1:1 复用 ItineraryItem / id 标量
   'add',
   'remove',
-  'update',
   'update-item',
 ])
-
-// ──────────── Touch / Drag 状态 ────────────
-/** @type {import('vue').Ref<number | null>} 当前正在拖动的 item id */
-const draggingId = ref(null)
-/** @type {import('vue').Ref<number>} 拖动起始 index(原始位置) */
-const originalIndex = ref(-1)
-/** @type {import('vue').Ref<number | null>} longPress 200ms 定时器 id */
-let longPressTimerId = null
-/** @type {import('vue').Ref<number>} 手指 X 起始 clientX(用于计算 dragOffsetX) */
-const dragStartX = ref(0)
-/** @type {import('vue').Ref<number>} 当前手指 X 相对 dragStartX 的偏移(px) */
-const dragOffsetX = ref(0)
-/** @type {import('vue').Ref<number>} scroll-view 左侧 padding 累计偏移(px),用于 rpx/px 换算 */
-const scrollLeft = ref(0)
-
-const isDragging = computed(() => draggingId.value !== null)
-
-/** scroll-view 拖动时是否禁用原生滚动(避免与 item 拖动冲突) */
-const scrollViewPointerEvents = computed(() => {
-  if (isDragging.value) {
-    // 拖动时禁止 scroll-view 滚动
-    return { 'pointer-events': 'none' }
-  }
-  return {}
-})
-
-// ──────────── 触摸事件处理 ────────────
-
-/**
- * scroll-view 容器 touchstart(占位,主要逻辑在 item 上)
- * @param {UniApp.TouchEvent} _e
- */
-function onScrollTouchStart(_e) {
-  // do nothing,所有逻辑在 item 的 touchstart 触发
-}
-
-/**
- * scroll-view 容器 touchmove(拖动时拦截,避免 scroll-view 抢手势)
- * @param {UniApp.TouchEvent} _e
- */
-function onScrollTouchMove(_e) {
-  if (isDragging.value) {
-    // 拦截,避免 scroll-view 横向滚动
-    return false
-  }
-  return true
-}
-
-/**
- * Item touchstart — 启动 long-press 200ms 定时器
- * @param {import('../../../api/types').ItineraryItem} item
- * @param {number} idx
- * @param {UniApp.TouchEvent} e
- */
-function onItemTouchStart(item, idx, e) {
-  if (e.touches.length !== 1) return
-  const touch = e.touches[0]
-  // 记录起始位置(用于 200ms 后进入拖动模式)
-  dragStartX.value = touch.clientX
-  originalIndex.value = idx
-
-  // 启动 200ms long-press 定时器
-  clearLongPressTimer()
-  longPressTimerId = setTimeout(() => {
-    longPressTimerId = null
-    // 进入拖动模式
-    draggingId.value = item.id
-    dragOffsetX.value = 0
-    logger.info('[ItineraryArrangeField] drag start', { id: item.id, originalIndex: idx })
-  }, 200)
-}
-
-/**
- * Item touchmove — 计算 dragOffsetX,跨过 50% 阈值时交换
- * @param {UniApp.TouchEvent} e
- */
-function onItemTouchMove(e) {
-  if (!isDragging.value) {
-    // 未进入拖动模式:中断 long-press(用户只是滚动 / 拖动 < 200ms)
-    clearLongPressTimer()
-    return
-  }
-  if (e.touches.length !== 1) return
-
-  const touch = e.touches[0]
-  const offsetX = touch.clientX - dragStartX.value
-  dragOffsetX.value = offsetX
-
-  // 计算跨越了多少个 item 宽度(单卡 ~280rpx ≈ 140px @ 750rpx 设计稿)
-  // 此处简化:1 像素 ≈ 1.9 rpx @ 750rpx 设计稿
-  const itemWidthPx = 140 // 280rpx / 2
-  const delta = Math.round(offsetX / itemWidthPx)
-
-  if (delta !== 0) {
-    // 计算新 index
-    const newIndex = originalIndex.value + delta
-    const arr = [...props.modelValue]
-    const total = arr.length
-
-    if (newIndex >= 0 && newIndex < total && newIndex !== originalIndex.value) {
-      // 数组内位置交换
-      const item = arr[originalIndex.value]
-      arr.splice(originalIndex.value, 1)
-      arr.splice(newIndex, 0, item)
-
-      emit('update:modelValue', arr)
-      originalIndex.value = newIndex
-      // 重置 dragStartX 与 offset(避免连续跨越累计)
-      dragStartX.value = touch.clientX
-      dragOffsetX.value = 0
-      logger.debug('[ItineraryArrangeField] drag swap', { from: originalIndex.value, to: newIndex })
-    }
-  }
-}
-
-/**
- * Item touchend / touchcancel — 提交新顺序 + 清理拖动状态
- * @param {UniApp.TouchEvent} _e
- */
-function onItemTouchEnd(_e) {
-  clearLongPressTimer()
-  if (isDragging.value) {
-    const draggedId = draggingId.value
-    const finalArr = [...props.modelValue]
-    logger.info('[ItineraryArrangeField] drag end', { id: draggedId, finalIndex: finalArr.findIndex((it) => it.id === draggedId) })
-    draggingId.value = null
-    dragOffsetX.value = 0
-    originalIndex.value = -1
-    // v0.5.0(per UserRound2-001 Bug A):拖动结束 emit update 事件
-    //   - 拖动过程中 emit('update:modelValue', arr) 已多次触发(每次跨过 50% 阈值),
-    //     EditTripPage 父级 v-model 数组顺序实时更新(本地)
-    //   - 拖动结束 emit('update', finalArr) 一次性通知「order change settled」
-    //     → EditTripPage MVP:不调 API(后端无 reorder 端点,仅展示用)
-    //   - NewTripPage 仍可继续走 v-model,无 0 breaking
-    emit('update', finalArr)
-  }
-}
-
-function clearLongPressTimer() {
-  if (longPressTimerId !== null) {
-    clearTimeout(longPressTimerId)
-    longPressTimerId = null
-  }
-}
 
 // ──────────── 删除 / 添加 inline 表单 ────────────
 
@@ -610,7 +438,7 @@ function confirmAdd() {
 }
 
 function onEditItem(item) {
-  if (props.readonly || isDragging.value) return
+  if (props.readonly) return
   editingId.value = item.id
   addForm.value = {
     city: item.city || '',
@@ -690,23 +518,6 @@ function formatItemDate(dateIso) {
   return `${parseInt(mm, 10)}月${parseInt(dd, 10)}日`
 }
 
-// ──────────── 样式派生:拖动视觉反馈 ────────────
-
-/**
- * 拖动中 item 的 style(沿原位置但 X 偏移 dragOffsetX)
- * @param {number} id
- * @returns {Record<string, string>}
- */
-function getItemStyle(id) {
-  if (isDragging.value && draggingId.value === id) {
-    return {
-      transform: `translateX(${dragOffsetX.value}px) scale(1.05)`,
-      opacity: '0.6',
-      'z-index': '10',
-    }
-  }
-  return {}
-}
 </script>
 
 <style scoped>
@@ -752,10 +563,8 @@ function getItemStyle(id) {
 }
 
 .items-row {
-  display: inline-flex;
-  flex-direction: row;
-  gap: 16rpx;
-  /* space-md,卡片间 16rpx */
+  display: block;
+  white-space: nowrap;
   padding: 8rpx 0;
   box-sizing: border-box;
 }
@@ -784,11 +593,9 @@ function getItemStyle(id) {
   white-space: normal;
   /* 卡片内文字可换行(与 items-row 的 nowrap 区分) */
   box-shadow: 0 2rpx 8rpx rgba(0, 0, 0, 0.04);
-  cursor: grab;
-}
-
-.item-card-dragging {
-  cursor: grabbing;
+  cursor: pointer;
+  vertical-align: top;
+  margin-right: 16rpx;
 }
 
 .item-card-emoji {
@@ -876,6 +683,7 @@ function getItemStyle(id) {
 
 .item-add-btn {
   display: inline-flex;
+  vertical-align: top;
   align-items: center;
   justify-content: center;
   min-width: 160rpx;
@@ -917,27 +725,6 @@ function getItemStyle(id) {
   display: flex;
   width: 100%;
   box-sizing: border-box;
-}
-
-.drag-hint {
-  position: absolute;
-  top: 8rpx;
-  right: 8rpx;
-  padding: 4rpx 12rpx;
-  background: rgba(45, 106, 94, 0.12);
-  /* primarySoftStrong */
-  border-radius: 9999px;
-  box-sizing: border-box;
-  pointer-events: none;
-}
-
-.drag-hint-text {
-  font-family: 'Noto Sans SC', sans-serif;
-  font-size: 22rpx;
-  /* 11px */
-  color: #2D6A5E;
-  /* primary */
-  line-height: 1.4;
 }
 
 /* ─── inline 添加表单 ─── */

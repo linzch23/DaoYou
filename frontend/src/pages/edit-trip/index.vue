@@ -80,18 +80,6 @@
           <view class="form-header">
             <text class="form-title">{{ strings.formTitle }}</text>
             <text class="form-hint">{{ formHintText }}</text>
-            <view
-              v-if="trip"
-              class="form-trip-summary"
-            >
-              <text class="form-trip-summary-id">id: {{ trip.id }}</text>
-              <text class="form-trip-summary-title">{{ tripSummaryTitle }}</text>
-              <text
-                v-if="tripStatusBadge"
-                class="form-trip-summary-badge"
-                :class="`form-trip-summary-badge-${tripStatusBadgeClass}`"
-              >{{ tripStatusBadge }}</text>
-            </view>
           </view>
 
           <ErrorBanner
@@ -282,16 +270,12 @@ import { onLoad } from '@dcloudio/uni-app'
 import {
   EditTripStrings,
   NewTripStrings,
-  TripDetailStatusLabel,
   OnboardingStrings,
 } from '../../constants/strings.js'
 import { AppRoutes } from '../../constants/routes.js'
 import { logger } from '../../utils/logger.js'
 import { getTripItemErrorMessage } from '../../services/tripItemForm.js'
 import { useHomeStore } from '../../stores/homeStore.js'
-// v0.7.0 新增(per fix-trip-status-v0.7.0 2026-07-03 + issues/Cross-Page/TripStatusConsistent-001):
-// _FormHeader 状态徽章沿 helper 派生,与 home / trip-detail 显示端 1:1 对齐(显示/点击同源)
-import { computeEffectiveStatus } from '../../utils/tripStatus.js'
 import {
   getTripDetail,
   updateTrip,
@@ -548,13 +532,6 @@ const datePickerEnd = computed(() => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 })
 
-/** _FormHeader trip title 简称(> 12 字截断) */
-const tripSummaryTitle = computed(() => {
-  const t = trip.value?.title || ''
-  if (t.length <= 12) return t
-  return `${t.slice(0, 12)}…`
-})
-
 /** _FormHeader 副提示文案(per issues/UI/UI-023-draft-page-prefill.md §步骤 2)
  *   - 'edit'  模式:沿用原 `strings.formHint` 「点击底部「保存」即可生效;...」
  *   - 'draft' 模式:「继续编辑草稿「X」 · 首次创建于 Y」(per issue §4)
@@ -576,30 +553,6 @@ const formHintText = computed(() => {
     return `继续编辑草稿「${t.title || ''}」 · 首次创建于 ${dateStr}`
   }
   return strings.formHint
-})
-
-/**
- * _FormHeader 状态徽章文案:v0.7.0 修订(per fix-trip-status-v0.7.0 2026-07-03)
- *   走 helper 派生 effectiveStatus,与 home / trip-detail 显示端 1:1 对齐
- *   - helper 返回 'deleted' → 徽章不显示(已有 notfound 路径)
- *   - helper 返回 'upcoming' | 'inProgress' | 'finished' | 'draft' 4 态 → 走 TripDetailStatusLabel 文案
- * 注:helper v0.7.0 直接返回 4 状态,这里仅做 deleted 拦截 + 文案查找
- */
-const tripStatusBadge = computed(() => {
-  const status = computeEffectiveStatus(trip.value)
-  if (!trip.value || status === 'deleted') return ''
-  return TripDetailStatusLabel[status] || ''
-})
-
-/**
- * 状态徽章颜色 class(per spec §3.1 TripDetailPage 配色矩阵)
- * v0.7.0:同样走 helper 派生,与 home / trip-detail CSS class 1:1 对齐
- * helper 返回 4 状态字面(draft / upcoming / inProgress / finished),可直接做 CSS class 后缀
- */
-const tripStatusBadgeClass = computed(() => {
-  const status = computeEffectiveStatus(trip.value)
-  if (!trip.value || status === 'deleted') return ''
-  return status
 })
 
 // ─────────────── Store ───────────────
@@ -1465,79 +1418,6 @@ onUnmounted(() => {
   line-height: 1.4;
   margin-bottom: 16rpx;
   /* space-md */
-}
-
-.form-trip-summary {
-  background: #F2EBE0;
-  /* surfaceWarm */
-  border-radius: 12px;
-  /* radius-md */
-  padding: 16rpx;
-  display: flex;
-  flex-direction: column;
-  gap: 4rpx;
-  box-sizing: border-box;
-}
-
-.form-trip-summary-id {
-  font-family: 'Noto Sans SC', sans-serif;
-  font-size: 22rpx;
-  /* 11px */
-  color: #9A9A9A;
-  /* inkMuted */
-  line-height: 1.4;
-}
-
-.form-trip-summary-title {
-  font-family: 'Noto Serif SC', serif;
-  font-size: 32rpx;
-  /* 16px */
-  font-weight: 600;
-  color: #2C2C2C;
-  /* ink */
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.form-trip-summary-badge {
-  align-self: flex-start;
-  font-family: 'Noto Sans SC', sans-serif;
-  font-size: 22rpx;
-  /* 11px */
-  font-weight: 500;
-  padding: 2rpx 12rpx;
-  border-radius: 9999px;
-  line-height: 1.5;
-  margin-top: 4rpx;
-  box-sizing: border-box;
-}
-
-.form-trip-summary-badge-inProgress {
-  background: rgba(45, 106, 94, 0.12);
-  /* primarySoftStrong */
-  color: #2D6A5E;
-  /* primary */
-}
-
-.form-trip-summary-badge-upcoming {
-  background: rgba(216, 208, 196, 0.4);
-  color: #5A5A5A;
-  /* inkLight */
-}
-
-.form-trip-summary-badge-expired,
-.form-trip-summary-badge-finished {
-  background: rgba(154, 154, 154, 0.15);
-  color: #9A9A9A;
-  /* inkMuted */
-}
-
-.form-trip-summary-badge-draft {
-  background: rgba(212, 160, 58, 0.15);
-  color: #D4A03A;
-  /* warning */
 }
 
 .form-fields {

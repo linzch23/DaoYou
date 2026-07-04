@@ -90,10 +90,12 @@
           v-else-if="viewMode === 'idle'"
           class="panel-idle"
         >
-          <view
+          <image
             class="idle-icon"
+            src="/static/ai/roamy-chat-entry.png"
+            mode="aspectFit"
             aria-hidden="true"
-          >{{ ChatPageStrings.idleIcon }}</view>
+          />
           <text class="idle-hint">{{ ChatPageStrings.idleHint }}</text>
           <text class="idle-hint-sub">{{ ChatPageStrings.idleHintSub }}</text>
         </view>
@@ -112,9 +114,17 @@
               :class="`message-bubble-${msg.role}`"
             >
               <text
+                v-if="msg.role === 'user'"
                 class="message-avatar"
                 aria-hidden="true"
-              >{{ msg.role === 'user' ? '🧑' : '🤖' }}</text>
+              >🧑</text>
+              <image
+                v-else
+                class="message-avatar message-avatar-image"
+                src="/static/ai/roamy-avatar.png"
+                mode="aspectFill"
+                aria-hidden="true"
+              />
               <view
                 class="message-content"
                 :class="`message-content-${msg.role}`"
@@ -218,10 +228,12 @@
               v-if="viewMode === 'sending'"
               class="message-bubble message-bubble-assistant typing-indicator"
             >
-              <text
-                class="message-avatar"
+              <image
+                class="message-avatar message-avatar-image"
+                src="/static/ai/roamy-avatar.png"
+                mode="aspectFill"
                 aria-hidden="true"
-              >🤖</text>
+              />
               <view class="message-content message-content-assistant">
                 <!-- v0.2.0 移除「我/AI」label(per spec §3.4 备注 5) -->
                 <view class="typing-row">
@@ -287,15 +299,18 @@
         @tap="onPhotoTap"
       />
       <view class="input-field-wrap">
-        <input
+        <textarea
           v-model="draftMessage"
           class="input-field"
+          :style="inputFieldStyle"
           :placeholder="ChatPageStrings.inputPlaceholder"
           placeholder-class="input-field-placeholder"
           :maxlength="500"
+          :auto-height="false"
+          :show-confirm-bar="false"
+          :disable-default-padding="true"
           :disabled="viewMode === 'sending'"
           :aria-label="ChatPageStrings.inputPlaceholder"
-          @confirm="onSendTap"
         />
       </view>
       <view
@@ -633,6 +648,38 @@ const imagePreviewSrc = ref(null)
 const canSend = computed(() => {
   if (viewMode.value === 'sending') return false
   return draftMessage.value.trim() !== ''
+})
+
+const INPUT_LINE_UNIT_LIMIT = 18
+const INPUT_DIGIT_UNIT = INPUT_LINE_UNIT_LIMIT / 32
+const INPUT_ALPHA_UNIT = INPUT_LINE_UNIT_LIMIT / 37
+
+function getInputCharUnit(char) {
+  if (/^[0-9]$/.test(char)) return INPUT_DIGIT_UNIT
+  if (/^[A-Za-z]$/.test(char)) return INPUT_ALPHA_UNIT
+  if (/[\x00-\x7F]/.test(char)) return INPUT_ALPHA_UNIT
+  return 1
+}
+
+const inputLineCount = computed(() => {
+  if (!draftMessage.value) return 1
+  const lines = draftMessage.value.split('\n')
+  const estimatedLines = lines.reduce((total, line) => {
+    const units = Array.from(line).reduce((sum, char) => {
+      return sum + getInputCharUnit(char)
+    }, 0)
+    return total + Math.max(1, Math.ceil(units / INPUT_LINE_UNIT_LIMIT))
+  }, 0)
+  return Math.min(4, Math.max(1, estimatedLines))
+})
+
+const inputFieldStyle = computed(() => {
+  const height = 80 + (inputLineCount.value - 1) * 36
+  return {
+    height: `${height}rpx`,
+    minHeight: '80rpx',
+    maxHeight: '188rpx',
+  }
 })
 
 // v0.2.0 新增:PhotoActionSheet 选项列表(拍照 / 相册)— spec §3.10
@@ -1553,9 +1600,8 @@ onUnmounted(() => {
 }
 
 .idle-icon {
-  font-size: 120rpx;
-  line-height: 1;
-  text-align: center;
+  width: 144rpx;
+  height: 144rpx;
   margin-bottom: 16rpx;
 }
 
@@ -1616,6 +1662,14 @@ onUnmounted(() => {
   line-height: 1;
   flex-shrink: 0;
   margin-top: 4rpx;
+}
+
+.message-avatar-image {
+  width: 40rpx;
+  height: 40rpx;
+  border-radius: 9999px;
+  border: 1rpx solid rgba(45, 106, 94, 0.08);
+  box-sizing: border-box;
 }
 
 .message-content {
@@ -1786,16 +1840,17 @@ onUnmounted(() => {
   position: sticky;
   bottom: 0;
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 12rpx;
-  padding: 16rpx 24rpx;
+  padding: 16rpx 28rpx;
   background: #FDFBF7;
   /* surfaceCard */
   border-top: 1px solid rgba(45, 106, 94, 0.1);
   /* borderStrong */
   margin: 16rpx -40rpx -32rpx;
-  /* 撑满 body-inner 水平边距外 */
   box-sizing: border-box;
+  width: calc(100% + 80rpx);
+  overflow: hidden;
 }
 
 /* 历史(2026-06-24 Fix D):清空按钮 CSS 同步清理,见 L215 audit trail */
@@ -1808,16 +1863,44 @@ onUnmounted(() => {
 
 .input-field {
   width: 100%;
+  min-height: 80rpx;
   height: 80rpx;
-  padding: 0 20rpx;
+  max-height: 188rpx;
+  padding: 16rpx 22rpx;
   background: #FDFBF7;
   border: 1.5px solid #E8E0D4;
-  border-radius: 9999px;
+  border-radius: 9999rpx;
   font-family: 'Noto Sans SC', sans-serif;
   font-size: 28rpx;
   color: #2C2C2C;
-  line-height: 1.4;
+  line-height: 1.45;
   box-sizing: border-box;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  white-space: pre-wrap;
+  scrollbar-width: none;
+}
+
+.input-field :deep(textarea),
+.input-field :deep(.uni-textarea-textarea) {
+  height: 100%;
+  min-height: 48rpx;
+  max-height: 156rpx;
+  line-height: 1.45;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+  word-break: break-all;
+  white-space: pre-wrap;
+  scrollbar-width: none;
+}
+
+.input-field::-webkit-scrollbar,
+.input-field :deep(textarea::-webkit-scrollbar),
+.input-field :deep(.uni-textarea-textarea::-webkit-scrollbar) {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 .input-field-placeholder {
@@ -1828,10 +1911,10 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 88rpx;
+  min-height: 80rpx;
   /* ≥ 44pt tap area(per spec AC-11 + §10 NFR) */
-  min-width: 120rpx;
-  padding: 0 24rpx;
+  min-width: 104rpx;
+  padding: 0 20rpx;
   background: linear-gradient(135deg, #2D6A5E 0%, #3D8B7D 100%);
   border-radius: 9999px;
   box-shadow: 0 4rpx 16rpx rgba(45, 106, 94, 0.35);
@@ -1856,6 +1939,18 @@ onUnmounted(() => {
   font-weight: 600;
   color: #FFFFFF;
   line-height: 1.4;
+}
+
+.input-bar-wrap :deep(.photo-action-btn) {
+  width: 80rpx;
+  height: 80rpx;
+  min-width: 80rpx;
+  min-height: 80rpx;
+  background: #F2EBE0;
+}
+
+.input-bar-wrap :deep(.photo-action-btn-emoji) {
+  font-size: 44rpx;
 }
 
 /* ───────── Animations ───────── */

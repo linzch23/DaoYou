@@ -130,7 +130,7 @@ export const HomeStrings = {
 
   // 行程列表 chat 入口(2026-06-24 新增,per task「每个行程有独立 chatSession」)
   // 沿 AGENTS.md §8.6 13 页面惯例:每个 user-facing 文案键必带 aria 标签
-  // v0.X 修订:icon 从 emoji(💬)改为 <image src="/static/tabbar/AI对话.png"> PNG 渲染,
+  // v0.X 修订:icon 从 emoji(💬)改为 Roamy PNG 渲染,
   //   详见 TripCard.vue .btn-chat-trip-icon;btnChatTrip 字面常量同步删除
   // aria 模板带 {title} 占位(运行时插值,无障碍读屏更准)
   btnChatTripAria: '打开「{title}」的智能对话',
@@ -849,15 +849,15 @@ export const PersonalProfileSpecialNeedOptions = Object.freeze([
  *
  * 字段分类:
  *   顶栏(1) + Loading(1) + 用户信息(4) + 偏好摘要(3)
- *   + 菜单列表(7) + 退出登录(1) + 二次确认弹窗(4)
- *   + 错误兜底(3) + H5 aria(1) = 25 键
+ *   + 菜单列表(6) + 退出登录(1) + 二次确认弹窗(4)
+ *   + 错误兜底(3) + H5 aria(1) = 24 键
  *
  * 复用约定(spec §3.7 + §4.6 备注):
  *   - 错误兜底 3 键**引用**既有 `OnboardingStrings.errorXxx` / `NewTripStrings.errorXxx`
  *     **不**重复定义字面值(per spec-writer-patterns §13「Trigger upstream constants」决策)
  *   - 「重试」按钮文案走 `OnboardingStrings.retry`(已读 strings.js:31 验证)
  *   - 6 菜单项文案**不**复用任何既有段(任务原文"个人信息编辑 / 回收站 / 讲解风格
- *     / 通知设置 / 帮助 / 关于"独立 key)
+ *     / 权限设置 / 帮助 / 关于"独立 key)
  *   - 头像 / 昵称 / 兴趣 / 风格 派生字段走 `OnboardingInterestOptions` 既有 emoji 命名
  *
  * 字段名规范(spec §4.6 表格):完全 1:1 对齐;future i18n 时改本段即可,
@@ -888,8 +888,7 @@ export const MyPageStrings = {
   menuPersonalProfile: '个人信息编辑',   // 菜单项 1 标签
   menuTrash: '回收站',                    // 菜单项 2 标签
   menuStyleSetting: '讲解风格',            // 菜单项 3 标签
-  menuNotificationSetting: '通知设置',
-  menuLocationSetting: '定位与后台提醒',
+  menuPermissionSetting: '权限设置',
   menuHelp: '帮助',                        // 菜单项 5 标签
   menuAbout: '关于',                       // 菜单项 6 标签
   toastHelpComing: '功能即将上线,敬请期待', // 帮助菜单点击弹 Toast(per §3.4)
@@ -917,7 +916,7 @@ export const MyPageStrings = {
  * MyPageMenuOptions 6 菜单项(spec §4.4 + §3.4 表格 1:1)
  *
  * 6 键数组,顺序为设计稿推荐阅读顺序(任务原文顺序):
- *   个人信息编辑 / 回收站 / 讲解风格 / 通知设置 / 帮助 / 关于
+ *   个人信息编辑 / 回收站 / 讲解风格 / 权限设置 / 帮助 / 关于
  *
  * 字段:
  *   id        : string                  唯一 key(v-for :key 用)
@@ -936,8 +935,7 @@ export const MyPageMenuOptions = Object.freeze([
   { id: 'personal-profile',    icon: '👤',  label: MyPageStrings.menuPersonalProfile,    route: AppRoutes.PersonalProfile,    behavior: 'navigate' },
   { id: 'trash',                icon: '🗑️', label: MyPageStrings.menuTrash,                route: AppRoutes.Trash,               behavior: 'navigate' },
   { id: 'style-setting',        icon: '🎙️', label: MyPageStrings.menuStyleSetting,        route: AppRoutes.StyleSetting,        behavior: 'navigate' },
-  { id: 'notification-setting', icon: '🔔', label: MyPageStrings.menuNotificationSetting, route: AppRoutes.NotificationSetting, behavior: 'navigate' },
-  { id: 'location-setting',     icon: '📍', label: MyPageStrings.menuLocationSetting,     route: AppRoutes.LocationSetting,     behavior: 'navigate' },
+  { id: 'permission-setting',   icon: '🔐', label: MyPageStrings.menuPermissionSetting,   route: AppRoutes.LocationSetting,     behavior: 'navigate' },
   { id: 'help',                 icon: '❓', label: MyPageStrings.menuHelp,                 route: null,                          behavior: 'coming-soon' },
   { id: 'about',                icon: 'ℹ️', label: MyPageStrings.menuAbout,                route: AppRoutes.About,               behavior: 'navigate' },
 ])

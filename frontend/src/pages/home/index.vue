@@ -622,7 +622,8 @@ function onMarkSpotVisited(itemId) {
   padding: 0 40rpx;
   /* 水平边距 40rpx(等价 20px) */
   flex-shrink: 0;
-  background: transparent;
+  background: #F7F3EC;
+  border-bottom: 1px solid rgba(45, 106, 94, 0.1);
   box-sizing: border-box;
 }
 

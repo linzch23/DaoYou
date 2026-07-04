@@ -37,12 +37,17 @@ test('trip card action icons use ASCII static asset paths', async () => {
     'utf8',
   )
 
-  for (const iconName of ['chat.png', 'delete.png']) {
-    assert.match(source, new RegExp(`/static/tabbar/${iconName.replace('.', '\\.')}`))
+  const actionIcons = [
+    'static/ai/roamy-chat-entry.png',
+    'static/tabbar/delete.png',
+  ]
+
+  for (const iconPath of actionIcons) {
+    assert.match(source, new RegExp(`/${iconPath.replace('.', '\\.')}`))
     const icon = await readFile(
-      path.join(frontendRoot, 'src/static/tabbar', iconName),
+      path.join(frontendRoot, 'src', iconPath),
     )
-    assert.ok(icon.length > 0, `${iconName} must be a non-empty source asset`)
+    assert.ok(icon.length > 0, `${iconPath} must be a non-empty source asset`)
   }
   assert.doesNotMatch(source, /\/static\/tabbar\/(?:AI对话|删除_delete)\.png/)
 })
@@ -205,30 +210,7 @@ test('short success toasts fit the native icon layout', async () => {
   assert.deepEqual(deleteToastValues, ['已移入回收站', '已移入回收站'])
 })
 
-test('notification settings are registered and reachable from My', async () => {
-  const routes = await readFile(
-    path.join(frontendRoot, 'src/constants/routes.js'),
-    'utf8',
-  )
-  const pages = JSON.parse(
-    await readFile(path.join(frontendRoot, 'src/pages.json'), 'utf8'),
-  )
-  const strings = await readFile(
-    path.join(frontendRoot, 'src/constants/strings.js'),
-    'utf8',
-  )
-  const page = await readFile(
-    path.join(frontendRoot, 'src/pages/notification-setting/index.vue'),
-    'utf8',
-  )
-
-  assert.match(routes, /NotificationSetting:\s*['"]\/pages\/notification-setting\/index['"]/)
-  assert.ok(pages.pages.some((item) => item.path === 'pages/notification-setting/index'))
-  assert.match(strings, /id:\s*['"]notification-setting['"]/)
-  assert.match(page, /openNotificationSettings/)
-})
-
-test('location and background reminder settings are registered and reachable from My', async () => {
+test('permission settings are registered and reachable from My', async () => {
   const routes = await readFile(
     path.join(frontendRoot, 'src/constants/routes.js'),
     'utf8',
@@ -243,14 +225,19 @@ test('location and background reminder settings are registered and reachable fro
   const page = await readFile(
     path.join(frontendRoot, 'src/pages/location-setting/index.vue'),
     'utf8',
-  ).catch(() => '')
+  )
 
   assert.match(routes, /LocationSetting:\s*['"]\/pages\/location-setting\/index['"]/)
   assert.ok(pages.pages.some((item) => item.path === 'pages/location-setting/index'))
-  assert.match(strings, /id:\s*['"]location-setting['"]/)
+  assert.ok(pages.pages.some((item) => item.path === 'pages/notification-setting/index'))
+  assert.match(strings, /id:\s*['"]permission-setting['"]/)
+  assert.doesNotMatch(strings, /id:\s*['"]notification-setting['"]/)
+  assert.doesNotMatch(strings, /id:\s*['"]location-setting['"]/)
   assert.match(page, /openAppSettings/)
   assert.match(page, /getBackgroundLocationStatus/)
   assert.match(page, /requestLocationPermission/)
+  assert.match(page, /openNotificationSettings/)
+  assert.match(page, /requestNotificationPermission/)
 })
 
 test('photo guide route is registered', async () => {

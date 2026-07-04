@@ -53,8 +53,8 @@ function onOpenSettings() {
 </script>
 
 <style scoped>
-.page { min-height: 100vh; padding: 32rpx; background: #F7F3EC; }
-.header { display: flex; align-items: center; min-height: 88rpx; }
+.page { min-height: 100vh; padding: 0 32rpx 32rpx; background: #F7F3EC; box-sizing: border-box; }
+.header { display: flex; align-items: center; min-height: 88rpx; margin: 0 -32rpx; padding: 0 32rpx; background: #F7F3EC; border-bottom: 1px solid rgba(45, 106, 94, 0.1); }
 .back, .spacer { width: 80rpx; font-size: 42rpx; }
 .title { flex: 1; text-align: center; font-size: 36rpx; font-weight: 600; color: #2C2C2C; }
 .card { margin-top: 32rpx; padding: 40rpx; border-radius: 24rpx; background: #FDFBF7; display: flex; flex-direction: column; gap: 24rpx; }

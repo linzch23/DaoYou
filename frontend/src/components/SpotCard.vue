@@ -7,6 +7,7 @@
     spot        : TripItem          单个 item
     state       : 'done' | 'active' | 'upcoming' | 'expired' | 'changed'   由父组件计算
     isFavorite  : boolean           是否已收藏(显示右上角 ❤)
+    interactive : boolean           是否允许点击卡片主体
   
   Emits
     tap         : void              用户点击卡片主体(expired 态不触发)
@@ -15,10 +16,10 @@
   <view
     class="spot-card"
     :class="`spot-card-${state}`"
-    role="button"
+    :role="interactive ? 'button' : undefined"
     :aria-label="ariaLabel"
-    :aria-disabled="state === 'expired' ? 'true' : 'false'"
-    :hover-class="state === 'expired' ? '' : 'spot-card-hover'"
+    :aria-disabled="!interactive || state === 'expired' ? 'true' : 'false'"
+    :hover-class="!interactive || state === 'expired' ? '' : 'spot-card-hover'"
     :hover-stay-time="50"
     @click="onTap"
   >
@@ -87,6 +88,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  interactive: {
+    type: Boolean,
+    default: true,
+  },
 })
 
 const emit = defineEmits(['tap'])
@@ -119,6 +124,7 @@ const ariaLabel = computed(
 )
 
 function onTap() {
+  if (!props.interactive) return
   // 已过期不触发 tap(spec §3.1 表格 + §8.3)
   if (props.state === 'expired') return
   emit('tap')

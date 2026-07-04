@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>chat input test</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: #f7f3ec;
+        font-family: sans-serif;
+      }
+
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        display: flex;
+        align-items: flex-end;
+        gap: 5px;
+        padding: 7px 10px;
+        width: 100%;
+        overflow: hidden;
+        box-sizing: border-box;
+        background: #fdfbf7;
+        border-top: 1px solid rgba(45, 106, 94, 0.1);
+      }
+
+      .photo-action-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 44px;
+        height: 44px;
+        min-width: 44px;
+        min-height: 44px;
+        flex-shrink: 0;
+        box-sizing: border-box;
+        border-radius: 9999px;
+        background: #f2ebe0;
+      }
+
+      .input-field-wrap {
+        flex: 0 1 200px;
+        min-width: 0;
+        max-width: 200px;
+        box-sizing: border-box;
+      }
+
+      .input-field {
+        width: 100%;
+        min-height: 56px;
+        height: 56px;
+        max-height: 96px;
+        padding: 9px 10px;
+        box-sizing: border-box;
+        border: 1.5px solid #e8e0d4;
+        border-radius: 16px;
+        background: #fdfbf7;
+        color: #2c2c2c;
+        font-size: 14px;
+        line-height: 1.45;
+        overflow-y: auto;
+        overflow-wrap: anywhere;
+        word-break: break-all;
+        white-space: pre-wrap;
+      }
+
+      .btn-send {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 40px;
+        min-width: 52px;
+        padding: 0 10px;
+        flex-shrink: 0;
+        box-sizing: border-box;
+        border-radius: 9999px;
+        background: #2d6a5e;
+        color: #ffffff;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="input-bar-wrap">
+      <div class="photo-action-btn">🖼</div>
+      <div class="input-field-wrap">
+        <textarea class="input-field" placeholder="说点什么..."></textarea>
+      </div>
+      <div class="btn-send">发送</div>
+    </div>
+  </body>
+</html>

@@ -113,7 +113,7 @@
     {
       "path": "pages/location-setting/index",
       "style": {
-        "navigationBarTitleText": "定位与后台提醒",
+        "navigationBarTitleText": "权限设置",
         "navigationStyle": "custom",
         "navigationBarTextStyle": "black",
         "navigationBarBackgroundColor": "#FDFBF7",

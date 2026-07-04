@@ -27,7 +27,8 @@
             "delay" : 0
         },
         "modules" : {
-            "Geolocation" : {}
+            "Geolocation" : {},
+            "Camera" : {}
         },
         "distribute" : {
             "android" : {
@@ -48,11 +49,24 @@
             "sdkConfigs" : {
                 "geolocation" : {
                     "amap" : {
-                        "__platform__" : [
-                            "android"
-                        ],
+                        "__platform__" : [ "android" ],
                         "appkey_android" : "__AMAP_ANDROID_APP_KEY__"
                     }
+                },
+                "maps" : {
+                    "amap" : {
+                        "name" : "",
+                        "appkey_ios" : "",
+                        "appkey_android" : "__AMAP_ANDROID_APP_KEY__"
+                    }
+                }
+            },
+            "icons" : {
+                "android" : {
+                    "hdpi" : "src/static/ai/roamy-app-icon.png",
+                    "xhdpi" : "src/static/ai/roamy-app-icon.png",
+                    "xxhdpi" : "src/static/ai/roamy-app-icon.png",
+                    "xxxhdpi" : "src/static/ai/roamy-app-icon.png"
                 }
             }
         }

@@ -559,7 +559,7 @@ async function onRetry() {
 }
 
 .body-inner {
-  padding: 24rpx 40rpx 80rpx;
+  padding: calc(24rpx + var(--dy-status-bar-height)) 40rpx 80rpx;
   /* space-lg / 20px → 40rpx 水平边距(mobile) */
   box-sizing: border-box;
   display: flex;
